@@ -125,7 +125,40 @@ function SettingsModal({ isOpen, onClose, user, onSaveNotifications, notifEnable
     </div>
   );
 }
+// Modal y parser de Playtomic (versión original)
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [playtomicText, setPlaytomicText] = useState('');
+  const [matchGroup, setMatchGroup] = useState('chicos');
 
+  const handleAddPlaytomicMatch = async (e) => {
+    e.preventDefault();
+    if (!playtomicText.trim()) return;
+
+    setSyncing(true);
+    try {
+      const res = await fetch(apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({
+          action: 'CREAR_PARTIDO_PLAYTOMIC',
+          textoCrudo: playtomicText,
+          grupo: matchGroup
+        })
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setShowAddModal(false);
+        setPlaytomicText('');
+        fetchData();
+      } else {
+        alert('Error: ' + data.error);
+      }
+    } catch (err) {
+      alert('Error de conexión: ' + err.message);
+    } finally {
+      setSyncing(false);
+    }
+  };
 // Modal PIN
 function PinModal({ isOpen, onClose, targetUser, onPinSuccess, apiUrl }) {
   const [pinInput, setPinInput] = useState('');
@@ -1087,6 +1120,14 @@ export default function App() {
             {/* TAB 1: PARTIDOS */}
             {activeTab === 'partidos' && (
               <div className="space-y-3">
+                {/* ⬇️ PEGA AQUÍ EL BOTÓN ⬇️ */}
+                <button
+                  onClick={() => setShowAddModal(true)}
+                  className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 px-4 rounded-2xl text-xs flex items-center justify-center gap-2 shadow-sm transition"
+                >
+                  <span>➕</span> Añadir Partido (Pegar desde Playtomic)
+                </button>
+                {/* ⬆️ HASTA AQUÍ ⬆️ */}
                 {matches.length === 0 ? (
                   <div className="bg-white rounded-2xl p-8 text-center border border-slate-200">
                     <p className="text-2xl mb-1">🎾</p>
@@ -1362,6 +1403,89 @@ export default function App() {
           localStorage.setItem('padel_notif', String(val));
         }}
       />
+      {/* MODALES AUXILIARES */}
+      <CriteriosModal isOpen={showRulesModal} onClose={() => setShowRulesModal(false)} />
+      <SettingsModal
+        isOpen={showSettingsModal}
+        onClose={() => setShowSettingsModal(false)}
+        user={currentUser}
+        notifEnabled={notifEnabled}
+        onSaveNotifications={(val) => {
+          setNotifEnabled(val);
+          localStorage.setItem('padel_notif', String(val));
+        }}
+      />
+
+      {/* ⬇️ PEGA AQUÍ EL MODAL DE PLAYTOMIC ⬇️ */}
+      {showAddModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-sm w-full p-5 shadow-2xl">
+            <div className="flex justify-between items-center mb-3">
+              <h3 className="text-base font-black text-slate-900">Añadir Partido Playtomic</h3>
+              <button 
+                onClick={() => setShowAddModal(false)}
+                className="text-slate-400 hover:text-slate-600 text-xl font-bold"
+              >
+                &times;
+              </button>
+            </div>
+
+            <form onSubmit={handleAddPlaytomicMatch} className="space-y-3">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Grupo</label>
+                <div className="flex gap-2">
+                  {['chicos', 'chicas'].map(g => (
+                    <button
+                      type="button"
+                      key={g}
+                      onClick={() => setMatchGroup(g)}
+                      className={`flex-1 py-1.5 rounded-xl text-xs font-bold uppercase transition ${
+                        matchGroup === g
+                          ? 'bg-blue-600 text-white shadow-sm'
+                          : 'bg-slate-100 text-slate-600'
+                      }`}
+                    >
+                      {g}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Texto de Playtomic
+                </label>
+                <textarea
+                  rows={6}
+                  required
+                  value={playtomicText}
+                  onChange={(e) => setPlaytomicText(e.target.value)}
+                  placeholder="Pega aquí el mensaje copiado de Playtomic..."
+                  className="w-full border border-slate-300 rounded-xl p-2.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-500 font-mono"
+                />
+              </div>
+
+              <div className="flex gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setShowAddModal(false)}
+                  className="flex-1 py-2 bg-slate-100 text-slate-600 font-bold rounded-xl text-xs"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={syncing}
+                  className="flex-1 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs transition"
+                >
+                  {syncing ? 'Guardando...' : 'Crear'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+      {/* ⬆️ HASTA AQUÍ ⬆️ */}
     </div>
   );
 }
