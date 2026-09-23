@@ -1,15 +1,13 @@
 import React, { useState, useEffect } from 'react';
 
-const DEFAULT_API_URL = 'https://script.google.com/macros/s/AKfycbxkd-BmLpYxmLtev5wcxwsyda94bG1mFW9gtDpEAgsmhV1HCfDwn2-syPDEvBUPwiiiGw/exec';
+// URL de tu Apps Script
+const DEFAULT_API_URL = 'https://script.google.com/macros/s/AKfycby8j511L4Q7sJpms-ZfB-qWjUeO3jT-L8wD9R9Xb3d4f/exec';
 
-// Sin datos falsos: producción limpia
 const FALLBACK_USERS = [];
 const FALLBACK_MATCHES = [];
 
-// Helper para evaluar el horario del partido y avisos
 function parseMatchTiming(dateStr) {
   if (!dateStr) return { canReport: true, shouldPrompt: false };
-
   const timeMatch = dateStr.match(/(\d{1,2}):(\d{2})/);
   if (!timeMatch) return { canReport: true, shouldPrompt: false };
 
@@ -18,17 +16,89 @@ function parseMatchTiming(dateStr) {
   matchDate.setHours(parseInt(timeMatch[1], 10), parseInt(timeMatch[2], 10), 0, 0);
 
   const diffHours = (now - matchDate) / (1000 * 60 * 60);
-
-  const canReport = diffHours >= 0;        // Ya empezó el partido
-  const shouldPrompt = diffHours >= 2.0;   // Han pasado más de 2 horas
-
-  return { canReport, shouldPrompt };
+  return {
+    canReport: diffHours >= 0,
+    shouldPrompt: diffHours >= 2.0
+  };
 }
 
-// Modal explicativo de Criterios y Bote
-function CriteriosModal({ isOpen, onClose }) {
+// Modal de Configuración y Notificaciones
+function SettingsModal({ isOpen, onClose, user, onSaveNotifications, notifEnabled }) {
   if (!isOpen) return null;
 
+  const handleRequestPush = async () => {
+    if (!('Notification' in window)) {
+      alert('Tu navegador no soporta notificaciones push.');
+      return;
+    }
+    const permission = await Notification.requestPermission();
+    if (permission === 'granted') {
+      onSaveNotifications(true);
+      new Notification('Pádel CTC 🎾', {
+        body: `¡Hola ${user.name}! Notificaciones activadas para cenas y resultados.`,
+        icon: 'https://cdn-icons-png.flaticon.com/512/2855/2855613.png'
+      });
+    } else {
+      onSaveNotifications(false);
+      alert('Permiso denegado. Puedes activarlo en los ajustes del navegador.');
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl max-w-sm w-full p-5 shadow-2xl text-left">
+        <div className="flex items-center justify-between border-b pb-3 mb-4">
+          <h3 className="text-base font-black text-slate-900 flex items-center gap-2">
+            ⚙️ Ajustes de Notificaciones
+          </h3>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-700 text-xl font-bold leading-none">
+            &times;
+          </button>
+        </div>
+
+        <div className="space-y-4 text-xs">
+          <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
+            <p className="font-bold text-slate-800">Jugador Activo:</p>
+            <p className="text-slate-600 font-semibold">{user.name} ({user.group})</p>
+          </div>
+
+          <div className="border border-blue-100 bg-blue-50/60 p-3 rounded-xl">
+            <h4 className="font-bold text-blue-900 mb-1">Avisos automáticos:</h4>
+            <ul className="text-blue-800 space-y-1 list-disc list-inside">
+              <li>Recordatorio si no has respondido a la cena.</li>
+              <li>Aviso para subir el marcador tras 2h de juego.</li>
+            </ul>
+          </div>
+
+          <div className="flex items-center justify-between pt-1">
+            <span className="font-bold text-slate-700">Notificaciones Push:</span>
+            <button
+              onClick={handleRequestPush}
+              className={`px-3 py-1.5 rounded-xl font-bold transition text-xs ${
+                notifEnabled
+                  ? 'bg-emerald-600 text-white'
+                  : 'bg-slate-200 text-slate-700 hover:bg-slate-300'
+              }`}
+            >
+              {notifEnabled ? '✓ Activadas' : 'Activar Avisos'}
+            </button>
+          </div>
+        </div>
+
+        <button
+          onClick={onClose}
+          className="w-full mt-5 bg-slate-900 text-white font-bold py-2 rounded-xl text-xs"
+        >
+          Cerrar
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// Modal Criterios y Bote
+function CriteriosModal({ isOpen, onClose }) {
+  if (!isOpen) return null;
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto shadow-2xl p-6 text-left">
@@ -36,74 +106,33 @@ function CriteriosModal({ isOpen, onClose }) {
           <h3 className="text-lg font-black text-gray-900 flex items-center gap-2">
             📖 Criterios de Puntos y Bote
           </h3>
-          <button 
-            onClick={onClose} 
-            className="text-gray-400 hover:text-gray-700 text-2xl font-bold leading-none"
-          >
-            &times;
-          </button>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-700 text-2xl font-bold leading-none">&times;</button>
         </div>
 
-        {/* BOTE */}
         <section className="mb-4 bg-amber-50 border border-amber-200 rounded-xl p-3.5">
-          <h4 className="font-extrabold text-amber-900 text-xs uppercase tracking-wide flex items-center gap-1 mb-2">
-            💶 Bote del 3º Tiempo (Deuda)
-          </h4>
-          <p className="text-xs text-amber-950 mb-2 leading-relaxed">
-            Financia las rondas de la cena. La aportación se calcula por partido:
-          </p>
-          <ul className="text-xs text-amber-900 space-y-1 list-disc list-inside font-medium">
-            <li><span className="font-bold">Derrota en pista:</span> +1 € por partido perdido.</li>
-            <li><span className="font-bold">Victoria en pista:</span> 0 € (el ganador no paga bote deportivo).</li>
-            <li><span className="font-bold">Rajarse de la cena:</span> +1 € por jugar y no quedarse al 3º tiempo.</li>
+          <h4 className="font-extrabold text-amber-900 text-xs uppercase tracking-wide mb-1">💶 Bote del 3º Tiempo</h4>
+          <p className="text-xs text-amber-950 mb-2">Solo computa si el partido ya se ha disputado:</p>
+          <ul className="text-xs text-amber-900 space-y-1 list-disc list-inside">
+            <li><strong>Derrota jugada:</strong> +1 € por partido perdido.</li>
+            <li><strong>Victoria jugada:</strong> 0 € (el ganador no paga).</li>
+            <li><strong>Rajarse de la cena:</strong> +1 € por no acudir tras jugar.</li>
           </ul>
         </section>
 
-        {/* RANKINGS */}
-        <section className="mb-4 space-y-2.5">
-          <h4 className="font-extrabold text-gray-900 text-xs uppercase tracking-wide">
-            🏆 Clasificación y Puntuaciones
-          </h4>
-          
-          <div className="border border-blue-100 bg-blue-50/60 rounded-lg p-2.5">
-            <p className="font-bold text-xs text-blue-900">1. Puntos Deportivos (Pista)</p>
-            <p className="text-xs text-blue-800 mt-0.5">
-              • Victoria: <strong>5 pts</strong> | Derrota jugada: <strong>2 pts</strong>
-            </p>
+        <section className="mb-4 space-y-2">
+          <h4 className="font-extrabold text-gray-900 text-xs uppercase tracking-wide">🏆 Puntuaciones</h4>
+          <div className="border border-blue-100 bg-blue-50/60 rounded-lg p-2.5 text-xs text-blue-900">
+            <strong>Puntos Deportivos:</strong> Victoria 5 pts · Derrota 2 pts
           </div>
-
-          <div className="border border-emerald-100 bg-emerald-50/60 rounded-lg p-2.5">
-            <p className="font-bold text-xs text-emerald-900">2. Puntos Barandas (3º Tiempo)</p>
-            <p className="text-xs text-emerald-800 mt-0.5">
-              • Asistir a la cena: <strong>15 pts</strong> | Partido jugado: <strong>3 pts</strong>
-            </p>
+          <div className="border border-emerald-100 bg-emerald-50/60 rounded-lg p-2.5 text-xs text-emerald-900">
+            <strong>Puntos Barandas:</strong> Cena 15 pts · Partido jugado 3 pts
           </div>
-
-          <div className="border border-purple-100 bg-purple-50/60 rounded-lg p-2.5">
-            <p className="font-bold text-xs text-purple-900">3. Puntos Híbridos (General)</p>
-            <p className="text-xs text-purple-800 mt-0.5">
-              • Suma directa: <strong>Pts Deportivos + Pts Barandas</strong>.
-            </p>
+          <div className="border border-purple-100 bg-purple-50/60 rounded-lg p-2.5 text-xs text-purple-900">
+            <strong>Híbrido:</strong> Suma directa de ambos rankings.
           </div>
         </section>
 
-        {/* TÍTULOS */}
-        <section className="bg-gray-50 border border-gray-200 rounded-xl p-3">
-          <h4 className="font-extrabold text-gray-800 text-xs uppercase tracking-wide mb-2">
-            🎖️ Títulos Honoríficos
-          </h4>
-          <div className="space-y-1.5 text-xs text-gray-700">
-            <div><span className="font-bold">Leyenda del 3º Tiempo 🍻:</span> &ge; 8 partidos y &ge; 8 cenas.</div>
-            <div><span className="font-bold">Deportista de Postureo 🥦:</span> &ge; 7 partidos y &le; 3 cenas.</div>
-            <div><span className="font-bold">Gastrónomo con Pala 🍔:</span> &le; 4 partidos y &ge; 6 cenas.</div>
-            <div><span className="font-bold">El Fantasma 👻:</span> Sin apenas partidos ni cenas.</div>
-          </div>
-        </section>
-
-        <button
-          onClick={onClose}
-          className="w-full mt-4 bg-gray-900 text-white font-bold py-2 rounded-xl hover:bg-gray-800 text-xs transition"
-        >
+        <button onClick={onClose} className="w-full mt-4 bg-gray-900 text-white font-bold py-2 rounded-xl text-xs">
           Cerrar
         </button>
       </div>
@@ -113,32 +142,27 @@ function CriteriosModal({ isOpen, onClose }) {
 
 export default function App() {
   const [apiUrl, setApiUrl] = useState(() => localStorage.getItem('padel_api_url') || DEFAULT_API_URL);
-  const [apiUrlInput, setApiUrlInput] = useState(apiUrl);
-  const [showConfigModal, setShowConfigModal] = useState(false);
-  const [showRulesModal, setShowRulesModal] = useState(false);
-
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [activeTab, setActiveTab] = useState('partidos');
   const [rankingType, setRankingType] = useState('hibrido');
-  const [dateFilter, setDateFilter] = useState('todos');
 
   const [players, setPlayers] = useState(FALLBACK_USERS);
   const [matches, setMatches] = useState(FALLBACK_MATCHES);
   const [selectedMatchId, setSelectedMatchId] = useState(null);
 
-  // Usuario activo en sesión
+  const [showRulesModal, setShowRulesModal] = useState(false);
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [notifEnabled, setNotifEnabled] = useState(() => localStorage.getItem('padel_notif') === 'true');
+
   const [currentUser, setCurrentUser] = useState(() => {
     const saved = localStorage.getItem('padel_current_user');
     return saved ? JSON.parse(saved) : null;
   });
 
-  // Modal para reportar resultado
   const [showScoreModal, setShowScoreModal] = useState(false);
   const [winnerTeam, setWinnerTeam] = useState(1);
   const [scoreText, setScoreText] = useState('6-4, 6-3');
-
-  // Estado para rechazar sugerencia de enlace en esta sesión
   const [dismissedLinks, setDismissedLinks] = useState({});
 
   const fetchData = async (customUrl = apiUrl) => {
@@ -152,7 +176,7 @@ export default function App() {
         if (json.partidos) setMatches(json.partidos);
       }
     } catch (e) {
-      console.warn('Sincronización pendiente o sin red:', e);
+      console.warn('Error sincronizando:', e);
     } finally {
       setLoading(false);
       setSyncing(false);
@@ -162,6 +186,23 @@ export default function App() {
   useEffect(() => {
     fetchData();
   }, [apiUrl]);
+
+  // Chequeo de notificaciones push
+  useEffect(() => {
+    if (!notifEnabled || !currentUser || matches.length === 0) return;
+
+    matches.forEach(m => {
+      const mySlot = (m.players || []).find(p => p.id === currentUser.id || p.name.toLowerCase().includes(currentUser.name.toLowerCase()));
+      if (mySlot && mySlot.dinner === 'PENDIENTE') {
+        if ('Notification' in window && Notification.permission === 'granted') {
+          new Notification('⚠️ Cena Pendiente', {
+            body: `No has confirmado si te quedas a cenar para el partido de ${m.date}.`,
+            icon: 'https://cdn-icons-png.flaticon.com/512/2855/2855613.png'
+          });
+        }
+      }
+    });
+  }, [matches, currentUser, notifEnabled]);
 
   const handleSelectUser = (user) => {
     setCurrentUser(user);
@@ -174,17 +215,8 @@ export default function App() {
     setSelectedMatchId(null);
   };
 
-  const handleSaveApiUrl = () => {
-    localStorage.setItem('padel_api_url', apiUrlInput);
-    setApiUrl(apiUrlInput);
-    setShowConfigModal(false);
-    fetchData(apiUrlInput);
-  };
-
-  // Voto de cena (propio o de un compañero)
   const handleUpdateDinner = async (matchId, targetId, targetName, newStatus) => {
     setSyncing(true);
-    // Optimista en memoria
     setMatches(prev => prev.map(m => {
       if (m.id !== matchId) return m;
       return {
@@ -218,7 +250,6 @@ export default function App() {
     }
   };
 
-  // Cambio de equipo manual (Pareja 1 vs Pareja 2)
   const handleToggleTeam = (matchId, playerId) => {
     setMatches(prev => prev.map(m => {
       if (m.id !== matchId) return m;
@@ -234,7 +265,6 @@ export default function App() {
     }));
   };
 
-  // Enlace manual a la plaza de Marcos / Jugador
   const handleClaimSlot = async (matchId, slotOriginalName) => {
     if (!currentUser) return;
     setSyncing(true);
@@ -257,7 +287,6 @@ export default function App() {
     }
   };
 
-  // Guardar resultado oficial
   const handleSaveResult = async (matchId) => {
     const match = matches.find(m => m.id === matchId);
     if (!match) return;
@@ -282,13 +311,12 @@ export default function App() {
       setShowScoreModal(false);
       fetchData();
     } catch (e) {
-      alert('Error al guardar resultado: ' + e.message);
+      alert('Error: ' + e.message);
     } finally {
       setSyncing(false);
     }
   };
 
-  // Restablecer partido a pendiente
   const handleResetMatch = async (matchId) => {
     if (!confirm('¿Deseas anular el resultado y dejar el partido como pendiente de jugar?')) return;
     setSyncing(true);
@@ -304,7 +332,7 @@ export default function App() {
       });
       fetchData();
     } catch (e) {
-      alert('Error al restablecer: ' + e.message);
+      alert('Error: ' + e.message);
     } finally {
       setSyncing(false);
     }
@@ -312,7 +340,26 @@ export default function App() {
 
   const currentMatch = matches.find(m => m.id === selectedMatchId);
 
-  // Identificación previa requerida
+  // Generador de aviso a Club / Restaurante por WhatsApp
+  const handleShareClubWhatsapp = () => {
+    if (!currentMatch) return;
+    const confirmedPlayers = (currentMatch.players || []).filter(p => p.dinner === 'SI').map(p => p.name);
+    const confirmedGuests = (currentMatch.guests || []).map(g => g.name);
+    const totalCount = confirmedPlayers.length + confirmedGuests.length;
+
+    let msg = `🎾 *RESERVA 3º TIEMPO - PÁDEL CTC*\n`;
+    msg += `📅 *Partido:* ${currentMatch.date}\n`;
+    msg += `👥 *Total Comensales:* ${totalCount} personas\n\n`;
+    msg += `*Jugadores:* \n` + (confirmedPlayers.length ? confirmedPlayers.map(n => `- ${n}`).join('\n') : '- Ninguno aún') + '\n';
+    if (confirmedGuests.length) {
+      msg += `\n*Acompañantes:* \n` + confirmedGuests.map(g => `- ${g}`).join('\n') + '\n';
+    }
+    msg += `\nConfirmado vía App Pádel CTC.`;
+
+    const encoded = encodeURI(msg);
+    window.open(`https://api.whatsapp.com/send?text=${encoded}`, '_blank');
+  };
+
   if (!currentUser) {
     return (
       <div className="min-h-screen bg-slate-900 text-white flex flex-col justify-center items-center p-4">
@@ -362,6 +409,13 @@ export default function App() {
           </div>
           <div className="flex items-center gap-1.5">
             <button
+              onClick={() => setShowSettingsModal(true)}
+              className="p-1.5 text-slate-600 hover:text-slate-900 bg-slate-100 rounded-lg text-xs"
+              title="Ajustes y Notificaciones"
+            >
+              ⚙️
+            </button>
+            <button
               onClick={() => setShowRulesModal(true)}
               className="px-2.5 py-1 text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg flex items-center gap-1 transition"
             >
@@ -387,7 +441,7 @@ export default function App() {
       {/* CONTENIDO PRINCIPAL */}
       <main className="max-w-xl mx-auto px-4 py-4">
         {selectedMatchId && currentMatch ? (
-          /* VISTA DETALLE DEL PARTIDO */
+          /* DETALLE DEL PARTIDO */
           <div className="space-y-4">
             <button
               onClick={() => setSelectedMatchId(null)}
@@ -427,10 +481,10 @@ export default function App() {
                 📍 {currentMatch.location}
               </p>
 
-              {/* BANNER 2 HORAS DESPUÉS SI NO HAY RESULTADO */}
+              {/* BANNER 2 HORAS DESPUÉS */}
               {currentMatch.status !== 'FINALIZADO' && parseMatchTiming(currentMatch.date).shouldPrompt && (
                 <div className="bg-amber-50 border border-amber-300 text-amber-900 rounded-xl p-3 text-xs font-semibold my-3 flex items-center justify-between">
-                  <span>⚠️ Ya han pasado 2h. Reporta el resultado oficial.</span>
+                  <span>⚠️ Han pasado 2h. Reporta el resultado oficial.</span>
                   <button
                     onClick={() => setShowScoreModal(true)}
                     className="bg-amber-600 text-white px-2.5 py-1 rounded-lg text-xs font-bold hover:bg-amber-700 shrink-0 ml-2"
@@ -465,19 +519,41 @@ export default function App() {
                 </div>
               )}
 
+              {/* TARJETA 3º TIEMPO Y RESERVA AL CLUB */}
+              <div className="bg-emerald-50/70 border border-emerald-200 rounded-2xl p-4 my-4">
+                <div className="flex justify-between items-center mb-2">
+                  <div>
+                    <h4 className="text-xs font-black text-emerald-950 uppercase tracking-wide">
+                      🍻 3º Tiempo & Reserva Club
+                    </h4>
+                    <p className="text-[11px] text-emerald-800">
+                      Total comensales confirmados: <strong>{
+                        (currentMatch.players || []).filter(p => p.dinner === 'SI').length + (currentMatch.guests || []).length
+                      }</strong>
+                    </p>
+                  </div>
+                  <button
+                    onClick={handleShareClubWhatsapp}
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1 shadow-sm transition"
+                  >
+                    📲 Avisar al Club
+                  </button>
+                </div>
+              </div>
+
               {/* ENLACE PLAYTOMIC */}
               {currentMatch.url && (
                 <a
                   href={currentMatch.url}
                   target="_blank"
                   rel="noreferrer"
-                  className="mt-3 w-full bg-blue-50 text-blue-700 font-bold py-2 rounded-xl text-xs flex items-center justify-center gap-1.5 hover:bg-blue-100 transition"
+                  className="w-full bg-blue-50 text-blue-700 font-bold py-2 rounded-xl text-xs flex items-center justify-center gap-1.5 hover:bg-blue-100 transition"
                 >
                   🔗 Abrir en Playtomic
                 </a>
               )}
 
-              {/* SUGERENCIA EXPLÍCITA PARA MARCOS / JUGADOR */}
+              {/* SUGERENCIA VINCULACIÓN */}
               {(() => {
                 const targetSlot = (currentMatch.players || []).find(p =>
                   p.id !== currentUser.id &&
@@ -509,7 +585,7 @@ export default function App() {
                 return null;
               })()}
 
-              {/* CONVOCATORIA DE JUGADORES Y EQUIPOS */}
+              {/* JUGADORES Y EQUIPOS */}
               <div className="mt-5 space-y-4">
                 <h3 className="text-xs font-black text-slate-800 uppercase tracking-wider">
                   Jugadores Convocados (Parejas y Cenas)
@@ -550,7 +626,6 @@ export default function App() {
                                   <button
                                     onClick={() => handleToggleTeam(currentMatch.id, p.id)}
                                     className="text-[10px] font-black bg-slate-100 hover:bg-slate-200 text-slate-700 px-1.5 py-0.5 rounded"
-                                    title="Cambiar de pareja"
                                   >
                                     P{p.team || 1} ⇄
                                   </button>
@@ -559,7 +634,6 @@ export default function App() {
                                   </span>
                                 </div>
 
-                                {/* BOTONES DIRECTOS DE CENA */}
                                 <div className="flex items-center gap-1.5">
                                   <button
                                     onClick={() => handleUpdateDinner(currentMatch.id, p.id, p.name, p.dinner === 'SI' ? 'PENDIENTE' : 'SI')}
@@ -594,9 +668,8 @@ export default function App() {
             </div>
           </div>
         ) : (
-          /* VISTA LISTA DE PARTIDOS Y RANKINGS */
+          /* PESTAÑAS PRINCIPALES */
           <div className="space-y-4">
-            {/* TABS NAVEGACIÓN */}
             <div className="flex bg-slate-200/80 p-1 rounded-2xl">
               <button
                 onClick={() => setActiveTab('partidos')}
@@ -624,16 +697,14 @@ export default function App() {
               </button>
             </div>
 
-            {/* TAB: PARTIDOS */}
+            {/* LISTA DE PARTIDOS */}
             {activeTab === 'partidos' && (
               <div className="space-y-3">
                 {matches.length === 0 ? (
                   <div className="bg-white rounded-2xl p-8 text-center border border-slate-200">
                     <p className="text-2xl mb-1">🎾</p>
                     <p className="text-sm font-bold text-slate-700">No hay partidos programados</p>
-                    <p className="text-xs text-slate-400 mt-1">
-                      Añade una fila en la pestaña Partidos de Google Sheets para que aparezca aquí.
-                    </p>
+                    <p className="text-xs text-slate-400 mt-1">Añade una fila en la hoja Partidos para que aparezca aquí.</p>
                   </div>
                 ) : (
                   matches.map(m => (
@@ -667,7 +738,7 @@ export default function App() {
               </div>
             )}
 
-            {/* TAB: RANKINGS */}
+            {/* TAB RANKINGS */}
             {activeTab === 'rankings' && (
               <div className="bg-white rounded-2xl p-4 border border-slate-200">
                 <div className="flex gap-1.5 mb-4">
@@ -712,12 +783,12 @@ export default function App() {
               </div>
             )}
 
-            {/* TAB: BOTE */}
+            {/* TAB BOTE */}
             {activeTab === 'bote' && (
               <div className="bg-white rounded-2xl p-4 border border-slate-200 space-y-3">
                 <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-900">
                   <p className="font-bold">💶 Deuda acumulada del Bote</p>
-                  <p className="text-[11px] mt-0.5">Calculada automáticamente según partidos perdidos y cenas saltadas.</p>
+                  <p className="text-[11px] mt-0.5">Calculada automáticamente solo sobre partidos jugados y cenas saltadas.</p>
                 </div>
 
                 <div className="space-y-2">
@@ -743,12 +814,11 @@ export default function App() {
         )}
       </main>
 
-      {/* MODAL DE RESULTADO */}
+      {/* MODAL RESULTADO */}
       {showScoreModal && currentMatch && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-sm w-full p-5 shadow-2xl">
             <h3 className="text-base font-black text-slate-900 mb-3">Reportar Resultado Oficial</h3>
-
             <div className="space-y-3 text-xs">
               <div>
                 <label className="font-bold text-slate-700 block mb-1">Pareja Ganadora:</label>
@@ -781,16 +851,10 @@ export default function App() {
               </div>
 
               <div className="flex gap-2 pt-2">
-                <button
-                  onClick={() => setShowScoreModal(false)}
-                  className="flex-1 py-2 font-bold bg-slate-100 text-slate-600 rounded-xl"
-                >
+                <button onClick={() => setShowScoreModal(false)} className="flex-1 py-2 font-bold bg-slate-100 text-slate-600 rounded-xl">
                   Cancelar
                 </button>
-                <button
-                  onClick={() => handleSaveResult(currentMatch.id)}
-                  className="flex-1 py-2 font-bold bg-blue-600 text-white rounded-xl hover:bg-blue-700"
-                >
+                <button onClick={() => handleSaveResult(currentMatch.id)} className="flex-1 py-2 font-bold bg-blue-600 text-white rounded-xl hover:bg-blue-700">
                   Guardar
                 </button>
               </div>
@@ -799,10 +863,17 @@ export default function App() {
         </div>
       )}
 
-      {/* MODAL DE CRITERIOS */}
-      <CriteriosModal
-        isOpen={showRulesModal}
-        onClose={() => setShowRulesModal(false)}
+      {/* MODALES AUXILIARES */}
+      <CriteriosModal isOpen={showRulesModal} onClose={() => setShowRulesModal(false)} />
+      <SettingsModal
+        isOpen={showSettingsModal}
+        onClose={() => setShowSettingsModal(false)}
+        user={currentUser}
+        notifEnabled={notifEnabled}
+        onSaveNotifications={(val) => {
+          setNotifEnabled(val);
+          localStorage.setItem('padel_notif', String(val));
+        }}
       />
     </div>
   );
