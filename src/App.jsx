@@ -1,4 +1,3 @@
-```react
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Trophy, CalendarPlus, MapPin, ExternalLink, X, 
@@ -114,7 +113,7 @@ export default function App() {
     try {
       setSyncing(true);
       const res = await fetch(customUrl, { method: 'GET', redirect: 'follow' });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) throw new Error('HTTP ' + res.status);
       const json = await res.json();
 
       if (json.ok) {
@@ -1167,4 +1166,3 @@ export default function App() {
     </div>
   );
 }
-```
