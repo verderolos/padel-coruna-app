@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 
-const DEFAULT_API_URL = 'https://script.google.com/macros/s/AKfycbx_v26rGqD9mX3y4z5a6b7c8d9e/exec';
+const DEFAULT_API_URL = 'https://script.google.com/macros/s/AKfycbxkd-BmLpYxmLtev5wcxwsyda94bG1mFW9gtDpEAgsmhV1HCfDwn2-syPDEvBUPwiiiGw/exec';
 
 // Sin datos falsos: producción limpia
 const FALLBACK_USERS = [];
