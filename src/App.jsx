@@ -41,53 +41,9 @@ const isPotentialMatch = (player, user, allUsers = []) => {
 };
 
 // Datos de demostración y respaldo inmediato
-const FALLBACK_USERS = [
-  { id: 'u1', name: 'Bruno Otero', group: 'chicos', pJ: 15, pG: 12, cSi: 14, cNo: 1, ptsDeportivo: 66, ptsBarandas: 255, hibrido: 321, titulo: "Leyenda del 3º Tiempo 🍻", deuda: 4 },
-  { id: 'u2', name: 'Alberto Casado', group: 'chicos', pJ: 12, pG: 8, cSi: 10, cNo: 2, ptsDeportivo: 48, ptsBarandas: 186, hibrido: 234, titulo: "Leyenda del 3º Tiempo 🍻", deuda: 6 },
-  { id: 'u3', name: 'Borja Padel', group: 'chicos', pJ: 8, pG: 3, cSi: 2, cNo: 5, ptsDeportivo: 25, ptsBarandas: 54, hibrido: 79, titulo: "Deportista de Postureo 🥦", deuda: 10 },
-  { id: 'u4', name: 'Edu Cutino', group: 'chicos', pJ: 10, pG: 6, cSi: 9, cNo: 1, ptsDeportivo: 38, ptsBarandas: 165, hibrido: 203, titulo: "Gastrónomo con Pala 🍔", deuda: 5 },
-  { id: 'u5', name: 'Gus', group: 'chicos', pJ: 11, pG: 7, cSi: 8, cNo: 2, ptsDeportivo: 43, ptsBarandas: 153, hibrido: 196, titulo: "Jugador Promedio 🎾", deuda: 6 },
-  { id: 'u6', name: 'Marcos', group: 'chicos', pJ: 1, pG: 1, cSi: 1, cNo: 0, ptsDeportivo: 5, ptsBarandas: 18, hibrido: 23, titulo: "Fichaje Estrella ⭐", deuda: 0 }
-];
+const FALLBACK_USERS = [];
 
-const FALLBACK_MATCHES = [
-  {
-    id: 'P-101',
-    date: 'Jueves 21:00',
-    dayOfWeek: 'Jueves',
-    location: 'Pista 2 - Club Tenis La Coruña',
-    url: 'https://app.playtomic.com/',
-    grupo: 'chicos',
-    status: 'PROGRAMADO',
-    score: '',
-    week: 'actual',
-    players: [
-      { id: 'u1', name: 'Bruno Otero', dinner: 'SI', won: 'PENDIENTE', team: 1 },
-      { id: 'u2', name: 'Alberto Casado', dinner: 'PENDIENTE', won: 'PENDIENTE', team: 1 },
-      { id: 'u3', name: 'Borja Padel', dinner: 'NO', won: 'PENDIENTE', team: 2 },
-      { id: 'u4', name: 'Edu Cutino', dinner: 'SI', won: 'PENDIENTE', team: 2 }
-    ],
-    guests: [
-      { id: 'inv-1', name: 'Lucía (Acompañante)' }
-    ]
-  },
-  {
-    id: 'P-102',
-    date: 'Jueves 21:00',
-    dayOfWeek: 'Jueves',
-    location: 'Pista 4 - Club Tenis La Coruña',
-    url: 'https://app.playtomic.com/',
-    grupo: 'chicos',
-    status: 'PROGRAMADO',
-    score: '',
-    week: 'actual',
-    players: [
-      { id: 'u5', name: 'Gus', dinner: 'SI', won: 'PENDIENTE', team: 1 },
-      { id: 'u6', name: 'Marcos', dinner: 'SI', won: 'PENDIENTE', team: 1 }
-    ],
-    guests: []
-  }
-];
+const FALLBACK_MATCHES = [];
 
 export default function App() {
   const [apiUrl, setApiUrl] = useState(() => localStorage.getItem('padel_api_url') || DEFAULT_API_URL);
