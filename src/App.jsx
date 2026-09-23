@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 
-// URL de tu Google Apps Script
+// URL de tu Apps Script
 const DEFAULT_API_URL = 'https://script.google.com/macros/s/AKfycbxkd-BmLpYxmLtev5wcxwsyda94bG1mFW9gtDpEAgsmhV1HCfDwn2-syPDEvBUPwiiiGw/exec';
 
 const FALLBACK_USERS = [];
@@ -41,7 +41,7 @@ function CriteriosModal({ isOpen, onClose }) {
           <ul className="text-xs text-amber-900 space-y-1 list-disc list-inside">
             <li><strong>Derrota jugada:</strong> +1 € por partido perdido.</li>
             <li><strong>Victoria jugada:</strong> 0 € (el ganador no paga bote).</li>
-            <li><strong>Rajarse de la cena:</strong> +1 € por no quedarse al 3º tiempo habiendo jugado.</li>
+            <li><strong>Rajarse de la cena:</strong> +1 € por no quedarse habiendo jugado.</li>
           </ul>
         </section>
 
@@ -66,7 +66,7 @@ function CriteriosModal({ isOpen, onClose }) {
   );
 }
 
-// Modal de Configuración
+// Modal de Configuración y Notificaciones
 function SettingsModal({ isOpen, onClose, user, onSaveNotifications, notifEnabled }) {
   if (!isOpen) return null;
 
@@ -93,7 +93,7 @@ function SettingsModal({ isOpen, onClose, user, onSaveNotifications, notifEnable
       <div className="bg-white rounded-2xl max-w-sm w-full p-5 shadow-2xl text-left">
         <div className="flex items-center justify-between border-b pb-3 mb-4">
           <h3 className="text-base font-black text-slate-900 flex items-center gap-2">
-            ⚙️ Ajustes de Notificaciones
+            ⚙️ Ajustes de Usuario
           </h3>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-700 text-xl font-bold leading-none">&times;</button>
         </div>
@@ -102,6 +102,7 @@ function SettingsModal({ isOpen, onClose, user, onSaveNotifications, notifEnable
           <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
             <p className="font-bold text-slate-800">Jugador Activo:</p>
             <p className="text-slate-600 font-semibold">{user.name} ({user.group})</p>
+            <p className="text-[10px] text-slate-400 mt-1">Este dispositivo te recordará automáticamente.</p>
           </div>
 
           <div className="flex items-center justify-between pt-1">
@@ -128,24 +129,30 @@ function SettingsModal({ isOpen, onClose, user, onSaveNotifications, notifEnable
 export default function App() {
   const [apiUrl, setApiUrl] = useState(() => localStorage.getItem('padel_api_url') || DEFAULT_API_URL);
   const [syncing, setSyncing] = useState(false);
-  const [activeTab, setActiveTab] = useState('partidos'); // 'partidos', 'cenas', 'rankings', 'bote'
+  const [activeTab, setActiveTab] = useState('partidos');
   const [rankingType, setRankingType] = useState('hibrido');
 
   const [players, setPlayers] = useState(FALLBACK_USERS);
   const [matches, setMatches] = useState(FALLBACK_MATCHES);
   const [selectedMatchId, setSelectedMatchId] = useState(null);
 
-  // Fecha seleccionada para la vista de comensales
   const [selectedDinnerDate, setSelectedDinnerDate] = useState('');
 
   const [showRulesModal, setShowRulesModal] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [notifEnabled, setNotifEnabled] = useState(() => localStorage.getItem('padel_notif') === 'true');
 
+  // Usuario guardado en localStorage para auto-reconocimiento
   const [currentUser, setCurrentUser] = useState(() => {
     const saved = localStorage.getItem('padel_current_user');
     return saved ? JSON.parse(saved) : null;
   });
+
+  // Estado para el formulario de registrar nuevo usuario
+  const [showRegisterForm, setShowRegisterForm] = useState(false);
+  const [newUserName, setNewUserName] = useState('');
+  const [newUserGroup, setNewUserGroup] = useState('Chicos');
+  const [newUserPlaytomic, setNewUserPlaytomic] = useState('');
 
   const [showScoreModal, setShowScoreModal] = useState(false);
   const [winnerTeam, setWinnerTeam] = useState(1);
@@ -159,7 +166,22 @@ export default function App() {
       if (!res.ok) throw new Error('HTTP ' + res.status);
       const json = await res.json();
       if (json.ok) {
-        if (json.jugadores) setPlayers(json.jugadores);
+        if (json.jugadores) {
+          setPlayers(json.jugadores);
+
+          // Auto-reconocimiento mediante URL (?user=marcos) si aún no había usuario guardado
+          const urlParams = new URLSearchParams(window.location.search);
+          const userParam = urlParams.get('user');
+          if (userParam && !currentUser) {
+            const matchUser = json.jugadores.find(u => 
+              u.name.toLowerCase().includes(userParam.toLowerCase()) || 
+              u.id.toLowerCase() === userParam.toLowerCase()
+            );
+            if (matchUser) {
+              handleSelectUser(matchUser);
+            }
+          }
+        }
         if (json.partidos) {
           setMatches(json.partidos);
           if (json.partidos.length > 0 && !selectedDinnerDate) {
@@ -187,6 +209,47 @@ export default function App() {
     setCurrentUser(null);
     localStorage.removeItem('padel_current_user');
     setSelectedMatchId(null);
+  };
+
+  // Registrar un nuevo usuario en Google Sheets y entrar directamente
+  const handleRegisterUser = async (e) => {
+    e.preventDefault();
+    if (!newUserName.trim()) return;
+
+    setSyncing(true);
+    try {
+      const res = await fetch(apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({
+          action: 'REGISTRAR_JUGADOR',
+          nombre: newUserName.trim(),
+          grupo: newUserGroup,
+          playtomic: newUserPlaytomic.trim()
+        })
+      });
+      const json = await res.json();
+      if (json.ok) {
+        const createdUser = {
+          id: json.id || 'u' + (players.length + 1),
+          name: newUserName.trim(),
+          group: newUserGroup.toLowerCase(),
+          pJ: 0, pG: 0, cSi: 0, cNo: 0,
+          ptsDeportivo: 0, ptsBarandas: 0, hibrido: 0,
+          titulo: "Fichaje Estrella ⭐",
+          deuda: 0
+        };
+        handleSelectUser(createdUser);
+        setShowRegisterForm(false);
+        fetchData();
+      } else {
+        alert('Error al registrar: ' + (json.error || 'Error desconocido'));
+      }
+    } catch (err) {
+      alert('Error de conexión al registrar: ' + err.message);
+    } finally {
+      setSyncing(false);
+    }
   };
 
   const handleUpdateDinner = async (matchId, targetId, targetName, newStatus) => {
@@ -312,28 +375,24 @@ export default function App() {
     }
   };
 
-  // Enviar notificación a los pendientes
   const handleNotifyPending = (pendingList, dateLabel) => {
     if (!pendingList || pendingList.length === 0) {
-      alert('¡No hay ningún jugador con estado pendiente para esta fecha!');
+      alert('¡No hay ningún jugador con estado pendiente!');
       return;
     }
-
     if ('Notification' in window && Notification.permission === 'granted') {
       new Notification('📢 Confirmación de Cena Requerida', {
-        body: `Hay ${pendingList.length} jugadores pendientes de confirmar cena para ${dateLabel}. Por favor entra en la app y confirma.`,
+        body: `Hay ${pendingList.length} jugadores pendientes de confirmar cena para ${dateLabel}.`,
         icon: 'https://cdn-icons-png.flaticon.com/512/2855/2855613.png'
       });
-      alert(`Se ha lanzado el aviso para ${pendingList.length} jugadores pendientes.`);
+      alert(`Se ha enviado aviso para los pendientes.`);
     } else {
-      alert(`Para enviar avisos automáticos, activa primero las Notificaciones en el engranaje ⚙️ de la cabecera.`);
+      alert(`Activa primero las Notificaciones en el engranaje ⚙️.`);
     }
   };
 
-  // Avisar al club por WhatsApp con el acumulado de la fecha seleccionada
   const handleShareClubGlobalWhatsapp = (dateTarget, yesList, guestsList) => {
     const totalCount = yesList.length + guestsList.length;
-
     let msg = `🎾 *RESERVA 3º TIEMPO - PÁDEL CTC*\n`;
     msg += `📅 *Fecha:* ${dateTarget}\n`;
     msg += `👥 *Total Comensales Confirmados:* ${totalCount} personas\n\n`;
@@ -342,18 +401,13 @@ export default function App() {
       msg += `\n*Acompañantes:* \n` + guestsList.map(g => `- ${g}`).join('\n') + '\n';
     }
     msg += `\nConfirmado vía App Pádel CTC.`;
-
-    const encoded = encodeURI(msg);
-    window.open(`https://api.whatsapp.com/send?text=${encoded}`, '_blank');
+    window.open(`https://api.whatsapp.com/send?text=${encodeURI(msg)}`, '_blank');
   };
 
   const currentMatch = matches.find(m => m.id === selectedMatchId);
-
-  // Lista única de fechas de partidos para el selector de cena
   const availableDates = Array.from(new Set(matches.map(m => m.date)));
-
-  // Filtro de comensales para la fecha seleccionada en el módulo Cena
   const matchesForDinner = matches.filter(m => m.date === (selectedDinnerDate || (matches[0] && matches[0].date)));
+  
   const dinnerYes = [];
   const dinnerNo = [];
   const dinnerPending = [];
@@ -370,6 +424,7 @@ export default function App() {
     });
   });
 
+  // PANTALLA DE ACCESO / REGISTRO
   if (!currentUser) {
     return (
       <div className="min-h-screen bg-slate-900 text-white flex flex-col justify-center items-center p-4">
@@ -378,24 +433,102 @@ export default function App() {
             🎾
           </div>
           <h1 className="text-2xl font-black text-center mb-1">Pádel CTC</h1>
-          <p className="text-slate-400 text-xs text-center mb-6">Selecciona tu perfil de jugador para entrar</p>
+          <p className="text-slate-400 text-xs text-center mb-5">
+            {showRegisterForm ? 'Regístrate para entrar al club' : 'Selecciona tu perfil de jugador (te recordaremos)'}
+          </p>
 
-          <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
-            {players.length === 0 ? (
-              <p className="text-center text-slate-400 text-xs py-4">Cargando jugadores desde Google Sheets...</p>
-            ) : (
-              players.map(u => (
+          {!showRegisterForm ? (
+            /* LISTA DE JUGADORES EXISTENTES */
+            <>
+              <div className="space-y-2 max-h-64 overflow-y-auto pr-1 mb-4">
+                {players.length === 0 ? (
+                  <p className="text-center text-slate-400 text-xs py-4">Cargando jugadores desde Google Sheets...</p>
+                ) : (
+                  players.map(u => (
+                    <button
+                      key={u.id}
+                      onClick={() => handleSelectUser(u)}
+                      className="w-full text-left bg-slate-700/60 hover:bg-blue-600 p-3 rounded-xl flex items-center justify-between transition group border border-slate-600/40"
+                    >
+                      <span className="font-semibold text-sm group-hover:text-white">{u.name}</span>
+                      <span className="text-xs text-slate-400 group-hover:text-blue-100">{u.titulo}</span>
+                    </button>
+                  ))
+                )}
+              </div>
+
+              {/* BOTÓN PARA CREAR NUEVO USUARIO */}
+              <button
+                onClick={() => setShowRegisterForm(true)}
+                className="w-full py-3 bg-slate-700 hover:bg-slate-600 text-blue-300 hover:text-white rounded-xl text-xs font-bold transition border border-dashed border-slate-500 flex items-center justify-center gap-1.5"
+              >
+                <span>➕</span> ¿No estás en la lista? Añadir nuevo jugador
+              </button>
+            </>
+          ) : (
+            /* FORMULARIO DE ALTA DE JUGADOR */
+            <form onSubmit={handleRegisterUser} className="space-y-3">
+              <div>
+                <label className="block text-xs font-bold text-slate-300 mb-1">Nombre y Apellido *</label>
+                <input
+                  type="text"
+                  required
+                  value={newUserName}
+                  onChange={(e) => setNewUserName(e.target.value)}
+                  placeholder="Ej: Marcos Iglesias"
+                  className="w-full bg-slate-700 border border-slate-600 rounded-xl p-2.5 text-xs text-white placeholder-slate-400 focus:outline-none focus:border-blue-500 font-semibold"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-300 mb-1">Grupo</label>
+                <div className="flex gap-2">
+                  {['Chicos', 'Chicas'].map(g => (
+                    <button
+                      type="button"
+                      key={g}
+                      onClick={() => setNewUserGroup(g)}
+                      className={`flex-1 py-2 text-xs font-bold rounded-xl border transition ${
+                        newUserGroup === g
+                          ? 'bg-blue-600 text-white border-blue-600'
+                          : 'bg-slate-700 text-slate-300 border-slate-600'
+                      }`}
+                    >
+                      {g}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-300 mb-1">Usuario de Playtomic (opcional)</label>
+                <input
+                  type="text"
+                  value={newUserPlaytomic}
+                  onChange={(e) => setNewUserPlaytomic(e.target.value)}
+                  placeholder="Ej: marcos-padel"
+                  className="w-full bg-slate-700 border border-slate-600 rounded-xl p-2.5 text-xs text-white placeholder-slate-400 focus:outline-none focus:border-blue-500"
+                />
+              </div>
+
+              <div className="flex gap-2 pt-2">
                 <button
-                  key={u.id}
-                  onClick={() => handleSelectUser(u)}
-                  className="w-full text-left bg-slate-700/60 hover:bg-blue-600 p-3 rounded-xl flex items-center justify-between transition group border border-slate-600/40"
+                  type="button"
+                  onClick={() => setShowRegisterForm(false)}
+                  className="flex-1 py-2.5 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded-xl text-xs font-bold transition"
                 >
-                  <span className="font-semibold text-sm group-hover:text-white">{u.name}</span>
-                  <span className="text-xs text-slate-400 group-hover:text-blue-100">{u.titulo}</span>
+                  Volver
                 </button>
-              ))
-            )}
-          </div>
+                <button
+                  type="submit"
+                  disabled={syncing}
+                  className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold shadow-lg transition"
+                >
+                  {syncing ? 'Guardando...' : 'Crear y Entrar'}
+                </button>
+              </div>
+            </form>
+          )}
         </div>
       </div>
     );
@@ -421,7 +554,7 @@ export default function App() {
             <button
               onClick={() => setShowSettingsModal(true)}
               className="p-1.5 text-slate-600 hover:text-slate-900 bg-slate-100 rounded-lg text-xs"
-              title="Ajustes y Notificaciones"
+              title="Ajustes de Usuario"
             >
               ⚙️
             </button>
@@ -435,7 +568,7 @@ export default function App() {
               onClick={handleLogout}
               className="px-2.5 py-1 text-xs font-semibold bg-slate-100 hover:bg-red-50 hover:text-red-600 text-slate-600 rounded-lg transition"
             >
-              Salir
+              Cambiar de Jugador
             </button>
             <button
               onClick={() => fetchData()}
@@ -540,7 +673,7 @@ export default function App() {
                 </a>
               )}
 
-              {/* VINCULACIÓN */}
+              {/* VINCULACIÓN EXPLÍCITA */}
               {(() => {
                 const targetSlot = (currentMatch.players || []).find(p =>
                   p.id !== currentUser.id &&
@@ -734,10 +867,9 @@ export default function App() {
               </div>
             )}
 
-            {/* TAB 2: CENA & CLUB (APARTADO INDEPENDIENTE) */}
+            {/* TAB 2: CENA & CLUB */}
             {activeTab === 'cenas' && (
               <div className="space-y-4">
-                {/* SELECTOR DE FECHA / JORNADA */}
                 <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-xs">
                   <label className="block text-xs font-bold text-slate-700 mb-2 uppercase tracking-wide">
                     Seleccionar Jornada de Cena:
@@ -753,7 +885,6 @@ export default function App() {
                   </select>
                 </div>
 
-                {/* TARJETA RESUMEN Y ACCIONES DE AVISO */}
                 <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-xs space-y-4">
                   <div className="flex justify-between items-center pb-3 border-b border-slate-100">
                     <div>
@@ -768,7 +899,6 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* DESGLOSE: SÍ, NO, PENDIENTES */}
                   <div className="grid grid-cols-3 gap-2 text-center">
                     <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-2.5">
                       <span className="text-base font-black text-emerald-700 block">{dinnerYes.length + dinnerGuests.length}</span>
@@ -784,9 +914,7 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* LISTAS DETALLADAS */}
                   <div className="space-y-3 pt-2 text-xs">
-                    {/* Confirmados */}
                     <div>
                       <span className="font-extrabold text-emerald-800 block mb-1">
                         🟢 Confirmados ({dinnerYes.length + dinnerGuests.length}):
@@ -803,7 +931,6 @@ export default function App() {
                       </div>
                     </div>
 
-                    {/* Pendientes */}
                     <div>
                       <span className="font-extrabold text-amber-800 block mb-1">
                         🟡 Sin responder ({dinnerPending.length}):
@@ -821,7 +948,6 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* ACCIONES: PUSH A PENDIENTES & WHATSAPP CLUB */}
                   <div className="pt-2 space-y-2">
                     {dinnerPending.length > 0 && (
                       <button
