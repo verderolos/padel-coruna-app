@@ -3,10 +3,42 @@ import {
   Trophy, CalendarPlus, MapPin, ExternalLink, X, 
   MessageCircle, Home, PiggyBank, UserPlus, Trash2, 
   RefreshCw, Settings, AlertTriangle, Check, CheckCircle2,
-  Calendar, Clock, Users, ChevronRight, Award, Plus, Sparkles, Filter
+  Calendar, Clock, Users, ChevronRight, Award, Plus, Sparkles, Filter, ArrowLeftRight, UserCheck
 } from 'lucide-react';
 
 const DEFAULT_API_URL = "https://script.google.com/macros/s/AKfycbxkd-BmLpYxmLtev5wcxwsyda94bG1mFW9gtDpEAgsmhV1HCfDwn2-syPDEvBUPwiiiGw/exec";
+
+// Función auxiliar para limpiar nombres de Playtomic (ej. "Marcos (1,8)" -> "Marcos")
+const cleanPlayerName = (raw) => {
+  if (!raw) return '';
+  return raw
+    .replace('✅', '')
+    .replace(/\s*\([\d,\.]+\)/g, '')
+    .trim();
+};
+
+// Comprobación ESTRICTA de identidad: solo son el mismo si el ID coincide exactamente
+const isSamePlayer = (player, user) => {
+  if (!player || !user) return false;
+  if (player.id && user.id && String(player.id).trim() === String(user.id).trim()) return true;
+  return false;
+};
+
+// Comprobación de sugerencia: detecta si un jugador sin vincular tiene nombre parecido al usuario
+const isPotentialMatch = (player, user, allUsers = []) => {
+  if (!player || !user) return false;
+  if (isSamePlayer(player, user)) return false;
+
+  // Si este jugador ya está vinculado con un ID oficial de otro usuario registrado, no sugerir
+  const isLinkedToOther = allUsers.some(u => u.id !== user.id && String(u.id).trim() === String(player.id).trim());
+  if (isLinkedToOther) return false;
+
+  const pName = cleanPlayerName(player.name || player.id || '').toLowerCase();
+  const uName = cleanPlayerName(user.name || '').toLowerCase();
+  if (!pName || !uName) return false;
+
+  return pName === uName || pName.includes(uName) || uName.includes(pName);
+};
 
 // Datos de demostración y respaldo inmediato
 const FALLBACK_USERS = [
@@ -75,6 +107,16 @@ export default function App() {
       return saved ? JSON.parse(saved) : null;
     } catch {
       return null;
+    }
+  });
+
+  // Registro de sugerencias descartadas por el usuario para no insistir
+  const [dismissedLinks, setDismissedLinks] = useState(() => {
+    try {
+      const saved = localStorage.getItem('padel_dismissed_links');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
     }
   });
 
@@ -155,6 +197,7 @@ export default function App() {
   const selectMyUser = (user) => {
     setMyProfile(user);
     localStorage.setItem('padel_my_user', JSON.stringify(user));
+    // NO vinculamos automáticamente a la fuerza: preguntamos explícitamente en el partido
     triggerNotice(`¡Bienvenido, ${user.name}!`);
   };
 
@@ -175,7 +218,7 @@ export default function App() {
       deuda: 0
     };
 
-    // Actualización local inmediata
+    // Actualización local inmediata y auto-enlace en partidos cargados
     setAllUsers(prev => [newUserObj, ...prev]);
     selectMyUser(newUserObj);
     setShowRegisterModal(false);
@@ -218,11 +261,13 @@ export default function App() {
     const urlMatch = rawText.match(/(https:\/\/app\.playtomic\.com[^\s]+)/);
     if (urlMatch) parsedUrl = urlMatch[1];
 
-    // Extraer jugadores marcados con check
+    // Extraer jugadores marcados con check y limpiar niveles
     const playerLines = rawText.match(/✅\s*([^\n\(]+)/g) || [];
     const extractedPlayers = playerLines.map((line, idx) => {
-      const clean = line.replace('✅', '').trim();
-      const matchInDb = allUsers.find(u => u.name.toLowerCase().includes(clean.toLowerCase()) || clean.toLowerCase().includes(u.name.toLowerCase()));
+      const clean = cleanPlayerName(line);
+      const matchInDb = allUsers.find(u => isSamePlayer({ name: clean }, u)) || 
+                        (myProfile && isSamePlayer({ name: clean }, myProfile) ? myProfile : null);
+
       return {
         id: matchInDb ? matchInDb.id : `ext-${idx}`,
         name: matchInDb ? matchInDb.name : clean,
@@ -267,26 +312,128 @@ export default function App() {
     }
   };
 
+  // Cambiar manualmente a un jugador de equipo (Pareja 1 <-> Pareja 2)
+  const handleTogglePlayerTeam = (matchId, playerId) => {
+    setMatches(prev => prev.map(m => {
+      if (m.id !== matchId) return m;
+      return {
+        ...m,
+        players: m.players.map(p => {
+          if (p.id === playerId) {
+            return { ...p, team: p.team === 1 ? 2 : 1 };
+          }
+          return p;
+        })
+      };
+    }));
+    triggerNotice("Equipo actualizado");
+  };
+
+  // Confirmar explícitamente la vinculación de un jugador del partido con mi usuario
+  const handleConfirmLink = async (matchId, playerToClaim) => {
+    if (!myProfile) return;
+
+    setMatches(prev => prev.map(m => {
+      if (m.id !== matchId) return m;
+      return {
+        ...m,
+        // Asignamos el ID y nombre oficial a este jugador en pista
+        players: m.players.map(p => p.id === playerToClaim.id ? { ...p, id: myProfile.id, name: myProfile.name } : p),
+        // Si previamente se había colado como invitado por error, lo eliminamos de acompañantes
+        guests: m.guests.filter(g => !isSamePlayer(g, myProfile) && g.id !== myProfile.id)
+      };
+    }));
+
+    triggerNotice(`¡Vinculado como ${myProfile.name} en este partido!`);
+
+    try {
+      await fetch(apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({
+          action: 'VINCULAR_JUGADOR',
+          idPartido: matchId,
+          idJugador: myProfile.id,
+          nombreJugador: myProfile.name,
+          nombreOriginal: playerToClaim.name
+        }),
+        redirect: 'follow'
+      });
+    } catch (err) {
+      console.error("Error guardando vinculación:", err);
+    }
+  };
+
+  // Descartar sugerencia de vinculación (no es el usuario)
+  const handleDismissLink = (matchId, playerId) => {
+    const key = `${matchId}_${playerId}`;
+    const updated = [...dismissedLinks, key];
+    setDismissedLinks(updated);
+    localStorage.setItem('padel_dismissed_links', JSON.stringify(updated));
+    triggerNotice("Sugerencia descartada");
+  };
+
+  const handleUpdatePlayerDinner = async (matchId, player, targetStatus) => {
+    // Si ya tiene el estado pulsado, se vuelve a poner en PENDIENTE
+    const finalStatus = player.dinner === targetStatus ? 'PENDIENTE' : targetStatus;
+
+    setMatches(prev => prev.map(m => {
+      if (m.id !== matchId) return m;
+      return {
+        ...m,
+        players: m.players.map(p => (p.id === player.id || p.name === player.name) ? { ...p, dinner: finalStatus } : p)
+      };
+    }));
+
+    const firstName = cleanPlayerName(player.name).split(' ')[0] || player.name;
+    const msg = finalStatus === 'SI' 
+      ? `¡${firstName} se queda a cenar! 🍻` 
+      : finalStatus === 'NO' 
+      ? `${firstName} no cena 🏃‍♂️` 
+      : `Cena de ${firstName} en pendiente ⏳`;
+    triggerNotice(msg);
+
+    try {
+      await fetch(apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({
+          action: 'ACTUALIZAR_CENA',
+          idPartido: matchId,
+          idJugador: player.id,
+          nombreJugador: player.name,
+          estado: finalStatus
+        }),
+        redirect: 'follow'
+      });
+    } catch (err) {
+      console.error("Error al actualizar cena del jugador:", err);
+    }
+  };
+
   const handleVoteDinner = async (matchId, status) => {
     if (!myProfile) return;
 
     setMatches(prev => prev.map(m => {
       if (m.id !== matchId) return m;
 
-      // Si el usuario ya está entre los jugadores
-      const isPlayer = m.players.some(p => p.id === myProfile.id || p.name === myProfile.name);
+      // Comprobar si el usuario actual es uno de los jugadores convocados en pista
+      const isPlayer = m.players.some(p => isSamePlayer(p, myProfile));
+
       if (isPlayer) {
         return {
           ...m,
-          players: m.players.map(p => (p.id === myProfile.id || p.name === myProfile.name) ? { ...p, dinner: status } : p)
+          // Actualizar en jugadores y eliminar de invitados en caso de que estuviera por error
+          players: m.players.map(p => isSamePlayer(p, myProfile) ? { ...p, id: myProfile.id, name: myProfile.name, dinner: status } : p),
+          guests: m.guests.filter(g => !isSamePlayer(g, myProfile))
         };
       } else {
-        // Si no juega pero quiere cenar
+        // Si no juega en pista y solo se une al tercer tiempo
         if (status === 'SI') {
-          const alreadyGuest = m.guests.some(g => g.id === myProfile.id);
+          const alreadyGuest = m.guests.some(g => isSamePlayer(g, myProfile));
           return alreadyGuest ? m : { ...m, guests: [...m.guests, { id: myProfile.id, name: myProfile.name + " (Solo cena)" }] };
         } else {
-          return { ...m, guests: m.guests.filter(g => g.id !== myProfile.id) };
+          return { ...m, guests: m.guests.filter(g => !isSamePlayer(g, myProfile)) };
         }
       }
     }));
@@ -374,6 +521,10 @@ export default function App() {
     if (!matchToResult) return;
     const matchId = matchToResult.id;
 
+    const winningPlayerIds = matchToResult.players
+      .filter(p => p.team === winningTeam)
+      .map(p => p.id || p.name);
+
     setMatches(prev => prev.map(m => {
       if (m.id !== matchId) return m;
       return {
@@ -398,7 +549,8 @@ export default function App() {
           action: 'GUARDAR_RESULTADO',
           idPartido: matchId,
           marcador: resultScore,
-          equipoGanador: winningTeam
+          equipoGanador: winningTeam,
+          ganadores: winningPlayerIds
         }),
         redirect: 'follow'
       });
@@ -796,8 +948,8 @@ export default function App() {
                           <button
                             onClick={() => handleVoteDinner(activeMatch.id, 'SI')}
                             className={`py-3 rounded-2xl font-black text-xs transition-all flex items-center justify-center gap-1.5 ${
-                              activeMatch.players?.find(p => p.id === myProfile.id || p.name === myProfile.name)?.dinner === 'SI' ||
-                              activeMatch.guests?.some(g => g.id === myProfile.id)
+                              activeMatch.players?.find(p => isSamePlayer(p, myProfile))?.dinner === 'SI' ||
+                              activeMatch.guests?.some(g => isSamePlayer(g, myProfile))
                                 ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/20'
                                 : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-100'
                             }`}
@@ -808,7 +960,7 @@ export default function App() {
                           <button
                             onClick={() => handleVoteDinner(activeMatch.id, 'NO')}
                             className={`py-3 rounded-2xl font-black text-xs transition-all ${
-                              activeMatch.players?.find(p => p.id === myProfile.id || p.name === myProfile.name)?.dinner === 'NO'
+                              activeMatch.players?.find(p => isSamePlayer(p, myProfile))?.dinner === 'NO'
                                 ? 'bg-red-500 text-white shadow-md shadow-red-500/20'
                                 : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-100'
                             }`}
@@ -819,46 +971,194 @@ export default function App() {
                       </div>
                     )}
 
-                    {/* Aviso WhatsApp Club */}
+                    {/* BANNER DE PREGUNTA EXPLICITA: ¿Eres tú este jugador? */}
                     {(() => {
-                      const totalCena = (activeMatch.players?.filter(p => p.dinner === 'SI').length || 0) + (activeMatch.guests?.length || 0);
-                      const msg = encodeURIComponent(`Hola, somos el grupo de pádel del CTC. Para el partido de ${activeMatch.date} seremos ${totalCena} personas confirmadas para cenar.`);
+                      const isUserAlreadyInMatch = activeMatch.players?.some(p => isSamePlayer(p, myProfile));
+                      if (isUserAlreadyInMatch) return null;
+
+                      // Buscar si hay algún jugador sin vincular con nombre similar que no hayamos descartado
+                      const candidate = activeMatch.players?.find(p => 
+                        !dismissedLinks.includes(`${activeMatch.id}_${p.id}`) &&
+                        isPotentialMatch(p, myProfile, allUsers)
+                      );
+
+                      if (!candidate) return null;
+
                       return (
-                        <div className="p-4 bg-amber-50/70 border-b border-amber-100 flex items-center justify-between gap-3">
-                          <div>
-                            <span className="block font-black text-amber-950 text-xs">Reserva Restaurante</span>
-                            <span className="text-[11px] text-amber-800 font-bold">{totalCena} comensales confirmados</span>
+                        <div className="p-4 bg-amber-50 border-b border-amber-200/80 flex flex-col gap-2.5">
+                          <div className="flex items-start gap-2.5">
+                            <div className="p-2 bg-amber-200 text-amber-900 rounded-xl">
+                              <UserCheck className="w-4 h-4" />
+                            </div>
+                            <div>
+                              <h4 className="text-xs font-black text-amber-950">¿Eres tú "{cleanPlayerName(candidate.name)}"?</h4>
+                              <p className="text-[11px] text-amber-800 mt-0.5">
+                                Hay una plaza convocada en pista con tu nombre que aún no está enlazada con tu perfil.
+                              </p>
+                            </div>
                           </div>
-                          <a
-                            href={`https://wa.me/?text=${msg}`}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="bg-[#25D366] hover:bg-[#1fb355] text-white font-black px-3.5 py-2.5 rounded-xl text-xs flex items-center gap-1.5 shadow transition-all"
-                          >
-                            <MessageCircle className="w-4 h-4" /> Avisar Club
-                          </a>
+
+                          <div className="flex gap-2 mt-1">
+                            <button
+                              onClick={() => handleConfirmLink(activeMatch.id, candidate)}
+                              className="flex-1 py-2 px-3 bg-amber-600 hover:bg-amber-700 text-white rounded-xl font-black text-xs flex items-center justify-center gap-1.5 shadow-sm transition-colors"
+                            >
+                              <Check className="w-3.5 h-3.5" /> Sí, soy yo (Vincularme)
+                            </button>
+                            <button
+                              onClick={() => handleDismissLink(activeMatch.id, candidate.id)}
+                              className="py-2 px-3 bg-white border border-amber-300 text-amber-900 hover:bg-amber-100 rounded-xl font-bold text-xs transition-colors"
+                            >
+                              No soy yo
+                            </button>
+                          </div>
                         </div>
                       );
                     })()}
 
-                    {/* Jugadores convocados y ganadores */}
+                    {/* Jugadores convocados divididos por Parejas / Equipos */}
                     <div className="p-4">
-                      <h4 className="font-bold text-xs text-gray-400 uppercase tracking-wider mb-2">Convocatoria</h4>
-                      <div className="space-y-2">
-                        {activeMatch.players?.map((p, idx) => (
-                          <div key={idx} className="flex justify-between items-center bg-gray-50 p-2.5 rounded-xl text-xs">
-                            <div className="flex items-center gap-2">
-                              <span className="font-bold text-gray-800">{p.name}</span>
-                              {p.won === 'SI' && <span className="text-yellow-600 bg-yellow-100 px-1.5 py-0.5 rounded text-[9px] font-black">GANÓ 🏆</span>}
-                            </div>
-                            <span className={`px-2 py-0.5 rounded-md font-black text-[10px] ${
-                              p.dinner === 'SI' ? 'bg-emerald-100 text-emerald-700' :
-                              p.dinner === 'NO' ? 'bg-red-100 text-red-600' : 'bg-amber-100 text-amber-700'
-                            }`}>
-                              {p.dinner === 'SI' ? 'CENA SÍ' : p.dinner === 'NO' ? 'NO CENA' : 'PENDIENTE'}
-                            </span>
-                          </div>
-                        ))}
+                      <div className="flex justify-between items-center mb-3">
+                        <h4 className="font-bold text-xs text-gray-400 uppercase tracking-wider">Parejas & Convocatoria</h4>
+                        <span className="text-[10px] text-gray-400 font-medium">Toca P1/P2 o confirma cenas</span>
+                      </div>
+
+                      {/* Pareja 1 */}
+                      <div className="mb-3">
+                        <div className="flex items-center gap-1.5 mb-1.5">
+                          <span className="w-2.5 h-2.5 rounded-full bg-blue-500"></span>
+                          <span className="text-[11px] font-black uppercase text-blue-700">Pareja 1</span>
+                        </div>
+                        <div className="space-y-1.5">
+                          {}
+                          {activeMatch.players?.filter(p => (p.team || 1) === 1).map((p, idx) => {
+                            const isMe = isSamePlayer(p, myProfile);
+                            const isUnlinked = !allUsers.some(u => u.id === p.id);
+                            const canClaim = !activeMatch.players.some(pl => isSamePlayer(pl, myProfile)) && isUnlinked;
+
+                            return (
+                              <div key={idx} className={`flex justify-between items-center p-2.5 rounded-2xl text-xs border ${
+                                isMe ? 'bg-blue-100/70 border-blue-300' : 'bg-blue-50/50 border-blue-100'
+                              }`}>
+                                <div className="flex items-center gap-1.5 flex-1 min-w-0 mr-2">
+                                  <button
+                                    onClick={() => handleTogglePlayerTeam(activeMatch.id, p.id)}
+                                    className="px-1.5 py-0.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-black text-[10px] flex items-center gap-0.5 shadow-sm shrink-0"
+                                    title="Pasar a Pareja 2"
+                                  >
+                                    P1 <ArrowLeftRight className="w-2.5 h-2.5" />
+                                  </button>
+                                  <span className="font-bold text-gray-900 truncate">{p.name}</span>
+                                  {isMe && <span className="bg-blue-600 text-white text-[9px] font-black px-1.5 py-0.5 rounded-md shrink-0">TÚ</span>}
+                                  {canClaim && (
+                                    <button
+                                      onClick={() => handleConfirmLink(activeMatch.id, p)}
+                                      className="text-[9px] bg-amber-100 text-amber-800 border border-amber-300 px-1.5 py-0.5 rounded-md font-black hover:bg-amber-200 shrink-0"
+                                      title="Haz clic si eres tú para vincularte"
+                                    >
+                                      ¿Eres tú? 🙋‍♂️
+                                    </button>
+                                  )}
+                                  {p.won === 'SI' && <span className="text-yellow-700 bg-yellow-100 px-1.5 py-0.5 rounded text-[9px] font-black shrink-0">🏆</span>}
+                                </div>
+
+                                <div className="flex items-center gap-1 shrink-0">
+                                  <button
+                                    onClick={() => handleUpdatePlayerDinner(activeMatch.id, p, 'SI')}
+                                    title="Marcar que sí cena (pulsa de nuevo para poner pendiente)"
+                                    className={`px-2 py-1 rounded-xl font-black text-[10px] transition-all flex items-center gap-0.5 border ${
+                                      p.dinner === 'SI'
+                                        ? 'bg-emerald-600 border-emerald-600 text-white shadow-sm'
+                                        : 'bg-white border-gray-200 text-gray-600 hover:border-emerald-300 hover:text-emerald-700'
+                                    }`}
+                                  >
+                                    Cena 🍻
+                                  </button>
+                                  <button
+                                    onClick={() => handleUpdatePlayerDinner(activeMatch.id, p, 'NO')}
+                                    title="Marcar que no cena (pulsa de nuevo para poner pendiente)"
+                                    className={`px-2 py-1 rounded-xl font-black text-[10px] transition-all flex items-center gap-0.5 border ${
+                                      p.dinner === 'NO'
+                                        ? 'bg-red-500 border-red-500 text-white shadow-sm'
+                                        : 'bg-white border-gray-200 text-gray-600 hover:border-red-300 hover:text-red-600'
+                                    }`}
+                                  >
+                                    No 🏃‍♂️
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Pareja 2 */}
+                      <div>
+                        <div className="flex items-center gap-1.5 mb-1.5">
+                          <span className="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
+                          <span className="text-[11px] font-black uppercase text-amber-700">Pareja 2</span>
+                        </div>
+                        <div className="space-y-1.5">
+                          {}
+                          {activeMatch.players?.filter(p => (p.team || 1) === 2).map((p, idx) => {
+                            const isMe = isSamePlayer(p, myProfile);
+                            const isUnlinked = !allUsers.some(u => u.id === p.id);
+                            const canClaim = !activeMatch.players.some(pl => isSamePlayer(pl, myProfile)) && isUnlinked;
+
+                            return (
+                              <div key={idx} className={`flex justify-between items-center p-2.5 rounded-2xl text-xs border ${
+                                isMe ? 'bg-amber-100/70 border-amber-300' : 'bg-amber-50/50 border-amber-100'
+                              }`}>
+                                <div className="flex items-center gap-1.5 flex-1 min-w-0 mr-2">
+                                  <button
+                                    onClick={() => handleTogglePlayerTeam(activeMatch.id, p.id)}
+                                    className="px-1.5 py-0.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-black text-[10px] flex items-center gap-0.5 shadow-sm shrink-0"
+                                    title="Pasar a Pareja 1"
+                                  >
+                                    P2 <ArrowLeftRight className="w-2.5 h-2.5" />
+                                  </button>
+                                  <span className="font-bold text-gray-900 truncate">{p.name}</span>
+                                  {isMe && <span className="bg-amber-600 text-white text-[9px] font-black px-1.5 py-0.5 rounded-md shrink-0">TÚ</span>}
+                                  {canClaim && (
+                                    <button
+                                      onClick={() => handleConfirmLink(activeMatch.id, p)}
+                                      className="text-[9px] bg-amber-100 text-amber-800 border border-amber-300 px-1.5 py-0.5 rounded-md font-black hover:bg-amber-200 shrink-0"
+                                      title="Haz clic si eres tú para vincularte"
+                                    >
+                                      ¿Eres tú? 🙋‍♂️
+                                    </button>
+                                  )}
+                                  {p.won === 'SI' && <span className="text-yellow-700 bg-yellow-100 px-1.5 py-0.5 rounded text-[9px] font-black shrink-0">🏆</span>}
+                                </div>
+
+                                <div className="flex items-center gap-1 shrink-0">
+                                  <button
+                                    onClick={() => handleUpdatePlayerDinner(activeMatch.id, p, 'SI')}
+                                    title="Marcar que sí cena (pulsa de nuevo para poner pendiente)"
+                                    className={`px-2 py-1 rounded-xl font-black text-[10px] transition-all flex items-center gap-0.5 border ${
+                                      p.dinner === 'SI'
+                                        ? 'bg-emerald-600 border-emerald-600 text-white shadow-sm'
+                                        : 'bg-white border-gray-200 text-gray-600 hover:border-emerald-300 hover:text-emerald-700'
+                                    }`}
+                                  >
+                                    Cena 🍻
+                                  </button>
+                                  <button
+                                    onClick={() => handleUpdatePlayerDinner(activeMatch.id, p, 'NO')}
+                                    title="Marcar que no cena (pulsa de nuevo para poner pendiente)"
+                                    className={`px-2 py-1 rounded-xl font-black text-[10px] transition-all flex items-center gap-0.5 border ${
+                                      p.dinner === 'NO'
+                                        ? 'bg-red-500 border-red-500 text-white shadow-sm'
+                                        : 'bg-white border-gray-200 text-gray-600 hover:border-red-300 hover:text-red-600'
+                                    }`}
+                                  >
+                                    No 🏃‍♂️
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
                       </div>
                     </div>
 
@@ -1022,26 +1322,30 @@ export default function App() {
                       type="button"
                       onClick={() => setWinningTeam(1)}
                       className={`p-3 rounded-2xl border text-left transition-all ${
-                        winningTeam === 1 ? 'border-purple-600 bg-purple-50 text-purple-900 shadow-sm' : 'border-gray-200 text-gray-600'
+                        winningTeam === 1 ? 'border-blue-600 bg-blue-50 text-blue-900 shadow-sm ring-2 ring-blue-500/20' : 'border-gray-200 text-gray-600'
                       }`}
                     >
-                      <span className="block font-black text-xs">Pareja 1 🏆</span>
-                      <span className="text-[10px] text-gray-500">
-                        {matchToResult.players?.[0]?.name || 'J1'} y {matchToResult.players?.[1]?.name || 'J2'}
-                      </span>
+                      <span className="block font-black text-xs text-blue-700">Pareja 1 🏆</span>
+                      <div className="text-[10px] text-gray-600 mt-1 space-y-0.5 font-medium">
+                        {matchToResult.players?.filter(p => (p.team || 1) === 1).map((p, i) => (
+                          <div key={i} className="truncate">• {p.name}</div>
+                        ))}
+                      </div>
                     </button>
 
                     <button
                       type="button"
                       onClick={() => setWinningTeam(2)}
                       className={`p-3 rounded-2xl border text-left transition-all ${
-                        winningTeam === 2 ? 'border-purple-600 bg-purple-50 text-purple-900 shadow-sm' : 'border-gray-200 text-gray-600'
+                        winningTeam === 2 ? 'border-amber-600 bg-amber-50 text-amber-900 shadow-sm ring-2 ring-amber-500/20' : 'border-gray-200 text-gray-600'
                       }`}
                     >
-                      <span className="block font-black text-xs">Pareja 2 🏆</span>
-                      <span className="text-[10px] text-gray-500">
-                        {matchToResult.players?.[2]?.name || 'J3'} y {matchToResult.players?.[3]?.name || 'J4'}
-                      </span>
+                      <span className="block font-black text-xs text-amber-700">Pareja 2 🏆</span>
+                      <div className="text-[10px] text-gray-600 mt-1 space-y-0.5 font-medium">
+                        {matchToResult.players?.filter(p => (p.team || 1) === 2).map((p, i) => (
+                          <div key={i} className="truncate">• {p.name}</div>
+                        ))}
+                      </div>
                     </button>
                   </div>
                 </div>
