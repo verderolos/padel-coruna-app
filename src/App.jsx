@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 
-// URL de tu Apps Script
+// URL de tu Google Apps Script
 const DEFAULT_API_URL = 'https://script.google.com/macros/s/AKfycbxkd-BmLpYxmLtev5wcxwsyda94bG1mFW9gtDpEAgsmhV1HCfDwn2-syPDEvBUPwiiiGw/exec';
 
 const FALLBACK_USERS = [];
@@ -41,7 +41,7 @@ function CriteriosModal({ isOpen, onClose }) {
           <ul className="text-xs text-amber-900 space-y-1 list-disc list-inside">
             <li><strong>Derrota jugada:</strong> +1 € por partido perdido.</li>
             <li><strong>Victoria jugada:</strong> 0 € (el ganador no paga bote).</li>
-            <li><strong>Rajarse de la cena:</strong> +1 € por no quedarse al 3º tiempo habiendo jugado.</li>
+            <li><strong>Rajarse de la cena:</strong> +1 € por no quedarse habiendo jugado.</li>
           </ul>
         </section>
 
@@ -126,7 +126,7 @@ function SettingsModal({ isOpen, onClose, user, onSaveNotifications, notifEnable
   );
 }
 
-// Modal de Validación / Creación de PIN de 4 cifras
+// Modal PIN
 function PinModal({ isOpen, onClose, targetUser, onPinSuccess, apiUrl }) {
   const [pinInput, setPinInput] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
@@ -155,7 +155,6 @@ function PinModal({ isOpen, onClose, targetUser, onPinSuccess, apiUrl }) {
     }
 
     if (hasPinAlready) {
-      // Validar si coincide con el PIN registrado
       if (pinInput === targetUser.pin.trim()) {
         onPinSuccess(targetUser);
       } else {
@@ -163,7 +162,6 @@ function PinModal({ isOpen, onClose, targetUser, onPinSuccess, apiUrl }) {
         setPinInput('');
       }
     } else {
-      // Definir PIN por primera vez y guardar en Sheets
       setSaving(true);
       try {
         await fetch(apiUrl, {
@@ -195,12 +193,9 @@ function PinModal({ isOpen, onClose, targetUser, onPinSuccess, apiUrl }) {
           {hasPinAlready ? `PIN de ${targetUser.name}` : `Crear PIN para ${targetUser.name}`}
         </h3>
         <p className="text-xs text-slate-400 mb-4">
-          {hasPinAlready
-            ? 'Introduce tu PIN de 4 dígitos para acceder'
-            : 'Elige un PIN de 4 dígitos para proteger tu perfil'}
+          {hasPinAlready ? 'Introduce tu PIN de 4 cifras para entrar' : 'Elige un PIN de 4 dígitos para proteger tu perfil'}
         </p>
 
-        {/* Display del PIN (puntos) */}
         <div className="flex justify-center gap-3 mb-4">
           {[0, 1, 2, 3].map(i => (
             <div
@@ -214,11 +209,8 @@ function PinModal({ isOpen, onClose, targetUser, onPinSuccess, apiUrl }) {
           ))}
         </div>
 
-        {errorMsg && (
-          <p className="text-rose-400 text-xs font-semibold mb-3">{errorMsg}</p>
-        )}
+        {errorMsg && <p className="text-rose-400 text-xs font-semibold mb-3">{errorMsg}</p>}
 
-        {/* Teclado numérico */}
         <div className="grid grid-cols-3 gap-2 max-w-[200px] mx-auto mb-4">
           {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(num => (
             <button
@@ -229,10 +221,7 @@ function PinModal({ isOpen, onClose, targetUser, onPinSuccess, apiUrl }) {
               {num}
             </button>
           ))}
-          <button
-            onClick={onClose}
-            className="h-11 text-xs font-bold text-slate-400 hover:text-white transition"
-          >
+          <button onClick={onClose} className="h-11 text-xs font-bold text-slate-400 hover:text-white transition">
             Cancelar
           </button>
           <button
@@ -241,10 +230,7 @@ function PinModal({ isOpen, onClose, targetUser, onPinSuccess, apiUrl }) {
           >
             0
           </button>
-          <button
-            onClick={handleDelete}
-            className="h-11 text-sm font-bold text-slate-400 hover:text-white transition flex items-center justify-center"
-          >
+          <button onClick={handleDelete} className="h-11 text-sm font-bold text-slate-400 hover:text-white transition flex items-center justify-center">
             ⌫
           </button>
         </div>
@@ -281,16 +267,13 @@ export default function App() {
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [notifEnabled, setNotifEnabled] = useState(() => localStorage.getItem('padel_notif') === 'true');
 
-  // Usuario activo en sesión (recordado en el móvil)
   const [currentUser, setCurrentUser] = useState(() => {
     const saved = localStorage.getItem('padel_current_user');
     return saved ? JSON.parse(saved) : null;
   });
 
-  // Modal de PIN
   const [targetPinUser, setTargetPinUser] = useState(null);
 
-  // Formulario de alta de nuevo jugador
   const [showRegisterForm, setShowRegisterForm] = useState(false);
   const [newUserName, setNewUserName] = useState('');
   const [newUserGroup, setNewUserGroup] = useState('Chicos');
@@ -311,8 +294,6 @@ export default function App() {
       if (json.ok) {
         if (json.jugadores) {
           setPlayers(json.jugadores);
-
-          // Si el usuario ya estaba en sesión, sincronizar datos frescos
           if (currentUser) {
             const freshCurrent = json.jugadores.find(u => u.id === currentUser.id);
             if (freshCurrent) {
@@ -339,7 +320,6 @@ export default function App() {
     fetchData();
   }, [apiUrl]);
 
-  // Selección de usuario: abre modal de PIN para verificar
   const handleUserClick = (user) => {
     setTargetPinUser(user);
   };
@@ -356,12 +336,11 @@ export default function App() {
     setSelectedMatchId(null);
   };
 
-  // Registrar nuevo jugador con PIN obligatorio
   const handleRegisterUser = async (e) => {
     e.preventDefault();
     if (!newUserName.trim()) return;
     if (newUserPin.trim().length !== 4) {
-      alert('Debes indicar un PIN de 4 números para proteger tu perfil');
+      alert('Debes indicar un PIN de 4 números');
       return;
     }
 
@@ -526,9 +505,34 @@ export default function App() {
     }
   };
 
+  // ACCIÓN DE CANCELAR PARTIDO
+  const handleCancelMatch = async (matchId) => {
+    if (!confirm('¿Seguro que quieres cancelar este partido? Quedará marcado como CANCELADO.')) return;
+    setSyncing(true);
+    try {
+      await fetch(apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({
+          action: 'GUARDAR_RESULTADO',
+          idPartido: matchId,
+          marcador: 'CANCELADO',
+          reiniciar: true
+        })
+      });
+      // Actualizar local
+      setMatches(prev => prev.map(m => m.id === matchId ? { ...m, status: 'CANCELADO' } : m));
+      fetchData();
+    } catch (e) {
+      alert('Error al cancelar partido: ' + e.message);
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   const handleNotifyPending = (pendingList, dateLabel) => {
     if (!pendingList || pendingList.length === 0) {
-      alert('¡No hay ningún jugador con estado pendiente!');
+      alert('¡No hay jugadores pendientes!');
       return;
     }
     if ('Notification' in window && Notification.permission === 'granted') {
@@ -575,7 +579,7 @@ export default function App() {
     });
   });
 
-  // PANTALLA DE ACCESO / LISTA CON PROTECCIÓN DE PIN
+  // Identificación previa con PIN
   if (!currentUser) {
     return (
       <div className="min-h-screen bg-slate-900 text-white flex flex-col justify-center items-center p-4">
@@ -618,7 +622,6 @@ export default function App() {
               </button>
             </>
           ) : (
-            /* FORMULARIO DE ALTA CON PIN */
             <form onSubmit={handleRegisterUser} className="space-y-3">
               <div>
                 <label className="block text-xs font-bold text-slate-300 mb-1">Nombre y Apellido *</label>
@@ -696,7 +699,6 @@ export default function App() {
           )}
         </div>
 
-        {/* MODAL TECLADO PIN */}
         <PinModal
           isOpen={Boolean(targetPinUser)}
           onClose={() => setTargetPinUser(null)}
@@ -768,28 +770,47 @@ export default function App() {
             </button>
 
             <div className="bg-white rounded-3xl p-5 shadow-sm border border-slate-200">
-              <div className="flex justify-between items-start mb-2">
-                <span className="text-[10px] font-black uppercase tracking-wider bg-blue-50 text-blue-700 px-2.5 py-1 rounded-full border border-blue-200">
-                  {currentMatch.grupo}
-                </span>
+              {/* CABECERA DE LA TARJETA DEL PARTIDO CON BOTONES CANCELAR Y MARCADOR */}
+              <div className="flex justify-between items-center mb-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-black uppercase tracking-wider bg-blue-50 text-blue-700 px-2.5 py-1 rounded-full border border-blue-200">
+                    {currentMatch.grupo}
+                  </span>
+                  <span className="text-[11px] font-black uppercase text-blue-700 bg-blue-100/60 px-2 py-0.5 rounded-md">
+                    {currentUser.name}
+                  </span>
+                </div>
 
-                {(() => {
-                  const { canReport } = parseMatchTiming(currentMatch.date);
-                  return (
+                <div className="flex items-center gap-2">
+                  {/* BOTÓN CANCELAR PARTIDO */}
+                  {currentMatch.status !== 'CANCELADO' && (
                     <button
-                      disabled={!canReport}
-                      onClick={() => setShowScoreModal(true)}
-                      className={`px-3 py-1 rounded-xl text-xs font-bold flex items-center gap-1 border transition ${
-                        !canReport
-                          ? 'opacity-40 bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed'
-                          : 'border-purple-300 text-purple-700 bg-purple-50 hover:bg-purple-100'
-                      }`}
-                      title={!canReport ? 'Disponible a partir de la hora de inicio del partido' : ''}
+                      onClick={() => handleCancelMatch(currentMatch.id)}
+                      className="text-xs font-bold text-rose-500 hover:text-rose-700 px-2 py-1 rounded-lg hover:bg-rose-50 transition"
                     >
-                      🏆 Marcador
+                      Cancelar
                     </button>
-                  );
-                })()}
+                  )}
+
+                  {/* BOTÓN MARCADOR */}
+                  {(() => {
+                    const { canReport } = parseMatchTiming(currentMatch.date);
+                    return (
+                      <button
+                        disabled={!canReport || currentMatch.status === 'CANCELADO'}
+                        onClick={() => setShowScoreModal(true)}
+                        className={`px-3 py-1 rounded-xl text-xs font-bold flex items-center gap-1 border transition ${
+                          !canReport || currentMatch.status === 'CANCELADO'
+                            ? 'opacity-40 bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed'
+                            : 'border-purple-300 text-purple-700 bg-purple-50 hover:bg-purple-100'
+                        }`}
+                        title={!canReport ? 'Disponible a partir de la hora de inicio del partido' : ''}
+                      >
+                        🏆 Marcador
+                      </button>
+                    );
+                  })()}
+                </div>
               </div>
 
               <h2 className="text-xl font-black text-slate-900 mt-1">{currentMatch.date}</h2>
@@ -798,7 +819,7 @@ export default function App() {
               </p>
 
               {/* BANNER +2H */}
-              {currentMatch.status !== 'FINALIZADO' && parseMatchTiming(currentMatch.date).shouldPrompt && (
+              {currentMatch.status !== 'FINALIZADO' && currentMatch.status !== 'CANCELADO' && parseMatchTiming(currentMatch.date).shouldPrompt && (
                 <div className="bg-amber-50 border border-amber-300 text-amber-900 rounded-xl p-3 text-xs font-semibold my-3 flex items-center justify-between">
                   <span>⚠️ Han pasado 2h. Reporta el resultado oficial.</span>
                   <button
@@ -806,6 +827,21 @@ export default function App() {
                     className="bg-amber-600 text-white px-2.5 py-1 rounded-lg text-xs font-bold hover:bg-amber-700 shrink-0 ml-2"
                   >
                     Reportar
+                  </button>
+                </div>
+              )}
+
+              {/* AVISO DE CANCELADO */}
+              {currentMatch.status === 'CANCELADO' && (
+                <div className="bg-rose-50 border border-rose-200 rounded-2xl p-3.5 text-center my-4">
+                  <span className="text-xs font-black text-rose-700 uppercase tracking-wide">
+                    ❌ Este partido ha sido Cancelado
+                  </span>
+                  <button
+                    onClick={() => handleResetMatch(currentMatch.id)}
+                    className="text-[11px] text-blue-600 underline mt-2 hover:text-blue-800 font-semibold block mx-auto"
+                  >
+                    Volver a programar
                   </button>
                 </div>
               )}
@@ -847,7 +883,7 @@ export default function App() {
                 </a>
               )}
 
-              {/* VINCULACIÓN EXPLÍCITA */}
+              {/* VINCULACIÓN EXPLÍCITA SI EL NOMBRE COINCIDE */}
               {(() => {
                 const targetSlot = (currentMatch.players || []).find(p =>
                   p.id !== currentUser.id &&
@@ -879,12 +915,18 @@ export default function App() {
                 return null;
               })()}
 
-              {/* JUGADORES */}
+              {/* SECCIÓN JUGADORES CONVOCADOS EN LA PISTA Y EQUIPOS */}
               <div className="mt-5 space-y-4">
-                <h3 className="text-xs font-black text-slate-800 uppercase tracking-wider">
-                  Jugadores Convocados (Parejas y Cenas)
-                </h3>
+                <div className="flex justify-between items-center border-b pb-2">
+                  <h3 className="text-xs font-black text-slate-800 uppercase tracking-wider">
+                    Jugadores en el Partido (Parejas y Cenas)
+                  </h3>
+                  <span className="text-[10px] text-slate-500 font-bold">
+                    {(currentMatch.players || []).length} / 4 en pista
+                  </span>
+                </div>
 
+                {/* PAREJA 1 Y PAREJA 2 */}
                 {[1, 2].map(teamNum => {
                   const teamPlayers = (currentMatch.players || []).filter(p => (p.team || 1) === teamNum);
                   const isP1 = teamNum === 1;
@@ -892,22 +934,22 @@ export default function App() {
                   return (
                     <div
                       key={teamNum}
-                      className={`border rounded-2xl p-3 ${
+                      className={`border rounded-2xl p-3.5 ${
                         isP1 ? 'bg-blue-50/40 border-blue-200' : 'bg-amber-50/40 border-amber-200'
                       }`}
                     >
-                      <div className="flex justify-between items-center mb-2">
-                        <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md ${
+                      <div className="flex justify-between items-center mb-2.5">
+                        <span className={`text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-md ${
                           isP1 ? 'bg-blue-600 text-white' : 'bg-amber-600 text-white'
                         }`}>
                           Pareja {teamNum}
                         </span>
-                        <span className="text-[10px] text-slate-400 font-medium">Pulsa P1/P2 para mover</span>
+                        <span className="text-[10px] text-slate-400 font-medium">Pulsa P1/P2 para alternar pareja</span>
                       </div>
 
                       <div className="space-y-2">
                         {teamPlayers.length === 0 ? (
-                          <p className="text-[11px] text-slate-400 italic py-1">Sin jugadores asignados</p>
+                          <p className="text-[11px] text-slate-400 italic py-1">Sin jugadores asignados en esta pareja</p>
                         ) : (
                           teamPlayers.map(p => {
                             const isMe = p.id === currentUser.id || p.name.toLowerCase() === currentUser.name.toLowerCase();
@@ -919,21 +961,28 @@ export default function App() {
                                 <div className="flex items-center gap-2">
                                   <button
                                     onClick={() => handleToggleTeam(currentMatch.id, p.id)}
-                                    className="text-[10px] font-black bg-slate-100 hover:bg-slate-200 text-slate-700 px-1.5 py-0.5 rounded"
+                                    className="text-[10px] font-black bg-slate-100 hover:bg-slate-200 text-slate-700 px-2 py-0.5 rounded"
+                                    title="Mover a otra pareja"
                                   >
                                     P{p.team || 1} ⇄
                                   </button>
-                                  <span className={`text-xs font-bold ${isMe ? 'text-blue-600' : 'text-slate-800'}`}>
-                                    {p.name} {isMe && '(Tú)'}
-                                  </span>
+                                  <div>
+                                    <span className={`text-xs font-bold block ${isMe ? 'text-blue-600' : 'text-slate-800'}`}>
+                                      {p.name} {isMe && '(Tú)'}
+                                    </span>
+                                    <span className="text-[10px] text-slate-400">
+                                      {p.dinner === 'SI' ? '🍻 Cena confirmada' : p.dinner === 'NO' ? '🏃‍♂️ No se queda' : '🟡 Cena pendiente'}
+                                    </span>
+                                  </div>
                                 </div>
 
+                                {/* BOTONES DIRECTOS PARA CAMBIAR CENA */}
                                 <div className="flex items-center gap-1.5">
                                   <button
                                     onClick={() => handleUpdateDinner(currentMatch.id, p.id, p.name, p.dinner === 'SI' ? 'PENDIENTE' : 'SI')}
-                                    className={`px-2 py-1 rounded-lg text-[10px] font-bold transition ${
+                                    className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition ${
                                       p.dinner === 'SI'
-                                        ? 'bg-emerald-600 text-white'
+                                        ? 'bg-emerald-600 text-white shadow-xs'
                                         : 'bg-slate-100 text-slate-600 hover:bg-emerald-50'
                                     }`}
                                   >
@@ -941,9 +990,9 @@ export default function App() {
                                   </button>
                                   <button
                                     onClick={() => handleUpdateDinner(currentMatch.id, p.id, p.name, p.dinner === 'NO' ? 'PENDIENTE' : 'NO')}
-                                    className={`px-2 py-1 rounded-lg text-[10px] font-bold transition ${
+                                    className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition ${
                                       p.dinner === 'NO'
-                                        ? 'bg-rose-600 text-white'
+                                        ? 'bg-rose-600 text-white shadow-xs'
                                         : 'bg-slate-100 text-slate-600 hover:bg-rose-50'
                                     }`}
                                   >
@@ -959,6 +1008,42 @@ export default function App() {
                   );
                 })}
               </div>
+
+              {/* PREGUNTA RÁPIDA INFERIOR "¿TE QUEDAS AL 3º TIEMPO?" (USUARIO ACTIVO) */}
+              {(() => {
+                const mySlot = (currentMatch.players || []).find(p => p.id === currentUser.id || p.name.toLowerCase() === currentUser.name.toLowerCase());
+                if (!mySlot) return null;
+
+                return (
+                  <div className="mt-5 pt-4 border-t border-slate-100 text-center">
+                    <p className="text-xs font-black text-slate-800 uppercase tracking-wide mb-2.5">
+                      ¿Te quedas al 3º tiempo?
+                    </p>
+                    <div className="flex gap-2.5">
+                      <button
+                        onClick={() => handleUpdateDinner(currentMatch.id, mySlot.id, mySlot.name, 'SI')}
+                        className={`flex-1 py-2.5 rounded-xl font-extrabold text-xs transition border ${
+                          mySlot.dinner === 'SI'
+                            ? 'bg-emerald-600 text-white border-emerald-600 shadow-md'
+                            : 'bg-white text-slate-700 border-slate-200 hover:bg-emerald-50'
+                        }`}
+                      >
+                        ✓ ¡SÍ, CLARO! 🍻
+                      </button>
+                      <button
+                        onClick={() => handleUpdateDinner(currentMatch.id, mySlot.id, mySlot.name, 'NO')}
+                        className={`flex-1 py-2.5 rounded-xl font-extrabold text-xs transition border ${
+                          mySlot.dinner === 'NO'
+                            ? 'bg-rose-600 text-white border-rose-600 shadow-md'
+                            : 'bg-white text-slate-700 border-slate-200 hover:bg-rose-50'
+                        }`}
+                      >
+                        ME RAJO 🏃‍♂️
+                      </button>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           </div>
         ) : (
@@ -1024,7 +1109,7 @@ export default function App() {
                           <p className="text-xs text-slate-500 mt-0.5">📍 {m.location}</p>
                         </div>
                         <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded ${
-                          m.status === 'FINALIZADO' ? 'bg-purple-100 text-purple-700' : 'bg-emerald-100 text-emerald-700'
+                          m.status === 'FINALIZADO' ? 'bg-purple-100 text-purple-700' : m.status === 'CANCELADO' ? 'bg-rose-100 text-rose-700' : 'bg-emerald-100 text-emerald-700'
                         }`}>
                           {m.status}
                         </span>
