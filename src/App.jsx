@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 
-// URL de tu Apps Script
+// URL de tu Google Apps Script
 const DEFAULT_API_URL = 'https://script.google.com/macros/s/AKfycby8j511L4Q7sJpms-ZfB-qWjUeO3jT-L8wD9R9Xb3d4f/exec';
 
 const FALLBACK_USERS = [];
@@ -22,80 +22,6 @@ function parseMatchTiming(dateStr) {
   };
 }
 
-// Modal de Configuración y Notificaciones
-function SettingsModal({ isOpen, onClose, user, onSaveNotifications, notifEnabled }) {
-  if (!isOpen) return null;
-
-  const handleRequestPush = async () => {
-    if (!('Notification' in window)) {
-      alert('Tu navegador no soporta notificaciones push.');
-      return;
-    }
-    const permission = await Notification.requestPermission();
-    if (permission === 'granted') {
-      onSaveNotifications(true);
-      new Notification('Pádel CTC 🎾', {
-        body: `¡Hola ${user.name}! Notificaciones activadas para cenas y resultados.`,
-        icon: 'https://cdn-icons-png.flaticon.com/512/2855/2855613.png'
-      });
-    } else {
-      onSaveNotifications(false);
-      alert('Permiso denegado. Puedes activarlo en los ajustes del navegador.');
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl max-w-sm w-full p-5 shadow-2xl text-left">
-        <div className="flex items-center justify-between border-b pb-3 mb-4">
-          <h3 className="text-base font-black text-slate-900 flex items-center gap-2">
-            ⚙️ Ajustes de Notificaciones
-          </h3>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-700 text-xl font-bold leading-none">
-            &times;
-          </button>
-        </div>
-
-        <div className="space-y-4 text-xs">
-          <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
-            <p className="font-bold text-slate-800">Jugador Activo:</p>
-            <p className="text-slate-600 font-semibold">{user.name} ({user.group})</p>
-          </div>
-
-          <div className="border border-blue-100 bg-blue-50/60 p-3 rounded-xl">
-            <h4 className="font-bold text-blue-900 mb-1">Avisos automáticos:</h4>
-            <ul className="text-blue-800 space-y-1 list-disc list-inside">
-              <li>Recordatorio si no has respondido a la cena.</li>
-              <li>Aviso para subir el marcador tras 2h de juego.</li>
-            </ul>
-          </div>
-
-          <div className="flex items-center justify-between pt-1">
-            <span className="font-bold text-slate-700">Notificaciones Push:</span>
-            <button
-              onClick={handleRequestPush}
-              className={`px-3 py-1.5 rounded-xl font-bold transition text-xs ${
-                notifEnabled
-                  ? 'bg-emerald-600 text-white'
-                  : 'bg-slate-200 text-slate-700 hover:bg-slate-300'
-              }`}
-            >
-              {notifEnabled ? '✓ Activadas' : 'Activar Avisos'}
-            </button>
-          </div>
-        </div>
-
-        <button
-          onClick={onClose}
-          className="w-full mt-5 bg-slate-900 text-white font-bold py-2 rounded-xl text-xs"
-        >
-          Cerrar
-        </button>
-      </div>
-    </div>
-  );
-}
-
 // Modal Criterios y Bote
 function CriteriosModal({ isOpen, onClose }) {
   if (!isOpen) return null;
@@ -111,11 +37,11 @@ function CriteriosModal({ isOpen, onClose }) {
 
         <section className="mb-4 bg-amber-50 border border-amber-200 rounded-xl p-3.5">
           <h4 className="font-extrabold text-amber-900 text-xs uppercase tracking-wide mb-1">💶 Bote del 3º Tiempo</h4>
-          <p className="text-xs text-amber-950 mb-2">Solo computa si el partido ya se ha disputado:</p>
+          <p className="text-xs text-amber-950 mb-2">Se calcula automáticamente sobre partidos finalizados:</p>
           <ul className="text-xs text-amber-900 space-y-1 list-disc list-inside">
             <li><strong>Derrota jugada:</strong> +1 € por partido perdido.</li>
-            <li><strong>Victoria jugada:</strong> 0 € (el ganador no paga).</li>
-            <li><strong>Rajarse de la cena:</strong> +1 € por no acudir tras jugar.</li>
+            <li><strong>Victoria jugada:</strong> 0 € (el ganador no paga bote).</li>
+            <li><strong>Rajarse de la cena:</strong> +1 € por no quedarse al 3º tiempo habiendo jugado.</li>
           </ul>
         </section>
 
@@ -140,16 +66,77 @@ function CriteriosModal({ isOpen, onClose }) {
   );
 }
 
+// Modal de Configuración
+function SettingsModal({ isOpen, onClose, user, onSaveNotifications, notifEnabled }) {
+  if (!isOpen) return null;
+
+  const handleRequestPush = async () => {
+    if (!('Notification' in window)) {
+      alert('Tu navegador no soporta notificaciones.');
+      return;
+    }
+    const permission = await Notification.requestPermission();
+    if (permission === 'granted') {
+      onSaveNotifications(true);
+      new Notification('Pádel CTC 🎾', {
+        body: `¡Hola ${user.name}! Notificaciones activadas con éxito.`,
+        icon: 'https://cdn-icons-png.flaticon.com/512/2855/2855613.png'
+      });
+    } else {
+      onSaveNotifications(false);
+      alert('Permiso denegado.');
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl max-w-sm w-full p-5 shadow-2xl text-left">
+        <div className="flex items-center justify-between border-b pb-3 mb-4">
+          <h3 className="text-base font-black text-slate-900 flex items-center gap-2">
+            ⚙️ Ajustes de Notificaciones
+          </h3>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-700 text-xl font-bold leading-none">&times;</button>
+        </div>
+
+        <div className="space-y-4 text-xs">
+          <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
+            <p className="font-bold text-slate-800">Jugador Activo:</p>
+            <p className="text-slate-600 font-semibold">{user.name} ({user.group})</p>
+          </div>
+
+          <div className="flex items-center justify-between pt-1">
+            <span className="font-bold text-slate-700">Notificaciones Push:</span>
+            <button
+              onClick={handleRequestPush}
+              className={`px-3 py-1.5 rounded-xl font-bold transition text-xs ${
+                notifEnabled ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-700 hover:bg-slate-300'
+              }`}
+            >
+              {notifEnabled ? '✓ Activadas' : 'Activar Avisos'}
+            </button>
+          </div>
+        </div>
+
+        <button onClick={onClose} className="w-full mt-5 bg-slate-900 text-white font-bold py-2 rounded-xl text-xs">
+          Cerrar
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const [apiUrl, setApiUrl] = useState(() => localStorage.getItem('padel_api_url') || DEFAULT_API_URL);
-  const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
-  const [activeTab, setActiveTab] = useState('partidos');
+  const [activeTab, setActiveTab] = useState('partidos'); // 'partidos', 'cenas', 'rankings', 'bote'
   const [rankingType, setRankingType] = useState('hibrido');
 
   const [players, setPlayers] = useState(FALLBACK_USERS);
   const [matches, setMatches] = useState(FALLBACK_MATCHES);
   const [selectedMatchId, setSelectedMatchId] = useState(null);
+
+  // Fecha seleccionada para la vista de comensales
+  const [selectedDinnerDate, setSelectedDinnerDate] = useState('');
 
   const [showRulesModal, setShowRulesModal] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
@@ -173,12 +160,16 @@ export default function App() {
       const json = await res.json();
       if (json.ok) {
         if (json.jugadores) setPlayers(json.jugadores);
-        if (json.partidos) setMatches(json.partidos);
+        if (json.partidos) {
+          setMatches(json.partidos);
+          if (json.partidos.length > 0 && !selectedDinnerDate) {
+            setSelectedDinnerDate(json.partidos[0].date);
+          }
+        }
       }
     } catch (e) {
       console.warn('Error sincronizando:', e);
     } finally {
-      setLoading(false);
       setSyncing(false);
     }
   };
@@ -186,23 +177,6 @@ export default function App() {
   useEffect(() => {
     fetchData();
   }, [apiUrl]);
-
-  // Chequeo de notificaciones push
-  useEffect(() => {
-    if (!notifEnabled || !currentUser || matches.length === 0) return;
-
-    matches.forEach(m => {
-      const mySlot = (m.players || []).find(p => p.id === currentUser.id || p.name.toLowerCase().includes(currentUser.name.toLowerCase()));
-      if (mySlot && mySlot.dinner === 'PENDIENTE') {
-        if ('Notification' in window && Notification.permission === 'granted') {
-          new Notification('⚠️ Cena Pendiente', {
-            body: `No has confirmado si te quedas a cenar para el partido de ${m.date}.`,
-            icon: 'https://cdn-icons-png.flaticon.com/512/2855/2855613.png'
-          });
-        }
-      }
-    });
-  }, [matches, currentUser, notifEnabled]);
 
   const handleSelectUser = (user) => {
     setCurrentUser(user);
@@ -338,27 +312,63 @@ export default function App() {
     }
   };
 
-  const currentMatch = matches.find(m => m.id === selectedMatchId);
+  // Enviar notificación a los pendientes
+  const handleNotifyPending = (pendingList, dateLabel) => {
+    if (!pendingList || pendingList.length === 0) {
+      alert('¡No hay ningún jugador con estado pendiente para esta fecha!');
+      return;
+    }
 
-  // Generador de aviso a Club / Restaurante por WhatsApp
-  const handleShareClubWhatsapp = () => {
-    if (!currentMatch) return;
-    const confirmedPlayers = (currentMatch.players || []).filter(p => p.dinner === 'SI').map(p => p.name);
-    const confirmedGuests = (currentMatch.guests || []).map(g => g.name);
-    const totalCount = confirmedPlayers.length + confirmedGuests.length;
+    if ('Notification' in window && Notification.permission === 'granted') {
+      new Notification('📢 Confirmación de Cena Requerida', {
+        body: `Hay ${pendingList.length} jugadores pendientes de confirmar cena para ${dateLabel}. Por favor entra en la app y confirma.`,
+        icon: 'https://cdn-icons-png.flaticon.com/512/2855/2855613.png'
+      });
+      alert(`Se ha lanzado el aviso para ${pendingList.length} jugadores pendientes.`);
+    } else {
+      alert(`Para enviar avisos automáticos, activa primero las Notificaciones en el engranaje ⚙️ de la cabecera.`);
+    }
+  };
+
+  // Avisar al club por WhatsApp con el acumulado de la fecha seleccionada
+  const handleShareClubGlobalWhatsapp = (dateTarget, yesList, guestsList) => {
+    const totalCount = yesList.length + guestsList.length;
 
     let msg = `🎾 *RESERVA 3º TIEMPO - PÁDEL CTC*\n`;
-    msg += `📅 *Partido:* ${currentMatch.date}\n`;
-    msg += `👥 *Total Comensales:* ${totalCount} personas\n\n`;
-    msg += `*Jugadores:* \n` + (confirmedPlayers.length ? confirmedPlayers.map(n => `- ${n}`).join('\n') : '- Ninguno aún') + '\n';
-    if (confirmedGuests.length) {
-      msg += `\n*Acompañantes:* \n` + confirmedGuests.map(g => `- ${g}`).join('\n') + '\n';
+    msg += `📅 *Fecha:* ${dateTarget}\n`;
+    msg += `👥 *Total Comensales Confirmados:* ${totalCount} personas\n\n`;
+    msg += `*Jugadores:* \n` + (yesList.length ? yesList.map(n => `- ${n}`).join('\n') : '- Ninguno aún') + '\n';
+    if (guestsList.length) {
+      msg += `\n*Acompañantes:* \n` + guestsList.map(g => `- ${g}`).join('\n') + '\n';
     }
     msg += `\nConfirmado vía App Pádel CTC.`;
 
     const encoded = encodeURI(msg);
     window.open(`https://api.whatsapp.com/send?text=${encoded}`, '_blank');
   };
+
+  const currentMatch = matches.find(m => m.id === selectedMatchId);
+
+  // Lista única de fechas de partidos para el selector de cena
+  const availableDates = Array.from(new Set(matches.map(m => m.date)));
+
+  // Filtro de comensales para la fecha seleccionada en el módulo Cena
+  const matchesForDinner = matches.filter(m => m.date === (selectedDinnerDate || (matches[0] && matches[0].date)));
+  const dinnerYes = [];
+  const dinnerNo = [];
+  const dinnerPending = [];
+  const dinnerGuests = [];
+
+  matchesForDinner.forEach(m => {
+    (m.players || []).forEach(p => {
+      if (p.dinner === 'SI') dinnerYes.push(p.name);
+      else if (p.dinner === 'NO') dinnerNo.push(p.name);
+      else dinnerPending.push(p.name);
+    });
+    (m.guests || []).forEach(g => {
+      dinnerGuests.push(g.name);
+    });
+  });
 
   if (!currentUser) {
     return (
@@ -456,7 +466,6 @@ export default function App() {
                   {currentMatch.grupo}
                 </span>
 
-                {/* BOTÓN MARCADOR CONDICIONAL */}
                 {(() => {
                   const { canReport } = parseMatchTiming(currentMatch.date);
                   return (
@@ -481,7 +490,7 @@ export default function App() {
                 📍 {currentMatch.location}
               </p>
 
-              {/* BANNER 2 HORAS DESPUÉS */}
+              {/* BANNER +2H */}
               {currentMatch.status !== 'FINALIZADO' && parseMatchTiming(currentMatch.date).shouldPrompt && (
                 <div className="bg-amber-50 border border-amber-300 text-amber-900 rounded-xl p-3 text-xs font-semibold my-3 flex items-center justify-between">
                   <span>⚠️ Han pasado 2h. Reporta el resultado oficial.</span>
@@ -519,41 +528,19 @@ export default function App() {
                 </div>
               )}
 
-              {/* TARJETA 3º TIEMPO Y RESERVA AL CLUB */}
-              <div className="bg-emerald-50/70 border border-emerald-200 rounded-2xl p-4 my-4">
-                <div className="flex justify-between items-center mb-2">
-                  <div>
-                    <h4 className="text-xs font-black text-emerald-950 uppercase tracking-wide">
-                      🍻 3º Tiempo & Reserva Club
-                    </h4>
-                    <p className="text-[11px] text-emerald-800">
-                      Total comensales confirmados: <strong>{
-                        (currentMatch.players || []).filter(p => p.dinner === 'SI').length + (currentMatch.guests || []).length
-                      }</strong>
-                    </p>
-                  </div>
-                  <button
-                    onClick={handleShareClubWhatsapp}
-                    className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1 shadow-sm transition"
-                  >
-                    📲 Avisar al Club
-                  </button>
-                </div>
-              </div>
-
               {/* ENLACE PLAYTOMIC */}
               {currentMatch.url && (
                 <a
                   href={currentMatch.url}
                   target="_blank"
                   rel="noreferrer"
-                  className="w-full bg-blue-50 text-blue-700 font-bold py-2 rounded-xl text-xs flex items-center justify-center gap-1.5 hover:bg-blue-100 transition"
+                  className="w-full bg-blue-50 text-blue-700 font-bold py-2 rounded-xl text-xs flex items-center justify-center gap-1.5 hover:bg-blue-100 transition mt-2"
                 >
                   🔗 Abrir en Playtomic
                 </a>
               )}
 
-              {/* SUGERENCIA VINCULACIÓN */}
+              {/* VINCULACIÓN */}
               {(() => {
                 const targetSlot = (currentMatch.players || []).find(p =>
                   p.id !== currentUser.id &&
@@ -585,7 +572,7 @@ export default function App() {
                 return null;
               })()}
 
-              {/* JUGADORES Y EQUIPOS */}
+              {/* JUGADORES */}
               <div className="mt-5 space-y-4">
                 <h3 className="text-xs font-black text-slate-800 uppercase tracking-wider">
                   Jugadores Convocados (Parejas y Cenas)
@@ -670,18 +657,27 @@ export default function App() {
         ) : (
           /* PESTAÑAS PRINCIPALES */
           <div className="space-y-4">
-            <div className="flex bg-slate-200/80 p-1 rounded-2xl">
+            {/* TABS DE NAVEGACIÓN */}
+            <div className="flex bg-slate-200/80 p-1 rounded-2xl text-[11px] font-black">
               <button
                 onClick={() => setActiveTab('partidos')}
-                className={`flex-1 py-2 text-xs font-black rounded-xl transition ${
+                className={`flex-1 py-2 rounded-xl transition ${
                   activeTab === 'partidos' ? 'bg-white shadow text-slate-900' : 'text-slate-600'
                 }`}
               >
                 Partidos 🎾
               </button>
               <button
+                onClick={() => setActiveTab('cenas')}
+                className={`flex-1 py-2 rounded-xl transition ${
+                  activeTab === 'cenas' ? 'bg-white shadow text-emerald-800' : 'text-slate-600'
+                }`}
+              >
+                Cena & Club 🍻
+              </button>
+              <button
                 onClick={() => setActiveTab('rankings')}
-                className={`flex-1 py-2 text-xs font-black rounded-xl transition ${
+                className={`flex-1 py-2 rounded-xl transition ${
                   activeTab === 'rankings' ? 'bg-white shadow text-slate-900' : 'text-slate-600'
                 }`}
               >
@@ -689,7 +685,7 @@ export default function App() {
               </button>
               <button
                 onClick={() => setActiveTab('bote')}
-                className={`flex-1 py-2 text-xs font-black rounded-xl transition ${
+                className={`flex-1 py-2 rounded-xl transition ${
                   activeTab === 'bote' ? 'bg-white shadow text-slate-900' : 'text-slate-600'
                 }`}
               >
@@ -697,7 +693,7 @@ export default function App() {
               </button>
             </div>
 
-            {/* LISTA DE PARTIDOS */}
+            {/* TAB 1: PARTIDOS */}
             {activeTab === 'partidos' && (
               <div className="space-y-3">
                 {matches.length === 0 ? (
@@ -738,7 +734,116 @@ export default function App() {
               </div>
             )}
 
-            {/* TAB RANKINGS */}
+            {/* TAB 2: CENA & CLUB (APARTADO INDEPENDIENTE) */}
+            {activeTab === 'cenas' && (
+              <div className="space-y-4">
+                {/* SELECTOR DE FECHA / JORNADA */}
+                <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-xs">
+                  <label className="block text-xs font-bold text-slate-700 mb-2 uppercase tracking-wide">
+                    Seleccionar Jornada de Cena:
+                  </label>
+                  <select
+                    value={selectedDinnerDate}
+                    onChange={(e) => setSelectedDinnerDate(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 text-xs font-bold text-slate-800"
+                  >
+                    {availableDates.map(d => (
+                      <option key={d} value={d}>{d}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* TARJETA RESUMEN Y ACCIONES DE AVISO */}
+                <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-xs space-y-4">
+                  <div className="flex justify-between items-center pb-3 border-b border-slate-100">
+                    <div>
+                      <h3 className="text-sm font-black text-slate-900">Estado de la Reserva</h3>
+                      <p className="text-xs text-slate-500">{selectedDinnerDate}</p>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-2xl font-black text-emerald-600">
+                        {dinnerYes.length + dinnerGuests.length}
+                      </span>
+                      <span className="text-[10px] text-slate-400 block font-bold">MESA PARA</span>
+                    </div>
+                  </div>
+
+                  {/* DESGLOSE: SÍ, NO, PENDIENTES */}
+                  <div className="grid grid-cols-3 gap-2 text-center">
+                    <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-2.5">
+                      <span className="text-base font-black text-emerald-700 block">{dinnerYes.length + dinnerGuests.length}</span>
+                      <span className="text-[10px] font-bold text-emerald-900 uppercase">Cenan SÍ</span>
+                    </div>
+                    <div className="bg-rose-50 border border-rose-200 rounded-xl p-2.5">
+                      <span className="text-base font-black text-rose-700 block">{dinnerNo.length}</span>
+                      <span className="text-[10px] font-bold text-rose-900 uppercase">Se Rajan</span>
+                    </div>
+                    <div className="bg-amber-50 border border-amber-200 rounded-xl p-2.5">
+                      <span className="text-base font-black text-amber-700 block">{dinnerPending.length}</span>
+                      <span className="text-[10px] font-bold text-amber-900 uppercase">Pendientes</span>
+                    </div>
+                  </div>
+
+                  {/* LISTAS DETALLADAS */}
+                  <div className="space-y-3 pt-2 text-xs">
+                    {/* Confirmados */}
+                    <div>
+                      <span className="font-extrabold text-emerald-800 block mb-1">
+                        🟢 Confirmados ({dinnerYes.length + dinnerGuests.length}):
+                      </span>
+                      <div className="flex flex-wrap gap-1.5">
+                        {dinnerYes.concat(dinnerGuests).map((name, i) => (
+                          <span key={i} className="bg-emerald-100 text-emerald-900 px-2 py-1 rounded-lg font-semibold text-[11px]">
+                            {name}
+                          </span>
+                        ))}
+                        {dinnerYes.length === 0 && dinnerGuests.length === 0 && (
+                          <span className="text-slate-400 italic text-[11px]">Nadie confirmado aún</span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Pendientes */}
+                    <div>
+                      <span className="font-extrabold text-amber-800 block mb-1">
+                        🟡 Sin responder ({dinnerPending.length}):
+                      </span>
+                      <div className="flex flex-wrap gap-1.5">
+                        {dinnerPending.map((name, i) => (
+                          <span key={i} className="bg-amber-100 text-amber-900 px-2 py-1 rounded-lg font-semibold text-[11px]">
+                            {name}
+                          </span>
+                        ))}
+                        {dinnerPending.length === 0 && (
+                          <span className="text-slate-400 italic text-[11px]">¡Todos han respondido!</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* ACCIONES: PUSH A PENDIENTES & WHATSAPP CLUB */}
+                  <div className="pt-2 space-y-2">
+                    {dinnerPending.length > 0 && (
+                      <button
+                        onClick={() => handleNotifyPending(dinnerPending, selectedDinnerDate)}
+                        className="w-full bg-amber-500 hover:bg-amber-600 text-white font-bold py-2.5 rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-sm transition"
+                      >
+                        🔔 Enviar Notificación Push a los {dinnerPending.length} Pendientes
+                      </button>
+                    )}
+
+                    <button
+                      onClick={() => handleShareClubGlobalWhatsapp(selectedDinnerDate, dinnerYes, dinnerGuests)}
+                      className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-sm transition"
+                    >
+                      📲 Avisar al Restaurante / Club por WhatsApp ({dinnerYes.length + dinnerGuests.length} comensales)
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* TAB 3: RANKINGS */}
             {activeTab === 'rankings' && (
               <div className="bg-white rounded-2xl p-4 border border-slate-200">
                 <div className="flex gap-1.5 mb-4">
@@ -783,12 +888,12 @@ export default function App() {
               </div>
             )}
 
-            {/* TAB BOTE */}
+            {/* TAB 4: BOTE */}
             {activeTab === 'bote' && (
               <div className="bg-white rounded-2xl p-4 border border-slate-200 space-y-3">
                 <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-900">
                   <p className="font-bold">💶 Deuda acumulada del Bote</p>
-                  <p className="text-[11px] mt-0.5">Calculada automáticamente solo sobre partidos jugados y cenas saltadas.</p>
+                  <p className="text-[11px] mt-0.5">Calculada automáticamente sobre partidos disputados y cenas saltadas.</p>
                 </div>
 
                 <div className="space-y-2">
@@ -828,9 +933,7 @@ export default function App() {
                       key={num}
                       onClick={() => setWinnerTeam(num)}
                       className={`flex-1 py-2 font-bold rounded-xl border transition ${
-                        winnerTeam === num
-                          ? 'bg-blue-600 text-white border-blue-600'
-                          : 'bg-slate-50 text-slate-700 border-slate-200'
+                        winnerTeam === num ? 'bg-blue-600 text-white border-blue-600' : 'bg-slate-50 text-slate-700 border-slate-200'
                       }`}
                     >
                       Pareja {num}
@@ -877,4 +980,44 @@ export default function App() {
       />
     </div>
   );
+}
+SCRIPT PARA RESETEAR A 0 LA BASE DE DATOS EN APPS SCRIPT
+Pega esta función auxiliar al final de tu archivo en Google Apps Script para vaciar partidos jugados, asistencias erróneas y deudas con 1 solo clic:
+
+JavaScript
+/**
+ * EJECUTAR PARA DEJAR A 0 PUNTOS, ASISTENCIAS Y DEUDAS:
+ * Limpia la pestaña Asistencia y reinicia todos los partidos a PROGRAMADO.
+ */
+function resetearTodoAZero() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  
+  // 1. Limpiar Asistencia dejando solo cabecera
+  const hojaA = ss.getSheetByName("Asistencia");
+  if (hojaA && hojaA.getLastRow() > 1) {
+    hojaA.getRange(2, 1, hojaA.getLastRow() - 1, hojaA.getLastColumn()).clearContent();
+    Logger.log("Pestaña Asistencia vaciada.");
+  }
+
+  // 2. Limpiar Invitados dejando solo cabecera
+  const hojaI = ss.getSheetByName("Invitados_Cena");
+  if (hojaI && hojaI.getLastRow() > 1) {
+    hojaI.getRange(2, 1, hojaI.getLastRow() - 1, hojaI.getLastColumn()).clearContent();
+    Logger.log("Pestaña Invitados_Cena vaciada.");
+  }
+
+  // 3. Poner todos los partidos a PROGRAMADO y marcador vacío
+  const hojaP = ss.getSheetByName("Partidos");
+  if (hojaP && hojaP.getLastRow() > 1) {
+    for (let r = 2; r <= hojaP.getLastRow(); r++) {
+      hojaP.getRange(r, 6).setValue("PROGRAMADO"); // Estado
+      hojaP.getRange(r, 7).setValue("");           // Marcador
+    }
+    Logger.log("Partidos restablecidos a PROGRAMADO.");
+  }
+
+  // 4. Volver a inyectar las fórmulas limpias
+  repararFormulasJugadores();
+  
+  Logger.log("✅ Sistema restablecido por completo a 0 puntos y 0 € de bote.");
 }
