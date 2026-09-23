@@ -155,8 +155,8 @@ function CriteriosModal({ isOpen, onClose }) {
   );
 }
 
-// Modal Perfil de Usuario
-function UserProfileModal({ isOpen, onClose, user, matches, onPhotoUploaded }) {
+// Modal Perfil de Usuario con Notificaciones Push y Subida de Foto
+function UserProfileModal({ isOpen, onClose, user, matches, onPhotoUploaded, notifEnabled, onToggleNotif }) {
   const fileInputRef = useRef(null);
   const [uploading, setUploading] = useState(false);
 
@@ -203,12 +203,7 @@ function UserProfileModal({ isOpen, onClose, user, matches, onPhotoUploaded }) {
   };
 
   const stats = (() => {
-    let played = 0;
-    let won = 0;
-    let lost = 0;
-    let dinnerYes = 0;
-    let dinnerNo = 0;
-
+    let played = 0, won = 0, lost = 0, dinnerYes = 0, dinnerNo = 0;
     const partnerStats = {};
     const rivalStats = {};
 
@@ -228,7 +223,6 @@ function UserProfileModal({ isOpen, onClose, user, matches, onPhotoUploaded }) {
 
       (m.players || []).forEach(p => {
         if (p.name.toLowerCase() === user.name.toLowerCase()) return;
-
         if (p.team === myTeam) {
           if (!partnerStats[p.name]) partnerStats[p.name] = { played: 0, won: 0 };
           partnerStats[p.name].played++;
@@ -241,38 +235,18 @@ function UserProfileModal({ isOpen, onClose, user, matches, onPhotoUploaded }) {
       });
     });
 
-    let bestPartner = null;
-    let worstPartner = null;
-    let bestPartnerPct = -1;
-    let worstPartnerPct = 999;
-
+    let bestPartner = null, worstPartner = null, bestPartnerPct = -1, worstPartnerPct = 999;
     Object.entries(partnerStats).forEach(([name, data]) => {
       const pct = (data.won / data.played) * 100;
-      if (pct > bestPartnerPct) {
-        bestPartnerPct = pct;
-        bestPartner = { name, ...data, pct: pct.toFixed(0) };
-      }
-      if (pct < worstPartnerPct) {
-        worstPartnerPct = pct;
-        worstPartner = { name, ...data, pct: pct.toFixed(0) };
-      }
+      if (pct > bestPartnerPct) { bestPartnerPct = pct; bestPartner = { name, ...data, pct: pct.toFixed(0) }; }
+      if (pct < worstPartnerPct) { worstPartnerPct = pct; worstPartner = { name, ...data, pct: pct.toFixed(0) }; }
     });
 
-    let hardestRival = null;
-    let easiestRival = null;
-    let hardestPct = 999;
-    let easiestPct = -1;
-
+    let hardestRival = null, easiestRival = null, hardestPct = 999, easiestPct = -1;
     Object.entries(rivalStats).forEach(([name, data]) => {
       const pct = (data.wonAgainst / data.played) * 100;
-      if (pct < hardestPct) {
-        hardestPct = pct;
-        hardestRival = { name, ...data, pct: pct.toFixed(0) };
-      }
-      if (pct > easiestPct) {
-        easiestPct = pct;
-        easiestRival = { name, ...data, pct: pct.toFixed(0) };
-      }
+      if (pct < hardestPct) { hardestPct = pct; hardestRival = { name, ...data, pct: pct.toFixed(0) }; }
+      if (pct > easiestPct) { easiestPct = pct; easiestRival = { name, ...data, pct: pct.toFixed(0) }; }
     });
 
     return {
@@ -287,6 +261,7 @@ function UserProfileModal({ isOpen, onClose, user, matches, onPhotoUploaded }) {
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-3xl max-w-sm w-full max-h-[90vh] overflow-y-auto p-5 shadow-2xl text-left space-y-4">
+        {/* Cabecera */}
         <div className="flex items-center justify-between border-b pb-4">
           <div className="flex items-center gap-3">
             <div className="relative group cursor-pointer" onClick={() => fileInputRef.current && fileInputRef.current.click()}>
@@ -311,6 +286,23 @@ function UserProfileModal({ isOpen, onClose, user, matches, onPhotoUploaded }) {
           <button onClick={onClose} className="text-slate-400 hover:text-slate-700 text-2xl font-bold">&times;</button>
         </div>
 
+        {/* ACTIVACIÓN DE NOTIFICACIONES PUSH */}
+        <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200 flex items-center justify-between">
+          <div>
+            <p className="text-xs font-bold text-slate-800">Avisos de Convocatoria y Cena</p>
+            <p className="text-[10px] text-slate-400">Recibir aviso si estás pendiente de responder</p>
+          </div>
+          <button
+            onClick={onToggleNotif}
+            className={`px-3 py-1.5 rounded-xl font-bold text-xs transition ${
+              notifEnabled ? 'bg-emerald-600 text-white shadow-xs' : 'bg-blue-600 text-white hover:bg-blue-700'
+            }`}
+          >
+            {notifEnabled ? '✓ Activas' : '🔔 Activar'}
+          </button>
+        </div>
+
+        {/* Marcadores */}
         <div className="grid grid-cols-4 gap-2 text-center">
           <div className="bg-slate-50 border border-slate-200 rounded-xl p-2">
             <span className="text-base font-black text-slate-900 block">{stats.played}</span>
@@ -330,6 +322,7 @@ function UserProfileModal({ isOpen, onClose, user, matches, onPhotoUploaded }) {
           </div>
         </div>
 
+        {/* 3º Tiempo */}
         <div className="grid grid-cols-2 gap-2 text-center">
           <div className="bg-amber-50 border border-amber-200 rounded-xl p-2.5">
             <span className="text-base font-black text-amber-800 block">{stats.dinnerYes}</span>
@@ -341,6 +334,7 @@ function UserProfileModal({ isOpen, onClose, user, matches, onPhotoUploaded }) {
           </div>
         </div>
 
+        {/* Dossier de Compañeros y Rivales */}
         <div className="space-y-2 pt-1">
           <h4 className="text-xs font-black text-slate-800 uppercase tracking-wide">Compañeros y Rivales</h4>
           <div className="grid grid-cols-2 gap-2 text-xs">
@@ -386,41 +380,23 @@ function PinModal({ isOpen, onClose, targetUser, onPinSuccess, apiUrl }) {
   const hasPinAlready = Boolean(targetUser.pin && targetUser.pin.trim() !== '');
 
   const handleNumClick = (num) => {
-    if (pinInput.length < 4) {
-      setPinInput(prev => prev + num);
-      setErrorMsg('');
-    }
+    if (pinInput.length < 4) { setPinInput(prev => prev + num); setErrorMsg(''); }
   };
-
-  const handleDelete = () => {
-    setPinInput(prev => prev.slice(0, -1));
-    setErrorMsg('');
-  };
+  const handleDelete = () => { setPinInput(prev => prev.slice(0, -1)); setErrorMsg(''); };
 
   const handleSubmit = async () => {
-    if (pinInput.length !== 4) {
-      setErrorMsg('El PIN debe tener 4 números');
-      return;
-    }
+    if (pinInput.length !== 4) { setErrorMsg('El PIN debe tener 4 números'); return; }
 
     if (hasPinAlready) {
-      if (pinInput === targetUser.pin.trim()) {
-        onPinSuccess(targetUser);
-      } else {
-        setErrorMsg('PIN incorrecto.');
-        setPinInput('');
-      }
+      if (pinInput === targetUser.pin.trim()) { onPinSuccess(targetUser); }
+      else { setErrorMsg('PIN incorrecto.'); setPinInput(''); }
     } else {
       setSaving(true);
       try {
         await fetch(apiUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-          body: JSON.stringify({
-            action: 'ESTABLECER_PIN',
-            idJugador: targetUser.id,
-            pin: pinInput
-          })
+          body: JSON.stringify({ action: 'ESTABLECER_PIN', idJugador: targetUser.id, pin: pinInput })
         });
         onPinSuccess({ ...targetUser, pin: pinInput });
       } catch (e) {
@@ -435,19 +411,12 @@ function PinModal({ isOpen, onClose, targetUser, onPinSuccess, apiUrl }) {
     <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4">
       <div className="bg-slate-900 border border-slate-700 text-white rounded-3xl max-w-xs w-full p-6 text-center shadow-2xl">
         <UserAvatar name={targetUser.name} photo={targetUser.photo} size="lg" className="mx-auto mb-3" />
-        <h3 className="text-base font-black mb-1">
-          {hasPinAlready ? `PIN de ${targetUser.name}` : `Crear PIN para ${targetUser.name}`}
-        </h3>
+        <h3 className="text-base font-black mb-1">{hasPinAlready ? `PIN de ${targetUser.name}` : `Crear PIN para ${targetUser.name}`}</h3>
         <p className="text-xs text-slate-400 mb-4">Introduce 4 números</p>
 
         <div className="flex justify-center gap-3 mb-4">
           {[0, 1, 2, 3].map(i => (
-            <div
-              key={i}
-              className={`w-4 h-4 rounded-full border-2 transition-all ${
-                pinInput.length > i ? 'bg-blue-500 border-blue-500 scale-110' : 'border-slate-600'
-              }`}
-            />
+            <div key={i} className={`w-4 h-4 rounded-full border-2 transition-all ${pinInput.length > i ? 'bg-blue-500 border-blue-500 scale-110' : 'border-slate-600'}`} />
           ))}
         </div>
 
@@ -455,29 +424,16 @@ function PinModal({ isOpen, onClose, targetUser, onPinSuccess, apiUrl }) {
 
         <div className="grid grid-cols-3 gap-2 max-w-[200px] mx-auto mb-4">
           {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(num => (
-            <button
-              key={num}
-              onClick={() => handleNumClick(String(num))}
-              className="h-11 bg-slate-800 hover:bg-slate-700 rounded-xl text-base font-bold text-white transition border border-slate-700"
-            >
+            <button key={num} onClick={() => handleNumClick(String(num))} className="h-11 bg-slate-800 hover:bg-slate-700 rounded-xl text-base font-bold text-white transition border border-slate-700">
               {num}
             </button>
           ))}
           <button onClick={onClose} className="h-11 text-xs font-bold text-slate-400">Cancelar</button>
-          <button
-            onClick={() => handleNumClick('0')}
-            className="h-11 bg-slate-800 hover:bg-slate-700 rounded-xl text-base font-bold text-white transition border border-slate-700"
-          >
-            0
-          </button>
+          <button onClick={() => handleNumClick('0')} className="h-11 bg-slate-800 hover:bg-slate-700 rounded-xl text-base font-bold text-white transition border border-slate-700">0</button>
           <button onClick={handleDelete} className="h-11 text-sm font-bold text-slate-400 flex items-center justify-center">⌫</button>
         </div>
 
-        <button
-          onClick={handleSubmit}
-          disabled={pinInput.length !== 4 || saving}
-          className="w-full py-2.5 rounded-xl font-bold text-xs bg-blue-600 hover:bg-blue-500 text-white transition"
-        >
+        <button onClick={handleSubmit} disabled={pinInput.length !== 4 || saving} className="w-full py-2.5 rounded-xl font-bold text-xs bg-blue-600 hover:bg-blue-500 text-white transition">
           {saving ? 'Guardando...' : hasPinAlready ? 'Entrar' : 'Guardar y Entrar'}
         </button>
       </div>
@@ -498,6 +454,8 @@ export default function App() {
   const [selectedDinnerDate, setSelectedDinnerDate] = useState('');
   const [showRulesModal, setShowRulesModal] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
+
+  const [notifEnabled, setNotifEnabled] = useState(() => localStorage.getItem('padel_notif') === 'true');
 
   const [currentUser, setCurrentUser] = useState(() => {
     const saved = localStorage.getItem('padel_current_user');
@@ -571,6 +529,36 @@ export default function App() {
     setSelectedMatchId(null);
   };
 
+  const handleToggleNotif = async () => {
+    if (!('Notification' in window)) {
+      alert('Tu navegador no soporta notificaciones web.');
+      return;
+    }
+
+    if (notifEnabled) {
+      setNotifEnabled(false);
+      localStorage.setItem('padel_notif', 'false');
+      alert('Notificaciones desactivadas.');
+      return;
+    }
+
+    const permission = await Notification.requestPermission();
+    if (permission === 'granted') {
+      setNotifEnabled(true);
+      localStorage.setItem('padel_notif', 'true');
+      new Notification('Pádel CTC 🎾', {
+        body: `¡Hola ${currentUser.name}! Notificaciones activadas con éxito.`,
+        icon: 'https://cdn-icons-png.flaticon.com/512/2855/2855613.png'
+      });
+      alert('¡Notificaciones activadas!');
+    } else {
+      setNotifEnabled(false);
+      localStorage.setItem('padel_notif', 'false');
+      alert('No se otorgaron permisos de notificación.');
+    }
+  };
+
+  // Subir Foto
   const handlePhotoUploaded = async (idJugador, photoBase64) => {
     setSyncing(true);
     setCurrentUser(prev => ({ ...prev, photo: photoBase64 }));
@@ -591,6 +579,7 @@ export default function App() {
     }
   };
 
+  // Borrar Partido
   const handleDeleteMatchComplete = async (matchId) => {
     if (!confirm('¿Quieres BORRAR POR COMPLETO esta reserva? Se eliminará de la app y de Google Sheets.')) return;
     setSyncing(true);
@@ -609,6 +598,7 @@ export default function App() {
     }
   };
 
+  // Crear Partido
   const handleAddPlaytomicMatch = async (e) => {
     e.preventDefault();
     if (!playtomicText.trim()) return;
@@ -618,11 +608,7 @@ export default function App() {
       const res = await fetch(apiUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({
-          action: 'CREAR_PARTIDO_PLAYTOMIC',
-          textoCrudo: playtomicText,
-          grupo: matchGroup
-        })
+        body: JSON.stringify({ action: 'CREAR_PARTIDO_PLAYTOMIC', textoCrudo: playtomicText, grupo: matchGroup })
       });
       const data = await res.json();
       if (data.ok) {
@@ -639,6 +625,7 @@ export default function App() {
     }
   };
 
+  // Recargar Playtomic
   const handleReloadPlaytomic = async (e) => {
     e.preventDefault();
     if (!reloadPlaytomicText.trim() || !selectedMatchId) return;
@@ -648,11 +635,7 @@ export default function App() {
       await fetch(apiUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({
-          action: 'ACTUALIZAR_PLAYTOMIC_PARTIDO',
-          idPartido: selectedMatchId,
-          textoCrudo: reloadPlaytomicText
-        })
+        body: JSON.stringify({ action: 'ACTUALIZAR_PLAYTOMIC_PARTIDO', idPartido: selectedMatchId, textoCrudo: reloadPlaytomicText })
       });
       setShowReloadPlaytomicModal(false);
       setReloadPlaytomicText('');
@@ -664,6 +647,7 @@ export default function App() {
     }
   };
 
+  // Guardar Suplentes Manuales
   const handleSaveManualPlayers = async (e) => {
     e.preventDefault();
     if (!selectedMatchId) return;
@@ -673,11 +657,7 @@ export default function App() {
       await fetch(apiUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({
-          action: 'MODIFICAR_JUGADORES_MANUAL',
-          idPartido: selectedMatchId,
-          jugadores: editPlayerSlots
-        })
+        body: JSON.stringify({ action: 'MODIFICAR_JUGADORES_MANUAL', idPartido: selectedMatchId, jugadores: editPlayerSlots })
       });
       setShowEditPlayersModal(false);
       fetchData();
@@ -688,18 +668,14 @@ export default function App() {
     }
   };
 
+  // Apuntarse solo a cenar
   const handleToggleSoloCena = async (dateStr, newState) => {
     setSyncing(true);
     try {
       await fetch(apiUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({
-          action: 'APUNTARSE_SOLO_CENA',
-          fecha: dateStr,
-          nombreJugador: currentUser.name,
-          estado: newState
-        })
+        body: JSON.stringify({ action: 'APUNTARSE_SOLO_CENA', fecha: dateStr, nombreJugador: currentUser.name, estado: newState })
       });
       fetchData();
     } catch (e) {
@@ -709,19 +685,14 @@ export default function App() {
     }
   };
 
+  // Voto cena en partido
   const handleUpdateDinner = async (matchId, targetId, targetName, newStatus) => {
     setSyncing(true);
     try {
       await fetch(apiUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({
-          action: 'ACTUALIZAR_CENA',
-          idPartido: matchId,
-          idJugador: targetId,
-          nombreJugador: targetName,
-          estado: newStatus
-        })
+        body: JSON.stringify({ action: 'ACTUALIZAR_CENA', idPartido: matchId, idJugador: targetId, nombreJugador: targetName, estado: newStatus })
       });
       fetchData();
     } catch (e) {
@@ -753,13 +724,7 @@ export default function App() {
       await fetch(apiUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({
-          action: 'GUARDAR_RESULTADO',
-          idPartido: matchId,
-          marcador: scoreText,
-          ganadores: ganadoresNombres,
-          reiniciar: false
-        })
+        body: JSON.stringify({ action: 'GUARDAR_RESULTADO', idPartido: matchId, marcador: scoreText, ganadores: ganadoresNombres, reiniciar: false })
       });
       setShowScoreModal(false);
       fetchData();
@@ -770,7 +735,7 @@ export default function App() {
     }
   };
 
-  // Notificación Push a los pendientes
+  // Push a pendientes
   const handleNotifyPending = (pendingList, dateLabel) => {
     if (!pendingList || pendingList.length === 0) {
       alert('¡No hay jugadores pendientes!');
@@ -783,21 +748,11 @@ export default function App() {
       });
       alert(`Aviso enviado para los ${pendingList.length} pendientes.`);
     } else {
-      if ('Notification' in window) {
-        Notification.requestPermission().then(permission => {
-          if (permission === 'granted') {
-            alert('¡Notificaciones activadas! Vuelve a pulsar el botón.');
-          } else {
-            alert('Permiso de notificaciones denegado.');
-          }
-        });
-      } else {
-        alert('Este navegador no soporta notificaciones.');
-      }
+      alert('Activa primero las Notificaciones en tu Perfil 👤 pulsando en tu avatar arriba a la izquierda.');
     }
   };
 
-  // Compartir comensales por WhatsApp
+  // WhatsApp
   const handleShareClubWhatsapp = (dateTarget, yesList, guestsList) => {
     const totalCount = yesList.length + guestsList.length;
     let msg = `🎾 *RESERVA 3º TIEMPO - PÁDEL CTC*\n`;
@@ -828,14 +783,13 @@ export default function App() {
     return players.filter(p => (p.group || 'chicos').toLowerCase() === myGroup);
   }, [players, myGroup]);
 
-  // Lista de fechas únicas para la cena
+  // Lista de fechas únicas para la cena normalizadas
   const availableDinnerDates = useMemo(() => {
     const datesMap = new Map();
     matches.forEach(m => {
       const cleanKey = extractCleanDate(m.date);
       if (cleanKey && cleanKey !== 'sin fecha') {
         if (!datesMap.has(cleanKey)) {
-          // Guardar una versión visual bonita con la primera letra en mayúscula
           const niceLabel = cleanKey.charAt(0).toUpperCase() + cleanKey.slice(1);
           datesMap.set(cleanKey, niceLabel);
         }
@@ -846,7 +800,7 @@ export default function App() {
 
   const activeDinnerKey = selectedDinnerDate || (availableDinnerDates.length > 0 ? availableDinnerDates[0].key : '');
 
-  // Buscar todos los partidos que coincidan en la misma fecha limpia normalizada
+  // Partidos del día de la cena
   const matchesForDinner = useMemo(() => {
     if (!activeDinnerKey) return [];
     return matches.filter(m => extractCleanDate(m.date) === activeDinnerKey);
@@ -887,7 +841,6 @@ export default function App() {
 
   const isUserInDinner = dinnerYes.some(item => item.name === currentUser?.name);
 
-  // Etiqueta visual para la fecha actual de cena
   const currentVisualDinnerLabel = useMemo(() => {
     const found = availableDinnerDates.find(d => d.key === activeDinnerKey);
     return found ? found.label : (activeDinnerKey || 'Jornada seleccionada');
@@ -939,7 +892,7 @@ export default function App() {
           <div
             onClick={() => setShowProfileModal(true)}
             className="flex items-center gap-2.5 cursor-pointer group"
-            title="Ver mis estadísticas y cambiar foto"
+            title="Ver estadísticas y activar notificaciones"
           >
             <UserAvatar name={currentUser.name} photo={currentUser.photo} size="md" className="group-hover:ring-2 group-hover:ring-blue-500 transition" />
             <div>
@@ -1035,12 +988,7 @@ export default function App() {
                 <button
                   onClick={() => {
                     const currentNames = (currentMatch.players || []).map(p => p.name);
-                    setEditPlayerSlots([
-                      currentNames[0] || '',
-                      currentNames[1] || '',
-                      currentNames[2] || '',
-                      currentNames[3] || ''
-                    ]);
+                    setEditPlayerSlots([currentNames[0] || '', currentNames[1] || '', currentNames[2] || '', currentNames[3] || '']);
                     setShowEditPlayersModal(true);
                   }}
                   className="py-2 px-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold rounded-xl border border-slate-200 transition flex items-center justify-center gap-1"
@@ -1139,33 +1087,25 @@ export default function App() {
             <div className="flex bg-slate-200/80 p-1 rounded-2xl text-[11px] font-black">
               <button
                 onClick={() => setActiveTab('partidos')}
-                className={`flex-1 py-2 rounded-xl transition ${
-                  activeTab === 'partidos' ? 'bg-white shadow text-slate-900' : 'text-slate-600'
-                }`}
+                className={`flex-1 py-2 rounded-xl transition ${activeTab === 'partidos' ? 'bg-white shadow text-slate-900' : 'text-slate-600'}`}
               >
                 Partidos 🎾
               </button>
               <button
                 onClick={() => setActiveTab('cenas')}
-                className={`flex-1 py-2 rounded-xl transition ${
-                  activeTab === 'cenas' ? 'bg-white shadow text-emerald-800' : 'text-slate-600'
-                }`}
+                className={`flex-1 py-2 rounded-xl transition ${activeTab === 'cenas' ? 'bg-white shadow text-emerald-800' : 'text-slate-600'}`}
               >
                 Cena & Club 🍻
               </button>
               <button
                 onClick={() => setActiveTab('rankings')}
-                className={`flex-1 py-2 rounded-xl transition ${
-                  activeTab === 'rankings' ? 'bg-white shadow text-slate-900' : 'text-slate-600'
-                }`}
+                className={`flex-1 py-2 rounded-xl transition ${activeTab === 'rankings' ? 'bg-white shadow text-slate-900' : 'text-slate-600'}`}
               >
                 Rankings 🏆
               </button>
               <button
                 onClick={() => setActiveTab('bote')}
-                className={`flex-1 py-2 rounded-xl transition ${
-                  activeTab === 'bote' ? 'bg-white shadow text-slate-900' : 'text-slate-600'
-                }`}
+                className={`flex-1 py-2 rounded-xl transition ${activeTab === 'bote' ? 'bg-white shadow text-slate-900' : 'text-slate-600'}`}
               >
                 Bote 💶
               </button>
@@ -1190,9 +1130,7 @@ export default function App() {
                     <button
                       key={t.key}
                       onClick={() => setFilterTime(t.key)}
-                      className={`flex-1 py-1.5 rounded-xl transition ${
-                        filterTime === t.key ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
-                      }`}
+                      className={`flex-1 py-1.5 rounded-xl transition ${filterTime === t.key ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'}`}
                     >
                       {t.label}
                     </button>
@@ -1540,9 +1478,7 @@ export default function App() {
                       type="button"
                       key={g}
                       onClick={() => setMatchGroup(g)}
-                      className={`flex-1 py-1.5 rounded-xl text-xs font-bold uppercase transition ${
-                        matchGroup === g ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600'
-                      }`}
+                      className={`flex-1 py-1.5 rounded-xl text-xs font-bold uppercase transition ${matchGroup === g ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600'}`}
                     >
                       {g}
                     </button>
@@ -1563,7 +1499,7 @@ export default function App() {
               </div>
 
               <div className="flex gap-2 pt-1">
-                <button type="button" onClick={() => setShowAddModal(false)} className="flex-1 py-2 bg-slate-100 text-slate-600 font-bold rounded-xl text-xs">Cancelar</button>
+                <button type="button" onClick={() => setShowAddModal(false)} className="flex-1 py-2 bg-slate-100 text-slate-600 rounded-xl text-xs">Cancelar</button>
                 <button type="submit" disabled={syncing} className="flex-1 py-2 bg-blue-600 text-white rounded-xl text-xs font-bold">Crear</button>
               </div>
             </form>
@@ -1584,9 +1520,7 @@ export default function App() {
                     <button
                       key={num}
                       onClick={() => setWinnerTeam(num)}
-                      className={`flex-1 py-2 font-bold rounded-xl border transition ${
-                        winnerTeam === num ? 'bg-blue-600 text-white border-blue-600' : 'bg-slate-50 text-slate-700 border-slate-200'
-                      }`}
+                      className={`flex-1 py-2 font-bold rounded-xl border transition ${winnerTeam === num ? 'bg-blue-600 text-white border-blue-600' : 'bg-slate-50 text-slate-700 border-slate-200'}`}
                     >
                       Pareja {num}
                     </button>
@@ -1622,6 +1556,8 @@ export default function App() {
         user={currentUser}
         matches={matches}
         onPhotoUploaded={handlePhotoUploaded}
+        notifEnabled={notifEnabled}
+        onToggleNotif={handleToggleNotif}
       />
     </div>
   );
