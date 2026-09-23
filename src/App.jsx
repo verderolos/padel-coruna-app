@@ -37,11 +37,11 @@ function CriteriosModal({ isOpen, onClose }) {
 
         <section className="mb-4 bg-amber-50 border border-amber-200 rounded-xl p-3.5">
           <h4 className="font-extrabold text-amber-900 text-xs uppercase tracking-wide mb-1">💶 Bote del 3º Tiempo</h4>
-          <p className="text-xs text-amber-950 mb-2">Se calcula automáticamente sobre partidos finalizados:</p>
+          <p className="text-xs text-amber-950 mb-2">Se calcula automáticamente sobre partidos disputados:</p>
           <ul className="text-xs text-amber-900 space-y-1 list-disc list-inside">
             <li><strong>Derrota jugada:</strong> +1 € por partido perdido.</li>
             <li><strong>Victoria jugada:</strong> 0 € (el ganador no paga bote).</li>
-            <li><strong>Rajarse de la cena:</strong> +1 € por no quedarse habiendo jugado.</li>
+            <li><strong>Rajarse de la cena:</strong> +1 € por no quedarse al 3º tiempo habiendo jugado.</li>
           </ul>
         </section>
 
@@ -66,7 +66,7 @@ function CriteriosModal({ isOpen, onClose }) {
   );
 }
 
-// Modal de Configuración y Notificaciones
+// Modal de Configuración
 function SettingsModal({ isOpen, onClose, user, onSaveNotifications, notifEnabled }) {
   if (!isOpen) return null;
 
@@ -126,6 +126,145 @@ function SettingsModal({ isOpen, onClose, user, onSaveNotifications, notifEnable
   );
 }
 
+// Modal de Validación / Creación de PIN de 4 cifras
+function PinModal({ isOpen, onClose, targetUser, onPinSuccess, apiUrl }) {
+  const [pinInput, setPinInput] = useState('');
+  const [errorMsg, setErrorMsg] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  if (!isOpen || !targetUser) return null;
+
+  const hasPinAlready = Boolean(targetUser.pin && targetUser.pin.trim() !== '');
+
+  const handleNumClick = (num) => {
+    if (pinInput.length < 4) {
+      setPinInput(prev => prev + num);
+      setErrorMsg('');
+    }
+  };
+
+  const handleDelete = () => {
+    setPinInput(prev => prev.slice(0, -1));
+    setErrorMsg('');
+  };
+
+  const handleSubmit = async () => {
+    if (pinInput.length !== 4) {
+      setErrorMsg('El PIN debe tener 4 números');
+      return;
+    }
+
+    if (hasPinAlready) {
+      // Validar si coincide con el PIN registrado
+      if (pinInput === targetUser.pin.trim()) {
+        onPinSuccess(targetUser);
+      } else {
+        setErrorMsg('PIN incorrecto. Inténtalo de nuevo.');
+        setPinInput('');
+      }
+    } else {
+      // Definir PIN por primera vez y guardar en Sheets
+      setSaving(true);
+      try {
+        await fetch(apiUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({
+            action: 'ESTABLECER_PIN',
+            idJugador: targetUser.id,
+            pin: pinInput
+          })
+        });
+        const updatedUser = { ...targetUser, pin: pinInput };
+        onPinSuccess(updatedUser);
+      } catch (e) {
+        setErrorMsg('Error al guardar PIN: ' + e.message);
+      } finally {
+        setSaving(false);
+      }
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div className="bg-slate-900 border border-slate-700 text-white rounded-3xl max-w-xs w-full p-6 text-center shadow-2xl">
+        <div className="w-12 h-12 bg-blue-600 rounded-2xl flex items-center justify-center text-xl mx-auto mb-3">
+          🔒
+        </div>
+        <h3 className="text-base font-black mb-1">
+          {hasPinAlready ? `PIN de ${targetUser.name}` : `Crear PIN para ${targetUser.name}`}
+        </h3>
+        <p className="text-xs text-slate-400 mb-4">
+          {hasPinAlready
+            ? 'Introduce tu PIN de 4 dígitos para acceder'
+            : 'Elige un PIN de 4 dígitos para proteger tu perfil'}
+        </p>
+
+        {/* Display del PIN (puntos) */}
+        <div className="flex justify-center gap-3 mb-4">
+          {[0, 1, 2, 3].map(i => (
+            <div
+              key={i}
+              className={`w-4 h-4 rounded-full border-2 transition-all ${
+                pinInput.length > i
+                  ? 'bg-blue-500 border-blue-500 scale-110'
+                  : 'border-slate-600 bg-transparent'
+              }`}
+            />
+          ))}
+        </div>
+
+        {errorMsg && (
+          <p className="text-rose-400 text-xs font-semibold mb-3">{errorMsg}</p>
+        )}
+
+        {/* Teclado numérico */}
+        <div className="grid grid-cols-3 gap-2 max-w-[200px] mx-auto mb-4">
+          {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(num => (
+            <button
+              key={num}
+              onClick={() => handleNumClick(String(num))}
+              className="h-11 bg-slate-800 hover:bg-slate-700 active:bg-blue-600 rounded-xl text-base font-bold text-white transition border border-slate-700/60"
+            >
+              {num}
+            </button>
+          ))}
+          <button
+            onClick={onClose}
+            className="h-11 text-xs font-bold text-slate-400 hover:text-white transition"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={() => handleNumClick('0')}
+            className="h-11 bg-slate-800 hover:bg-slate-700 active:bg-blue-600 rounded-xl text-base font-bold text-white transition border border-slate-700/60"
+          >
+            0
+          </button>
+          <button
+            onClick={handleDelete}
+            className="h-11 text-sm font-bold text-slate-400 hover:text-white transition flex items-center justify-center"
+          >
+            ⌫
+          </button>
+        </div>
+
+        <button
+          onClick={handleSubmit}
+          disabled={pinInput.length !== 4 || saving}
+          className={`w-full py-2.5 rounded-xl font-bold text-xs transition ${
+            pinInput.length === 4 && !saving
+              ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-500/30'
+              : 'bg-slate-800 text-slate-500 cursor-not-allowed'
+          }`}
+        >
+          {saving ? 'Guardando PIN...' : hasPinAlready ? 'Entrar' : 'Guardar PIN y Entrar'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const [apiUrl, setApiUrl] = useState(() => localStorage.getItem('padel_api_url') || DEFAULT_API_URL);
   const [syncing, setSyncing] = useState(false);
@@ -142,17 +281,21 @@ export default function App() {
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [notifEnabled, setNotifEnabled] = useState(() => localStorage.getItem('padel_notif') === 'true');
 
-  // Usuario guardado en localStorage para auto-reconocimiento
+  // Usuario activo en sesión (recordado en el móvil)
   const [currentUser, setCurrentUser] = useState(() => {
     const saved = localStorage.getItem('padel_current_user');
     return saved ? JSON.parse(saved) : null;
   });
 
-  // Estado para el formulario de registrar nuevo usuario
+  // Modal de PIN
+  const [targetPinUser, setTargetPinUser] = useState(null);
+
+  // Formulario de alta de nuevo jugador
   const [showRegisterForm, setShowRegisterForm] = useState(false);
   const [newUserName, setNewUserName] = useState('');
   const [newUserGroup, setNewUserGroup] = useState('Chicos');
   const [newUserPlaytomic, setNewUserPlaytomic] = useState('');
+  const [newUserPin, setNewUserPin] = useState('');
 
   const [showScoreModal, setShowScoreModal] = useState(false);
   const [winnerTeam, setWinnerTeam] = useState(1);
@@ -169,16 +312,12 @@ export default function App() {
         if (json.jugadores) {
           setPlayers(json.jugadores);
 
-          // Auto-reconocimiento mediante URL (?user=marcos) si aún no había usuario guardado
-          const urlParams = new URLSearchParams(window.location.search);
-          const userParam = urlParams.get('user');
-          if (userParam && !currentUser) {
-            const matchUser = json.jugadores.find(u => 
-              u.name.toLowerCase().includes(userParam.toLowerCase()) || 
-              u.id.toLowerCase() === userParam.toLowerCase()
-            );
-            if (matchUser) {
-              handleSelectUser(matchUser);
+          // Si el usuario ya estaba en sesión, sincronizar datos frescos
+          if (currentUser) {
+            const freshCurrent = json.jugadores.find(u => u.id === currentUser.id);
+            if (freshCurrent) {
+              setCurrentUser(freshCurrent);
+              localStorage.setItem('padel_current_user', JSON.stringify(freshCurrent));
             }
           }
         }
@@ -200,9 +339,15 @@ export default function App() {
     fetchData();
   }, [apiUrl]);
 
-  const handleSelectUser = (user) => {
-    setCurrentUser(user);
-    localStorage.setItem('padel_current_user', JSON.stringify(user));
+  // Selección de usuario: abre modal de PIN para verificar
+  const handleUserClick = (user) => {
+    setTargetPinUser(user);
+  };
+
+  const handlePinSuccess = (validatedUser) => {
+    setTargetPinUser(null);
+    setCurrentUser(validatedUser);
+    localStorage.setItem('padel_current_user', JSON.stringify(validatedUser));
   };
 
   const handleLogout = () => {
@@ -211,10 +356,14 @@ export default function App() {
     setSelectedMatchId(null);
   };
 
-  // Registrar un nuevo usuario en Google Sheets y entrar directamente
+  // Registrar nuevo jugador con PIN obligatorio
   const handleRegisterUser = async (e) => {
     e.preventDefault();
     if (!newUserName.trim()) return;
+    if (newUserPin.trim().length !== 4) {
+      alert('Debes indicar un PIN de 4 números para proteger tu perfil');
+      return;
+    }
 
     setSyncing(true);
     try {
@@ -225,7 +374,8 @@ export default function App() {
           action: 'REGISTRAR_JUGADOR',
           nombre: newUserName.trim(),
           grupo: newUserGroup,
-          playtomic: newUserPlaytomic.trim()
+          playtomic: newUserPlaytomic.trim(),
+          pin: newUserPin.trim()
         })
       });
       const json = await res.json();
@@ -237,16 +387,17 @@ export default function App() {
           pJ: 0, pG: 0, cSi: 0, cNo: 0,
           ptsDeportivo: 0, ptsBarandas: 0, hibrido: 0,
           titulo: "Fichaje Estrella ⭐",
-          deuda: 0
+          deuda: 0,
+          pin: newUserPin.trim()
         };
-        handleSelectUser(createdUser);
+        handlePinSuccess(createdUser);
         setShowRegisterForm(false);
         fetchData();
       } else {
-        alert('Error al registrar: ' + (json.error || 'Error desconocido'));
+        alert('Error: ' + (json.error || 'No se pudo registrar'));
       }
     } catch (err) {
-      alert('Error de conexión al registrar: ' + err.message);
+      alert('Error de conexión: ' + err.message);
     } finally {
       setSyncing(false);
     }
@@ -407,7 +558,7 @@ export default function App() {
   const currentMatch = matches.find(m => m.id === selectedMatchId);
   const availableDates = Array.from(new Set(matches.map(m => m.date)));
   const matchesForDinner = matches.filter(m => m.date === (selectedDinnerDate || (matches[0] && matches[0].date)));
-  
+
   const dinnerYes = [];
   const dinnerNo = [];
   const dinnerPending = [];
@@ -424,7 +575,7 @@ export default function App() {
     });
   });
 
-  // PANTALLA DE ACCESO / REGISTRO
+  // PANTALLA DE ACCESO / LISTA CON PROTECCIÓN DE PIN
   if (!currentUser) {
     return (
       <div className="min-h-screen bg-slate-900 text-white flex flex-col justify-center items-center p-4">
@@ -434,11 +585,10 @@ export default function App() {
           </div>
           <h1 className="text-2xl font-black text-center mb-1">Pádel CTC</h1>
           <p className="text-slate-400 text-xs text-center mb-5">
-            {showRegisterForm ? 'Regístrate para entrar al club' : 'Selecciona tu perfil de jugador (te recordaremos)'}
+            {showRegisterForm ? 'Regístrate para entrar al club' : 'Selecciona tu perfil de jugador (protegido por PIN)'}
           </p>
 
           {!showRegisterForm ? (
-            /* LISTA DE JUGADORES EXISTENTES */
             <>
               <div className="space-y-2 max-h-64 overflow-y-auto pr-1 mb-4">
                 {players.length === 0 ? (
@@ -447,17 +597,19 @@ export default function App() {
                   players.map(u => (
                     <button
                       key={u.id}
-                      onClick={() => handleSelectUser(u)}
+                      onClick={() => handleUserClick(u)}
                       className="w-full text-left bg-slate-700/60 hover:bg-blue-600 p-3 rounded-xl flex items-center justify-between transition group border border-slate-600/40"
                     >
-                      <span className="font-semibold text-sm group-hover:text-white">{u.name}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs">🔒</span>
+                        <span className="font-semibold text-sm group-hover:text-white">{u.name}</span>
+                      </div>
                       <span className="text-xs text-slate-400 group-hover:text-blue-100">{u.titulo}</span>
                     </button>
                   ))
                 )}
               </div>
 
-              {/* BOTÓN PARA CREAR NUEVO USUARIO */}
               <button
                 onClick={() => setShowRegisterForm(true)}
                 className="w-full py-3 bg-slate-700 hover:bg-slate-600 text-blue-300 hover:text-white rounded-xl text-xs font-bold transition border border-dashed border-slate-500 flex items-center justify-center gap-1.5"
@@ -466,7 +618,7 @@ export default function App() {
               </button>
             </>
           ) : (
-            /* FORMULARIO DE ALTA DE JUGADOR */
+            /* FORMULARIO DE ALTA CON PIN */
             <form onSubmit={handleRegisterUser} className="space-y-3">
               <div>
                 <label className="block text-xs font-bold text-slate-300 mb-1">Nombre y Apellido *</label>
@@ -501,6 +653,19 @@ export default function App() {
               </div>
 
               <div>
+                <label className="block text-xs font-bold text-slate-300 mb-1">Crea tu PIN de 4 cifras (seguridad) *</label>
+                <input
+                  type="password"
+                  maxLength={4}
+                  required
+                  value={newUserPin}
+                  onChange={(e) => setNewUserPin(e.target.value.replace(/\D/g, ''))}
+                  placeholder="Ej: 1234"
+                  className="w-full bg-slate-700 border border-slate-600 rounded-xl p-2.5 text-xs text-white placeholder-slate-400 focus:outline-none focus:border-blue-500 font-bold tracking-widest text-center"
+                />
+              </div>
+
+              <div>
                 <label className="block text-xs font-bold text-slate-300 mb-1">Usuario de Playtomic (opcional)</label>
                 <input
                   type="text"
@@ -530,6 +695,15 @@ export default function App() {
             </form>
           )}
         </div>
+
+        {/* MODAL TECLADO PIN */}
+        <PinModal
+          isOpen={Boolean(targetPinUser)}
+          onClose={() => setTargetPinUser(null)}
+          targetUser={targetPinUser}
+          onPinSuccess={handlePinSuccess}
+          apiUrl={apiUrl}
+        />
       </div>
     );
   }
@@ -568,7 +742,7 @@ export default function App() {
               onClick={handleLogout}
               className="px-2.5 py-1 text-xs font-semibold bg-slate-100 hover:bg-red-50 hover:text-red-600 text-slate-600 rounded-lg transition"
             >
-              Cambiar de Jugador
+              Salir
             </button>
             <button
               onClick={() => fetchData()}
@@ -790,7 +964,6 @@ export default function App() {
         ) : (
           /* PESTAÑAS PRINCIPALES */
           <div className="space-y-4">
-            {/* TABS DE NAVEGACIÓN */}
             <div className="flex bg-slate-200/80 p-1 rounded-2xl text-[11px] font-black">
               <button
                 onClick={() => setActiveTab('partidos')}
