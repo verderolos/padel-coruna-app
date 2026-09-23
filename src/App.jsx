@@ -1,10 +1,21 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 
-// URL de tu Apps Script
+// URL REAL DE TU GOOGLE APPS SCRIPT
 const DEFAULT_API_URL = 'https://script.google.com/macros/s/AKfycbxkd-BmLpYxmLtev5wcxwsyda94bG1mFW9gtDpEAgsmhV1HCfDwn2-syPDEvBUPwiiiGw/exec';
 
 const FALLBACK_USERS = [];
 const FALLBACK_MATCHES = [];
+
+// Extraer fecha limpia (sin horas ni minutos) para unificar la cena en una única mesa por día
+function extractCleanDate(dateStr) {
+  if (!dateStr) return 'Sin fecha';
+  return dateStr
+    .replace(/\b\d{1,2}:\d{2}\b/g, '')
+    .replace(/\(\d+min\)/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/,\s*$/, '');
+}
 
 function parseMatchTiming(dateStr) {
   if (!dateStr) return { canReport: true, shouldPrompt: false };
@@ -261,6 +272,7 @@ export default function App() {
   const [matches, setMatches] = useState(FALLBACK_MATCHES);
   const [selectedMatchId, setSelectedMatchId] = useState(null);
 
+  // Fecha seleccionada para la cena (sin hora)
   const [selectedDinnerDate, setSelectedDinnerDate] = useState('');
 
   const [showRulesModal, setShowRulesModal] = useState(false);
@@ -272,6 +284,9 @@ export default function App() {
     return saved ? JSON.parse(saved) : null;
   });
 
+  // Filtro Temporal exclusivo para partidos
+  const [filterTime, setFilterTime] = useState('semana'); // 'semana' | 'proximos' | 'todos'
+
   const [targetPinUser, setTargetPinUser] = useState(null);
 
   // Registro de nuevo usuario
@@ -281,7 +296,7 @@ export default function App() {
   const [newUserPlaytomic, setNewUserPlaytomic] = useState('');
   const [newUserPin, setNewUserPin] = useState('');
 
-  // Creación de partido desde Playtomic
+  // Creación de partido desde Playtomic con selector de grupo explícito
   const [showAddModal, setShowAddModal] = useState(false);
   const [playtomicText, setPlaytomicText] = useState('');
   const [matchGroup, setMatchGroup] = useState('chicos');
@@ -312,7 +327,7 @@ export default function App() {
         if (json.partidos) {
           setMatches(json.partidos);
           if (json.partidos.length > 0 && !selectedDinnerDate) {
-            setSelectedDinnerDate(json.partidos[0].date);
+            setSelectedDinnerDate(extractCleanDate(json.partidos[0].date));
           }
         }
       }
@@ -596,24 +611,84 @@ export default function App() {
   };
 
   const currentMatch = matches.find(m => m.id === selectedMatchId);
-  const availableDates = Array.from(new Set(matches.map(m => m.date)));
-  const matchesForDinner = matches.filter(m => m.date === (selectedDinnerDate || (matches[0] && matches[0].date)));
 
-  const dinnerYes = [];
-  const dinnerNo = [];
-  const dinnerPending = [];
-  const dinnerGuests = [];
+  // --- FILTRADO AUTOMÁTICO POR GRUPO DEL USUARIO ACTIVO ---
+  const myGroup = (currentUser?.group || 'chicos').toLowerCase();
 
-  matchesForDinner.forEach(m => {
-    (m.players || []).forEach(p => {
-      if (p.dinner === 'SI') dinnerYes.push(p.name);
-      else if (p.dinner === 'NO') dinnerNo.push(p.name);
-      else dinnerPending.push(p.name);
+  // 1. Partidos del propio grupo con selector de tiempo
+  const filteredMatches = useMemo(() => {
+    return matches.filter(m => {
+      const mGroup = (m.grupo || 'chicos').toLowerCase();
+      if (mGroup !== myGroup) return false;
+
+      if (filterTime === 'todos') return true;
+      if (filterTime === 'semana') {
+        return m.week === 'actual' || m.status === 'PROGRAMADO';
+      }
+      if (filterTime === 'proximos') {
+        return m.status === 'PROGRAMADO';
+      }
+      return true;
     });
-    (m.guests || []).forEach(g => {
-      dinnerGuests.push(g.name);
+  }, [matches, myGroup, filterTime]);
+
+  // 2. Rankings y Bote filtrados para el grupo del usuario activo
+  const groupPlayers = useMemo(() => {
+    return players.filter(p => (p.group || 'chicos').toLowerCase() === myGroup);
+  }, [players, myGroup]);
+
+  // --- CENA & CLUB UNIFICADA POR DÍA (SIN HORAS) ---
+  const availableDinnerDates = useMemo(() => {
+    const datesSet = new Set();
+    matches.forEach(m => {
+      const clean = extractCleanDate(m.date);
+      if (clean) datesSet.add(clean);
     });
-  });
+    return Array.from(datesSet);
+  }, [matches]);
+
+  const activeDinnerDate = selectedDinnerDate || (availableDinnerDates.length > 0 ? availableDinnerDates[0] : '');
+
+  // Todos los partidos del día unificados para la cena
+  const matchesForDinner = useMemo(() => {
+    if (!activeDinnerDate) return [];
+    return matches.filter(m => extractCleanDate(m.date) === activeDinnerDate);
+  }, [matches, activeDinnerDate]);
+
+  // Consolidar mesa única de comensales
+  const { dinnerYes, dinnerNo, dinnerPending, dinnerGuests } = useMemo(() => {
+    const yesSet = new Set();
+    const noSet = new Set();
+    const pendingSet = new Set();
+    const guestList = [];
+
+    matchesForDinner.forEach(m => {
+      (m.players || []).forEach(p => {
+        const name = p.name;
+        if (p.dinner === 'SI') {
+          yesSet.add(name);
+          pendingSet.delete(name);
+        } else if (p.dinner === 'NO') {
+          noSet.add(name);
+          pendingSet.delete(name);
+        } else {
+          if (!yesSet.has(name) && !noSet.has(name)) {
+            pendingSet.add(name);
+          }
+        }
+      });
+      (m.guests || []).forEach(g => {
+        guestList.push(g.name);
+      });
+    });
+
+    return {
+      dinnerYes: Array.from(yesSet),
+      dinnerNo: Array.from(noSet),
+      dinnerPending: Array.from(pendingSet),
+      dinnerGuests: guestList
+    };
+  }, [matchesForDinner]);
 
   // IDENTIFICACIÓN CON PIN
   if (!currentUser) {
@@ -796,7 +871,7 @@ export default function App() {
       {/* CONTENIDO PRINCIPAL */}
       <main className="max-w-xl mx-auto px-4 py-4">
         {selectedMatchId && currentMatch ? (
-          /* DETALLE DEL PARTIDO */
+          /* DETALLE DEL PARTIDO SELECCIONADO */
           <div className="space-y-4">
             <button
               onClick={() => setSelectedMatchId(null)}
@@ -1107,10 +1182,10 @@ export default function App() {
               </button>
             </div>
 
-            {/* TAB 1: PARTIDOS */}
+            {/* TAB 1: PARTIDOS FILTRADOS AUTOMÁTICAMENTE AL GRUPO DEL USUARIO */}
             {activeTab === 'partidos' && (
               <div className="space-y-3">
-                {/* BOTÓN AÑADIR PARTIDO DESDE PLAYTOMIC */}
+                {/* BOTÓN CREAR PARTIDO PLAYTOMIC */}
                 <button
                   onClick={() => setShowAddModal(true)}
                   className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 px-4 rounded-2xl text-xs flex items-center justify-center gap-2 shadow-sm transition"
@@ -1118,14 +1193,39 @@ export default function App() {
                   <span>➕</span> Añadir Partido (Pegar desde Playtomic)
                 </button>
 
-                {matches.length === 0 ? (
+                {/* FILTRO TEMPORAL DIRECTO */}
+                <div className="flex bg-white p-1 rounded-2xl border border-slate-200 shadow-xs text-[11px] font-bold">
+                  {[
+                    { key: 'semana', label: '📅 Esta semana' },
+                    { key: 'proximos', label: '⏳ Próximos' },
+                    { key: 'todos', label: '📁 Todo el histórico' }
+                  ].map(t => (
+                    <button
+                      key={t.key}
+                      onClick={() => setFilterTime(t.key)}
+                      className={`flex-1 py-1.5 rounded-xl transition ${
+                        filterTime === t.key
+                          ? 'bg-blue-600 text-white shadow-xs'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+
+                {filteredMatches.length === 0 ? (
                   <div className="bg-white rounded-2xl p-8 text-center border border-slate-200">
                     <p className="text-2xl mb-1">🎾</p>
-                    <p className="text-sm font-bold text-slate-700">No hay partidos programados</p>
-                    <p className="text-xs text-slate-400 mt-1">Usa el botón de arriba para añadir uno pegando el texto de Playtomic.</p>
+                    <p className="text-sm font-bold text-slate-700">No hay partidos de {currentUser.group} en esta vista</p>
+                    <p className="text-xs text-slate-400 mt-1">
+                      {filterTime === 'semana'
+                        ? 'No hay partidos programados para esta semana. Pulsa en "Todo el histórico" o añade uno nuevo.'
+                        : 'Añade un nuevo partido pegando el texto de Playtomic con el botón de arriba.'}
+                    </p>
                   </div>
                 ) : (
-                  matches.map(m => (
+                  filteredMatches.map(m => (
                     <div
                       key={m.id}
                       onClick={() => setSelectedMatchId(m.id)}
@@ -1140,7 +1240,11 @@ export default function App() {
                           <p className="text-xs text-slate-500 mt-0.5">📍 {m.location}</p>
                         </div>
                         <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded ${
-                          m.status === 'FINALIZADO' ? 'bg-purple-100 text-purple-700' : m.status === 'CANCELADO' ? 'bg-rose-100 text-rose-700' : 'bg-emerald-100 text-emerald-700'
+                          m.status === 'FINALIZADO'
+                            ? 'bg-purple-100 text-purple-700'
+                            : m.status === 'CANCELADO'
+                            ? 'bg-rose-100 text-rose-700'
+                            : 'bg-emerald-100 text-emerald-700'
                         }`}>
                           {m.status}
                         </span>
@@ -1156,7 +1260,7 @@ export default function App() {
               </div>
             )}
 
-            {/* TAB 2: CENA & CLUB */}
+            {/* TAB 2: CENA & CLUB UNIFICADA POR DÍA (SIN HORAS) */}
             {activeTab === 'cenas' && (
               <div className="space-y-4">
                 <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-xs">
@@ -1164,21 +1268,24 @@ export default function App() {
                     Seleccionar Jornada de Cena:
                   </label>
                   <select
-                    value={selectedDinnerDate}
+                    value={activeDinnerDate}
                     onChange={(e) => setSelectedDinnerDate(e.target.value)}
                     className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 text-xs font-bold text-slate-800"
                   >
-                    {availableDates.map(d => (
+                    {availableDinnerDates.map(d => (
                       <option key={d} value={d}>{d}</option>
                     ))}
                   </select>
+                  <p className="text-[10px] text-slate-400 mt-1.5">
+                    💡 Agrupa todos los turnos del mismo día (ej: 19:30 y 21:00) en una sola mesa para el restaurante.
+                  </p>
                 </div>
 
                 <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-xs space-y-4">
                   <div className="flex justify-between items-center pb-3 border-b border-slate-100">
                     <div>
                       <h3 className="text-sm font-black text-slate-900">Estado de la Reserva</h3>
-                      <p className="text-xs text-slate-500">{selectedDinnerDate}</p>
+                      <p className="text-xs text-slate-500">{activeDinnerDate}</p>
                     </div>
                     <div className="text-right">
                       <span className="text-2xl font-black text-emerald-600">
@@ -1240,7 +1347,7 @@ export default function App() {
                   <div className="pt-2 space-y-2">
                     {dinnerPending.length > 0 && (
                       <button
-                        onClick={() => handleNotifyPending(dinnerPending, selectedDinnerDate)}
+                        onClick={() => handleNotifyPending(dinnerPending, activeDinnerDate)}
                         className="w-full bg-amber-500 hover:bg-amber-600 text-white font-bold py-2.5 rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-sm transition"
                       >
                         🔔 Enviar Notificación Push a los {dinnerPending.length} Pendientes
@@ -1248,7 +1355,7 @@ export default function App() {
                     )}
 
                     <button
-                      onClick={() => handleShareClubGlobalWhatsapp(selectedDinnerDate, dinnerYes, dinnerGuests)}
+                      onClick={() => handleShareClubGlobalWhatsapp(activeDinnerDate, dinnerYes, dinnerGuests)}
                       className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-sm transition"
                     >
                       📲 Avisar al Restaurante / Club por WhatsApp ({dinnerYes.length + dinnerGuests.length} comensales)
@@ -1258,9 +1365,16 @@ export default function App() {
               </div>
             )}
 
-            {/* TAB 3: RANKINGS */}
+            {/* TAB 3: RANKINGS FILTRADOS POR EL GRUPO DEL USUARIO */}
             {activeTab === 'rankings' && (
               <div className="bg-white rounded-2xl p-4 border border-slate-200">
+                <div className="flex justify-between items-center mb-3">
+                  <span className="text-[10px] font-black uppercase tracking-wider bg-blue-50 text-blue-700 px-2.5 py-1 rounded-lg border border-blue-200">
+                    Ranking {currentUser.group}
+                  </span>
+                  <span className="text-[10px] text-slate-400 font-semibold">{groupPlayers.length} jugadores</span>
+                </div>
+
                 <div className="flex gap-1.5 mb-4">
                   {['hibrido', 'deportivo', 'barandas'].map(type => (
                     <button
@@ -1276,57 +1390,70 @@ export default function App() {
                 </div>
 
                 <div className="space-y-2">
-                  {[...players]
-                    .sort((a, b) => {
-                      if (rankingType === 'deportivo') return b.ptsDeportivo - a.ptsDeportivo;
-                      if (rankingType === 'barandas') return b.ptsBarandas - a.ptsBarandas;
-                      return b.hibrido - a.hibrido;
-                    })
-                    .map((p, idx) => (
-                      <div key={p.id} className="flex items-center justify-between p-2 rounded-xl bg-slate-50 text-xs">
-                        <div className="flex items-center gap-2">
-                          <span className="font-black text-slate-400 w-4">{idx + 1}</span>
-                          <div>
-                            <p className="font-bold text-slate-900">{p.name}</p>
-                            <p className="text-[10px] text-slate-500">{p.titulo}</p>
+                  {groupPlayers.length === 0 ? (
+                    <p className="text-center text-xs text-slate-400 py-4">No hay jugadores registrados en este grupo.</p>
+                  ) : (
+                    [...groupPlayers]
+                      .sort((a, b) => {
+                        if (rankingType === 'deportivo') return b.ptsDeportivo - a.ptsDeportivo;
+                        if (rankingType === 'barandas') return b.ptsBarandas - a.ptsBarandas;
+                        return b.hibrido - a.hibrido;
+                      })
+                      .map((p, idx) => (
+                        <div key={p.id} className="flex items-center justify-between p-2 rounded-xl bg-slate-50 text-xs">
+                          <div className="flex items-center gap-2">
+                            <span className="font-black text-slate-400 w-4">{idx + 1}</span>
+                            <div>
+                              <p className="font-bold text-slate-900">{p.name}</p>
+                              <p className="text-[10px] text-slate-500">{p.titulo}</p>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <span className="font-black text-blue-600 text-sm">
+                              {rankingType === 'deportivo' ? p.ptsDeportivo : rankingType === 'barandas' ? p.ptsBarandas : p.hibrido}
+                            </span>
+                            <span className="text-[10px] text-slate-400 block">pts</span>
                           </div>
                         </div>
-                        <div className="text-right">
-                          <span className="font-black text-blue-600 text-sm">
-                            {rankingType === 'deportivo' ? p.ptsDeportivo : rankingType === 'barandas' ? p.ptsBarandas : p.hibrido}
-                          </span>
-                          <span className="text-[10px] text-slate-400 block">pts</span>
-                        </div>
-                      </div>
-                    ))}
+                      ))
+                  )}
                 </div>
               </div>
             )}
 
-            {/* TAB 4: BOTE */}
+            {/* TAB 4: BOTE FILTRADO POR EL GRUPO DEL USUARIO */}
             {activeTab === 'bote' && (
               <div className="bg-white rounded-2xl p-4 border border-slate-200 space-y-3">
                 <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-900">
-                  <p className="font-bold">💶 Deuda acumulada del Bote</p>
-                  <p className="text-[11px] mt-0.5">Calculada automáticamente sobre partidos disputados y cenas saltadas.</p>
+                  <div className="flex justify-between items-center mb-1">
+                    <p className="font-bold">💶 Bote {currentUser.group}</p>
+                    <span className="text-[10px] font-black uppercase bg-amber-100 text-amber-800 px-2 py-0.5 rounded">
+                      Total: {groupPlayers.reduce((acc, curr) => acc + (curr.deuda || 0), 0)} €
+                    </span>
+                  </div>
+                  <p className="text-[11px]">Calculado automáticamente sobre partidos disputados y cenas saltadas.</p>
                 </div>
 
                 <div className="space-y-2">
-                  {[...players]
-                    .sort((a, b) => b.deuda - a.deuda)
-                    .map(p => (
-                      <div key={p.id} className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 text-xs">
-                        <div>
-                          <p className="font-bold text-slate-900">{p.name}</p>
-                          <p className="text-[10px] text-slate-500">{p.pJ} partidos · {p.cSi} cenas</p>
+                  {groupPlayers.length === 0 ? (
+                    <p className="text-center text-xs text-slate-400 py-4">No hay jugadores registrados en este grupo.</p>
+                  ) : (
+                    [...groupPlayers]
+                      .sort((a, b) => b.deuda - a.deuda)
+                      .map(p => (
+                        <div key={p.id} className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 text-xs">
+                          <div>
+                            <p className="font-bold text-slate-900">{p.name}</p>
+                            <p className="text-[10px] text-slate-500">{p.pJ} partidos · {p.cSi} cenas</p>
+                          </div>
+                          <span className={`font-black text-sm px-2 py-0.5 rounded-lg ${
+                            p.deuda > 0 ? 'bg-rose-100 text-rose-700' : 'bg-emerald-100 text-emerald-700'
+                          }`}>
+                            {p.deuda} €
+                          </span>
                         </div>
-                        <span className={`font-black text-sm px-2 py-0.5 rounded-lg ${
-                          p.deuda > 0 ? 'bg-rose-100 text-rose-700' : 'bg-emerald-100 text-emerald-700'
-                        }`}>
-                          {p.deuda} €
-                        </span>
-                      </div>
-                    ))}
+                      ))
+                  )}
                 </div>
               </div>
             )}
