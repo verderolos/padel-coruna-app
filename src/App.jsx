@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 
 // URL de tu Google Apps Script
-const DEFAULT_API_URL = 'https://script.google.com/macros/s/AKfycby8j511L4Q7sJpms-ZfB-qWjUeO3jT-L8wD9R9Xb3d4f/exec';
+const DEFAULT_API_URL = 'https://script.google.com/macros/s/AKfycbxkd-BmLpYxmLtev5wcxwsyda94bG1mFW9gtDpEAgsmhV1HCfDwn2-syPDEvBUPwiiiGw/exec';
 
 const FALLBACK_USERS = [];
 const FALLBACK_MATCHES = [];
