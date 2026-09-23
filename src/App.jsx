@@ -6,18 +6,19 @@ const DEFAULT_API_URL = 'https://script.google.com/macros/s/AKfycbxkd-BmLpYxmLte
 const FALLBACK_USERS = [];
 const FALLBACK_MATCHES = [];
 
-// Limpiar fecha (quitar horas para unificar cenas por día)
+// Limpiar y normalizar fecha (elimina horas, duraciones y espacios extras)
 function extractCleanDate(dateStr) {
   if (!dateStr) return 'Sin fecha';
   return dateStr
     .replace(/\b\d{1,2}:\d{2}\b/g, '')
     .replace(/\(\d+min\)/gi, '')
+    .replace(/,\s*$/, '')
     .replace(/\s+/g, ' ')
     .trim()
-    .replace(/,\s*$/, '');
+    .toLowerCase();
 }
 
-// Convertir fecha del partido en objeto Date
+// Convertir fecha del partido en objeto Date para horario
 function parseMatchDateObject(dateStr) {
   if (!dateStr) return null;
   const timeMatch = dateStr.match(/(\d{1,2}):(\d{2})/);
@@ -44,7 +45,6 @@ function parseMatchDateObject(dateStr) {
   return matchDate;
 }
 
-// Control horario del partido para activar Marcador
 function parseMatchTiming(dateStr) {
   const matchDate = parseMatchDateObject(dateStr);
   if (!matchDate) return { canReport: true, shouldPrompt: false };
@@ -57,10 +57,10 @@ function parseMatchTiming(dateStr) {
   };
 }
 
-// Componente Avatar: Muestra Foto si existe, o Iniciales estilizadas
+// Avatar con foto o iniciales
 function UserAvatar({ name, photo, size = 'md', className = '' }) {
   const sizeClasses = {
-    sm: 'w-7 h-7 text-[11px]',
+    sm: 'w-7 h-7 text-[10px]',
     md: 'w-9 h-9 text-xs',
     lg: 'w-14 h-14 text-lg font-black',
     xl: 'w-20 h-20 text-2xl font-black'
@@ -69,9 +69,7 @@ function UserAvatar({ name, photo, size = 'md', className = '' }) {
   const initials = useMemo(() => {
     if (!name) return '🎾';
     const parts = name.trim().split(' ');
-    if (parts.length >= 2) {
-      return (parts[0][0] + parts[1][0]).toUpperCase();
-    }
+    if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
     return name.slice(0, 2).toUpperCase();
   }, [name]);
 
@@ -94,7 +92,7 @@ function UserAvatar({ name, photo, size = 'md', className = '' }) {
   );
 }
 
-// Modal Criterios y Reglas Oficiales Actualizadas
+// Modal Criterios y Reglas
 function CriteriosModal({ isOpen, onClose }) {
   if (!isOpen) return null;
   return (
@@ -110,18 +108,18 @@ function CriteriosModal({ isOpen, onClose }) {
         <section className="bg-blue-50 border border-blue-200 rounded-2xl p-4 space-y-2">
           <h4 className="font-extrabold text-blue-950 text-xs uppercase tracking-wide">🏆 1. Ranking Deportivo</h4>
           <p className="text-xs text-blue-900">
-            Premia exclusivamente el rendimiento en la pista:
+            Premia exclusivamente el rendimiento en pista:
           </p>
           <ul className="text-xs text-blue-900 space-y-1 list-disc list-inside">
-            <li><strong>Victoria en partido:</strong> +5 puntos.</li>
-            <li><strong>Derrota en partido:</strong> 0 puntos.</li>
+            <li><strong>Victoria:</strong> +5 puntos.</li>
+            <li><strong>Derrota:</strong> 0 puntos.</li>
           </ul>
         </section>
 
         <section className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 space-y-2">
           <h4 className="font-extrabold text-emerald-950 text-xs uppercase tracking-wide">🍻 2. Ranking Barandas (3º Tiempo)</h4>
           <p className="text-xs text-emerald-900">
-            Premia la camaradería y la asistencia a cenar tras el partido:
+            Premia la asistencia a cenar tras el partido:
           </p>
           <ul className="text-xs text-emerald-900 space-y-1 list-disc list-inside">
             <li><strong>Quedarse a la cena:</strong> +5 puntos.</li>
@@ -129,19 +127,19 @@ function CriteriosModal({ isOpen, onClose }) {
             <li><strong>Rajarse de la cena habiendo jugado:</strong> -1 punto de penalización.</li>
           </ul>
           <p className="text-[11px] text-emerald-700 italic pt-1 border-t border-emerald-200/60 mt-2">
-            * Importante: Los puntos de la cena se computan automáticamente al día siguiente para no anticipar puntos antes de que ocurra.
+            * Nota: Los puntos de cena se computan al día siguiente del encuentro.
           </p>
         </section>
 
         <section className="bg-purple-50 border border-purple-200 rounded-2xl p-4 space-y-1.5">
           <h4 className="font-extrabold text-purple-950 text-xs uppercase tracking-wide">⚡ 3. Ranking Híbrido (Corona General)</h4>
           <p className="text-xs text-purple-900">
-            Suma directa del <strong>Ranking Deportivo + Ranking Barandas</strong>. El jugador más completo del club.
+            Suma directa del <strong>Ranking Deportivo + Ranking Barandas</strong>.
           </p>
         </section>
 
         <section className="bg-amber-50 border border-amber-200 rounded-2xl p-4 space-y-1.5">
-          <h4 className="font-extrabold text-amber-950 text-xs uppercase tracking-wide">💶 4. El Bote del Tercer Tiempo</h4>
+          <h4 className="font-extrabold text-amber-950 text-xs uppercase tracking-wide">💶 4. El Bote</h4>
           <ul className="text-xs text-amber-900 space-y-1 list-disc list-inside">
             <li><strong>Derrota en pista:</strong> +1 € de bote.</li>
             <li><strong>Rajarse de la cena:</strong> +1 € de bote.</li>
@@ -150,14 +148,14 @@ function CriteriosModal({ isOpen, onClose }) {
         </section>
 
         <button onClick={onClose} className="w-full mt-2 bg-slate-900 text-white font-bold py-2.5 rounded-xl text-xs">
-          Entendido
+          Cerrar
         </button>
       </div>
     </div>
   );
 }
 
-// Modal Perfil de Usuario con Estadísticas, Compañeros y Subida de Foto
+// Modal Perfil de Usuario
 function UserProfileModal({ isOpen, onClose, user, matches, onPhotoUploaded }) {
   const fileInputRef = useRef(null);
   const [uploading, setUploading] = useState(false);
@@ -232,11 +230,11 @@ function UserProfileModal({ isOpen, onClose, user, matches, onPhotoUploaded }) {
         if (p.name.toLowerCase() === user.name.toLowerCase()) return;
 
         if (p.team === myTeam) {
-          if (!partnerStats[p.name]) partnerStats[p.name] = { played: 0, won: 0, photo: p.photo };
+          if (!partnerStats[p.name]) partnerStats[p.name] = { played: 0, won: 0 };
           partnerStats[p.name].played++;
           if (didWin) partnerStats[p.name].won++;
         } else {
-          if (!rivalStats[p.name]) rivalStats[p.name] = { played: 0, wonAgainst: 0, photo: p.photo };
+          if (!rivalStats[p.name]) rivalStats[p.name] = { played: 0, wonAgainst: 0 };
           rivalStats[p.name].played++;
           if (didWin) rivalStats[p.name].wonAgainst++;
         }
@@ -296,13 +294,7 @@ function UserProfileModal({ isOpen, onClose, user, matches, onPhotoUploaded }) {
               <div className="absolute inset-0 bg-black/40 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition text-white text-xs font-bold">
                 📷
               </div>
-              <input
-                type="file"
-                ref={fileInputRef}
-                accept="image/*"
-                className="hidden"
-                onChange={handleFileChange}
-              />
+              <input type="file" ref={fileInputRef} accept="image/*" className="hidden" onChange={handleFileChange} />
             </div>
             <div>
               <h3 className="text-base font-black text-slate-900">{user.name}</h3>
@@ -312,7 +304,7 @@ function UserProfileModal({ isOpen, onClose, user, matches, onPhotoUploaded }) {
                 disabled={uploading}
                 className="text-[10px] text-slate-500 underline font-semibold mt-0.5 block hover:text-blue-600"
               >
-                {uploading ? 'Guardando foto...' : 'Cambiar / Subir foto'}
+                {uploading ? 'Guardando foto...' : 'Cambiar foto de perfil'}
               </button>
             </div>
           </div>
@@ -334,7 +326,7 @@ function UserProfileModal({ isOpen, onClose, user, matches, onPhotoUploaded }) {
           </div>
           <div className="bg-blue-50 border border-blue-200 rounded-xl p-2">
             <span className="text-base font-black text-blue-700 block">{stats.winRate}%</span>
-            <span className="text-[9px] uppercase font-bold text-blue-900">% Victoria</span>
+            <span className="text-[9px] uppercase font-bold text-blue-900">% Éxito</span>
           </div>
         </div>
 
@@ -345,59 +337,40 @@ function UserProfileModal({ isOpen, onClose, user, matches, onPhotoUploaded }) {
           </div>
           <div className="bg-purple-50 border border-purple-200 rounded-xl p-2.5">
             <span className="text-base font-black text-purple-800 block">{stats.dinnerNo}</span>
-            <span className="text-[10px] font-bold text-purple-900 uppercase">Rajadas Registradas 🏃‍♂️</span>
+            <span className="text-[10px] font-bold text-purple-900 uppercase">Rajadas 🏃‍♂️</span>
           </div>
         </div>
 
         <div className="space-y-2 pt-1">
           <h4 className="text-xs font-black text-slate-800 uppercase tracking-wide">Compañeros y Rivales</h4>
-
           <div className="grid grid-cols-2 gap-2 text-xs">
             <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-2.5">
               <span className="text-[10px] font-bold text-emerald-800 block uppercase">🌟 Mejor Pareja</span>
-              <p className="font-black text-slate-900 text-xs mt-0.5 truncate">
-                {stats.bestPartner ? stats.bestPartner.name : 'Sin datos'}
-              </p>
-              {stats.bestPartner && (
-                <span className="text-[10px] text-emerald-700 font-semibold">{stats.bestPartner.pct}% victorias juntos</span>
-              )}
+              <p className="font-black text-slate-900 text-xs mt-0.5 truncate">{stats.bestPartner ? stats.bestPartner.name : 'Sin datos'}</p>
+              {stats.bestPartner && <span className="text-[10px] text-emerald-700 font-semibold">{stats.bestPartner.pct}% victorias</span>}
             </div>
 
             <div className="bg-rose-50 border border-rose-200 rounded-2xl p-2.5">
               <span className="text-[10px] font-bold text-rose-800 block uppercase">💔 Pareja Gafe</span>
-              <p className="font-black text-slate-900 text-xs mt-0.5 truncate">
-                {stats.worstPartner ? stats.worstPartner.name : 'Sin datos'}
-              </p>
-              {stats.worstPartner && (
-                <span className="text-[10px] text-rose-700 font-semibold">{stats.worstPartner.pct}% victorias juntos</span>
-              )}
+              <p className="font-black text-slate-900 text-xs mt-0.5 truncate">{stats.worstPartner ? stats.worstPartner.name : 'Sin datos'}</p>
+              {stats.worstPartner && <span className="text-[10px] text-rose-700 font-semibold">{stats.worstPartner.pct}% victorias</span>}
             </div>
 
             <div className="bg-amber-50 border border-amber-200 rounded-2xl p-2.5">
               <span className="text-[10px] font-bold text-amber-800 block uppercase">😈 Bestia Negra</span>
-              <p className="font-black text-slate-900 text-xs mt-0.5 truncate">
-                {stats.hardestRival ? stats.hardestRival.name : 'Sin datos'}
-              </p>
-              {stats.hardestRival && (
-                <span className="text-[10px] text-amber-700 font-semibold">{stats.hardestRival.pct}% victorias vs él</span>
-              )}
+              <p className="font-black text-slate-900 text-xs mt-0.5 truncate">{stats.hardestRival ? stats.hardestRival.name : 'Sin datos'}</p>
+              {stats.hardestRival && <span className="text-[10px] text-amber-700 font-semibold">{stats.hardestRival.pct}% victorias vs él</span>}
             </div>
 
             <div className="bg-blue-50 border border-blue-200 rounded-2xl p-2.5">
               <span className="text-[10px] font-bold text-blue-800 block uppercase">🍰 Rival Favorito</span>
-              <p className="font-black text-slate-900 text-xs mt-0.5 truncate">
-                {stats.easiestRival ? stats.easiestRival.name : 'Sin datos'}
-              </p>
-              {stats.easiestRival && (
-                <span className="text-[10px] text-blue-700 font-semibold">{stats.easiestRival.pct}% victorias vs él</span>
-              )}
+              <p className="font-black text-slate-900 text-xs mt-0.5 truncate">{stats.easiestRival ? stats.easiestRival.name : 'Sin datos'}</p>
+              {stats.easiestRival && <span className="text-[10px] text-blue-700 font-semibold">{stats.easiestRival.pct}% victorias vs él</span>}
             </div>
           </div>
         </div>
 
-        <button onClick={onClose} className="w-full py-2.5 bg-slate-900 text-white font-bold rounded-xl text-xs">
-          Cerrar Perfil
-        </button>
+        <button onClick={onClose} className="w-full py-2.5 bg-slate-900 text-white font-bold rounded-xl text-xs">Cerrar Perfil</button>
       </div>
     </div>
   );
@@ -534,14 +507,7 @@ export default function App() {
   const [filterTime, setFilterTime] = useState('semana');
   const [targetPinUser, setTargetPinUser] = useState(null);
 
-  // Registro de nuevo usuario
-  const [showRegisterForm, setShowRegisterForm] = useState(false);
-  const [newUserName, setNewUserName] = useState('');
-  const [newUserGroup, setNewUserGroup] = useState('Chicos');
-  const [newUserPlaytomic, setNewUserPlaytomic] = useState('');
-  const [newUserPin, setNewUserPin] = useState('');
-
-  // Modales de Partidos
+  // Modales
   const [showAddModal, setShowAddModal] = useState(false);
   const [playtomicText, setPlaytomicText] = useState('');
   const [matchGroup, setMatchGroup] = useState('chicos');
@@ -556,7 +522,6 @@ export default function App() {
   const [showScoreModal, setShowScoreModal] = useState(false);
   const [winnerTeam, setWinnerTeam] = useState(1);
   const [scoreText, setScoreText] = useState('6-4, 6-3');
-  const [dismissedLinks, setDismissedLinks] = useState({});
 
   const fetchData = async () => {
     try {
@@ -606,7 +571,6 @@ export default function App() {
     setSelectedMatchId(null);
   };
 
-  // Subir Foto
   const handlePhotoUploaded = async (idJugador, photoBase64) => {
     setSyncing(true);
     setCurrentUser(prev => ({ ...prev, photo: photoBase64 }));
@@ -617,11 +581,7 @@ export default function App() {
       await fetch(apiUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({
-          action: 'SUBIR_FOTO',
-          idJugador,
-          photoBase64
-        })
+        body: JSON.stringify({ action: 'SUBIR_FOTO', idJugador, photoBase64 })
       });
       fetchData();
     } catch (e) {
@@ -631,7 +591,6 @@ export default function App() {
     }
   };
 
-  // Borrar Partido
   const handleDeleteMatchComplete = async (matchId) => {
     if (!confirm('¿Quieres BORRAR POR COMPLETO esta reserva? Se eliminará de la app y de Google Sheets.')) return;
     setSyncing(true);
@@ -650,7 +609,6 @@ export default function App() {
     }
   };
 
-  // Crear Partido
   const handleAddPlaytomicMatch = async (e) => {
     e.preventDefault();
     if (!playtomicText.trim()) return;
@@ -681,55 +639,6 @@ export default function App() {
     }
   };
 
-  // Registrar Jugador
-  const handleRegisterUser = async (e) => {
-    e.preventDefault();
-    if (!newUserName.trim()) return;
-    if (newUserPin.trim().length !== 4) {
-      alert('Debes indicar un PIN de 4 números');
-      return;
-    }
-
-    setSyncing(true);
-    try {
-      const res = await fetch(apiUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({
-          action: 'REGISTRAR_JUGADOR',
-          nombre: newUserName.trim(),
-          grupo: newUserGroup,
-          playtomic: newUserPlaytomic.trim(),
-          pin: newUserPin.trim()
-        })
-      });
-      const json = await res.json();
-      if (json.ok) {
-        const createdUser = {
-          id: json.id || 'u' + (players.length + 1),
-          name: newUserName.trim(),
-          group: newUserGroup.toLowerCase(),
-          pJ: 0, pG: 0, cSi: 0, cNo: 0,
-          ptsDeportivo: 0, ptsBarandas: 0, hibrido: 0,
-          titulo: "Fichaje Estrella ⭐",
-          deuda: 0,
-          pin: newUserPin.trim(),
-          photo: ""
-        };
-        handlePinSuccess(createdUser);
-        setShowRegisterForm(false);
-        fetchData();
-      } else {
-        alert('Error: ' + (json.error || 'No se pudo registrar'));
-      }
-    } catch (err) {
-      alert('Error de conexión: ' + err.message);
-    } finally {
-      setSyncing(false);
-    }
-  };
-
-  // Recargar Playtomic
   const handleReloadPlaytomic = async (e) => {
     e.preventDefault();
     if (!reloadPlaytomicText.trim() || !selectedMatchId) return;
@@ -755,7 +664,6 @@ export default function App() {
     }
   };
 
-  // Guardar Jugadores Manuales (Suplentes)
   const handleSaveManualPlayers = async (e) => {
     e.preventDefault();
     if (!selectedMatchId) return;
@@ -774,13 +682,12 @@ export default function App() {
       setShowEditPlayersModal(false);
       fetchData();
     } catch (e) {
-      alert('Error al modificar jugadores: ' + e.message);
+      alert('Error: ' + e.message);
     } finally {
       setSyncing(false);
     }
   };
 
-  // Apuntarse solo a cenar
   const handleToggleSoloCena = async (dateStr, newState) => {
     setSyncing(true);
     try {
@@ -790,7 +697,6 @@ export default function App() {
         body: JSON.stringify({
           action: 'APUNTARSE_SOLO_CENA',
           fecha: dateStr,
-          idJugador: currentUser.id,
           nombreJugador: currentUser.name,
           estado: newState
         })
@@ -803,7 +709,6 @@ export default function App() {
     }
   };
 
-  // Voto de cena en partido
   const handleUpdateDinner = async (matchId, targetId, targetName, newStatus) => {
     setSyncing(true);
     try {
@@ -836,28 +741,6 @@ export default function App() {
     }));
   };
 
-  const handleClaimSlot = async (matchId, slotOriginalName) => {
-    if (!currentUser) return;
-    setSyncing(true);
-    try {
-      await fetch(apiUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({
-          action: 'VINCULAR_JUGADOR',
-          idPartido: matchId,
-          idJugador: currentUser.id,
-          nombreOriginal: slotOriginalName
-        })
-      });
-      fetchData();
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setSyncing(false);
-    }
-  };
-
   const handleSaveResult = async (matchId) => {
     const match = matches.find(m => m.id === matchId);
     if (!match) return;
@@ -874,7 +757,6 @@ export default function App() {
           action: 'GUARDAR_RESULTADO',
           idPartido: matchId,
           marcador: scoreText,
-          equipoGanador: winnerTeam,
           ganadores: ganadoresNombres,
           reiniciar: false
         })
@@ -888,10 +770,50 @@ export default function App() {
     }
   };
 
+  // Notificación Push a los pendientes
+  const handleNotifyPending = (pendingList, dateLabel) => {
+    if (!pendingList || pendingList.length === 0) {
+      alert('¡No hay jugadores pendientes!');
+      return;
+    }
+    if ('Notification' in window && Notification.permission === 'granted') {
+      new Notification('📢 Confirmación 3º Tiempo CTC', {
+        body: `Hay ${pendingList.length} jugadores pendientes de confirmar cena para ${dateLabel}.`,
+        icon: 'https://cdn-icons-png.flaticon.com/512/2855/2855613.png'
+      });
+      alert(`Aviso enviado para los ${pendingList.length} pendientes.`);
+    } else {
+      if ('Notification' in window) {
+        Notification.requestPermission().then(permission => {
+          if (permission === 'granted') {
+            alert('¡Notificaciones activadas! Vuelve a pulsar el botón.');
+          } else {
+            alert('Permiso de notificaciones denegado.');
+          }
+        });
+      } else {
+        alert('Este navegador no soporta notificaciones.');
+      }
+    }
+  };
+
+  // Compartir comensales por WhatsApp
+  const handleShareClubWhatsapp = (dateTarget, yesList, guestsList) => {
+    const totalCount = yesList.length + guestsList.length;
+    let msg = `🎾 *RESERVA 3º TIEMPO - PÁDEL CTC*\n`;
+    msg += `📅 *Fecha:* ${dateTarget}\n`;
+    msg += `👥 *Total Comensales Confirmados:* ${totalCount} personas\n\n`;
+    msg += `*Jugadores:* \n` + (yesList.length ? yesList.map(n => `- ${n.name || n}`).join('\n') : '- Ninguno aún') + '\n';
+    if (guestsList.length) {
+      msg += `\n*Acompañantes / Sin partido:* \n` + guestsList.map(g => `- ${g.name || g}`).join('\n') + '\n';
+    }
+    msg += `\nConfirmado vía App Pádel CTC.`;
+    window.open(`https://api.whatsapp.com/send?text=${encodeURI(msg)}`, '_blank');
+  };
+
   const currentMatch = matches.find(m => m.id === selectedMatchId);
   const myGroup = (currentUser?.group || 'chicos').toLowerCase();
 
-  // Partidos del grupo activo
   const filteredMatches = useMemo(() => {
     return matches.filter(m => {
       if ((m.grupo || 'chicos').toLowerCase() !== myGroup) return false;
@@ -902,26 +824,33 @@ export default function App() {
     });
   }, [matches, myGroup, filterTime]);
 
-  // Jugadores del grupo
   const groupPlayers = useMemo(() => {
     return players.filter(p => (p.group || 'chicos').toLowerCase() === myGroup);
   }, [players, myGroup]);
 
-  // Cenas Unificadas por Día
+  // Lista de fechas únicas para la cena
   const availableDinnerDates = useMemo(() => {
-    const datesSet = new Set();
+    const datesMap = new Map();
     matches.forEach(m => {
-      const clean = extractCleanDate(m.date);
-      if (clean) datesSet.add(clean);
+      const cleanKey = extractCleanDate(m.date);
+      if (cleanKey && cleanKey !== 'sin fecha') {
+        if (!datesMap.has(cleanKey)) {
+          // Guardar una versión visual bonita con la primera letra en mayúscula
+          const niceLabel = cleanKey.charAt(0).toUpperCase() + cleanKey.slice(1);
+          datesMap.set(cleanKey, niceLabel);
+        }
+      }
     });
-    return Array.from(datesSet);
+    return Array.from(datesMap.entries()).map(([key, label]) => ({ key, label }));
   }, [matches]);
 
-  const activeDinnerDate = selectedDinnerDate || (availableDinnerDates.length > 0 ? availableDinnerDates[0] : '');
+  const activeDinnerKey = selectedDinnerDate || (availableDinnerDates.length > 0 ? availableDinnerDates[0].key : '');
+
+  // Buscar todos los partidos que coincidan en la misma fecha limpia normalizada
   const matchesForDinner = useMemo(() => {
-    if (!activeDinnerDate) return [];
-    return matches.filter(m => extractCleanDate(m.date) === activeDinnerDate);
-  }, [matches, activeDinnerDate]);
+    if (!activeDinnerKey) return [];
+    return matches.filter(m => extractCleanDate(m.date) === activeDinnerKey);
+  }, [matches, activeDinnerKey]);
 
   const { dinnerYes, dinnerNo, dinnerPending, dinnerGuests } = useMemo(() => {
     const yesMap = new Map();
@@ -934,9 +863,11 @@ export default function App() {
         if (p.dinner === 'SI') {
           yesMap.set(p.name, p.photo);
           pendingMap.delete(p.name);
+          noMap.delete(p.name);
         } else if (p.dinner === 'NO') {
           noMap.set(p.name, p.photo);
           pendingMap.delete(p.name);
+          yesMap.delete(p.name);
         } else {
           if (!yesMap.has(p.name) && !noMap.has(p.name)) {
             pendingMap.set(p.name, p.photo);
@@ -956,7 +887,12 @@ export default function App() {
 
   const isUserInDinner = dinnerYes.some(item => item.name === currentUser?.name);
 
-  // Pantalla de Login
+  // Etiqueta visual para la fecha actual de cena
+  const currentVisualDinnerLabel = useMemo(() => {
+    const found = availableDinnerDates.find(d => d.key === activeDinnerKey);
+    return found ? found.label : (activeDinnerKey || 'Jornada seleccionada');
+  }, [availableDinnerDates, activeDinnerKey]);
+
   if (!currentUser) {
     return (
       <div className="min-h-screen bg-slate-900 text-white flex flex-col justify-center items-center p-4">
@@ -965,111 +901,23 @@ export default function App() {
             🎾
           </div>
           <h1 className="text-2xl font-black text-center mb-1">Pádel CTC</h1>
-          <p className="text-slate-400 text-xs text-center mb-5">
-            {showRegisterForm ? 'Regístrate para entrar al club' : 'Selecciona tu perfil de jugador (protegido por PIN)'}
-          </p>
+          <p className="text-slate-400 text-xs text-center mb-5">Elige tu perfil para entrar</p>
 
-          {!showRegisterForm ? (
-            <>
-              <div className="space-y-2 max-h-64 overflow-y-auto pr-1 mb-4">
-                {players.map(u => (
-                  <button
-                    key={u.id}
-                    onClick={() => handleUserClick(u)}
-                    className="w-full text-left bg-slate-700/60 hover:bg-blue-600 p-3 rounded-2xl flex items-center justify-between transition group border border-slate-600/40"
-                  >
-                    <div className="flex items-center gap-3">
-                      <UserAvatar name={u.name} photo={u.photo} size="sm" />
-                      <span className="font-semibold text-sm group-hover:text-white">{u.name}</span>
-                    </div>
-                    <span className="text-xs text-slate-400 group-hover:text-blue-100">{u.titulo}</span>
-                  </button>
-                ))}
-              </div>
-
+          <div className="space-y-2 max-h-64 overflow-y-auto pr-1 mb-4">
+            {players.map(u => (
               <button
-                onClick={() => setShowRegisterForm(true)}
-                className="w-full py-3 bg-slate-700 hover:bg-slate-600 text-blue-300 hover:text-white rounded-xl text-xs font-bold transition border border-dashed border-slate-500 flex items-center justify-center gap-1.5"
+                key={u.id}
+                onClick={() => handleUserClick(u)}
+                className="w-full text-left bg-slate-700/60 hover:bg-blue-600 p-3 rounded-2xl flex items-center justify-between transition group border border-slate-600/40"
               >
-                <span>➕</span> ¿No estás en la lista? Añadir nuevo jugador
-              </button>
-            </>
-          ) : (
-            <form onSubmit={handleRegisterUser} className="space-y-3">
-              <div>
-                <label className="block text-xs font-bold text-slate-300 mb-1">Nombre y Apellido *</label>
-                <input
-                  type="text"
-                  required
-                  value={newUserName}
-                  onChange={(e) => setNewUserName(e.target.value)}
-                  placeholder="Ej: Marcos Iglesias"
-                  className="w-full bg-slate-700 border border-slate-600 rounded-xl p-2.5 text-xs text-white placeholder-slate-400 focus:outline-none focus:border-blue-500 font-semibold"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-300 mb-1">Grupo</label>
-                <div className="flex gap-2">
-                  {['Chicos', 'Chicas'].map(g => (
-                    <button
-                      type="button"
-                      key={g}
-                      onClick={() => setNewUserGroup(g)}
-                      className={`flex-1 py-2 text-xs font-bold rounded-xl border transition ${
-                        newUserGroup === g
-                          ? 'bg-blue-600 text-white border-blue-600'
-                          : 'bg-slate-700 text-slate-300 border-slate-600'
-                      }`}
-                    >
-                      {g}
-                    </button>
-                  ))}
+                <div className="flex items-center gap-3">
+                  <UserAvatar name={u.name} photo={u.photo} size="sm" />
+                  <span className="font-semibold text-sm group-hover:text-white">{u.name}</span>
                 </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-300 mb-1">Crea tu PIN de 4 cifras (seguridad) *</label>
-                <input
-                  type="password"
-                  maxLength={4}
-                  required
-                  value={newUserPin}
-                  onChange={(e) => setNewUserPin(e.target.value.replace(/\D/g, ''))}
-                  placeholder="Ej: 1234"
-                  className="w-full bg-slate-700 border border-slate-600 rounded-xl p-2.5 text-xs text-white placeholder-slate-400 focus:outline-none focus:border-blue-500 font-bold tracking-widest text-center"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-300 mb-1">Usuario de Playtomic (opcional)</label>
-                <input
-                  type="text"
-                  value={newUserPlaytomic}
-                  onChange={(e) => setNewUserPlaytomic(e.target.value)}
-                  placeholder="Ej: marcos-padel"
-                  className="w-full bg-slate-700 border border-slate-600 rounded-xl p-2.5 text-xs text-white placeholder-slate-400 focus:outline-none focus:border-blue-500"
-                />
-              </div>
-
-              <div className="flex gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setShowRegisterForm(false)}
-                  className="flex-1 py-2.5 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded-xl text-xs font-bold transition"
-                >
-                  Volver
-                </button>
-                <button
-                  type="submit"
-                  disabled={syncing}
-                  className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold shadow-lg transition"
-                >
-                  {syncing ? 'Guardando...' : 'Crear y Entrar'}
-                </button>
-              </div>
-            </form>
-          )}
+                <span className="text-xs text-slate-400 group-hover:text-blue-100">{u.titulo}</span>
+              </button>
+            ))}
+          </div>
         </div>
 
         <PinModal
@@ -1085,7 +933,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-100 text-slate-900 pb-16">
-      {/* CABECERA CON FOTO Y ACCESO A PERFIL */}
+      {/* CABECERA */}
       <header className="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm">
         <div className="max-w-xl mx-auto px-4 py-3 flex items-center justify-between">
           <div
@@ -1130,7 +978,7 @@ export default function App() {
       {/* CONTENIDO PRINCIPAL */}
       <main className="max-w-xl mx-auto px-4 py-4">
         {selectedMatchId && currentMatch ? (
-          /* DETALLE DEL PARTIDO SELECCIONADO */
+          /* DETALLE DEL PARTIDO */
           <div className="space-y-4">
             <button
               onClick={() => setSelectedMatchId(null)}
@@ -1177,39 +1025,6 @@ export default function App() {
                 📍 {currentMatch.location}
               </p>
 
-              {/* DETECCIÓN INTELIGENTE VINCULAR JUGADOR */}
-              {(() => {
-                const targetSlot = (currentMatch.players || []).find(p =>
-                  p.id !== currentUser.id &&
-                  p.name.toLowerCase().includes(currentUser.name.toLowerCase())
-                );
-                if (targetSlot && !dismissedLinks[currentMatch.id]) {
-                  return (
-                    <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 my-3">
-                      <p className="text-xs text-blue-900 font-semibold">
-                        ¿Eres tú <strong>"{targetSlot.name}"</strong> en la pista?
-                      </p>
-                      <div className="flex gap-2 mt-2">
-                        <button
-                          onClick={() => handleClaimSlot(currentMatch.id, targetSlot.name)}
-                          className="bg-blue-600 text-white text-[11px] font-bold px-3 py-1 rounded-lg"
-                        >
-                          Sí, soy yo (Vincular)
-                        </button>
-                        <button
-                          onClick={() => setDismissedLinks(prev => ({ ...prev, [currentMatch.id]: true }))}
-                          className="text-slate-500 text-[11px] font-medium px-2 py-1"
-                        >
-                          No soy yo
-                        </button>
-                      </div>
-                    </div>
-                  );
-                }
-                return null;
-              })()}
-
-              {/* ACCIONES DE ACTUALIZACIÓN */}
               <div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-slate-100">
                 <button
                   onClick={() => setShowReloadPlaytomicModal(true)}
@@ -1234,7 +1049,6 @@ export default function App() {
                 </button>
               </div>
 
-              {/* JUGADORES EN PISTA CON FOTOS */}
               <div className="mt-5 space-y-4">
                 <div className="flex justify-between items-center border-b pb-2">
                   <h3 className="text-xs font-black text-slate-800 uppercase tracking-wider">
@@ -1425,12 +1239,12 @@ export default function App() {
                     Jornada de Cena:
                   </label>
                   <select
-                    value={activeDinnerDate}
+                    value={activeDinnerKey}
                     onChange={(e) => setSelectedDinnerDate(e.target.value)}
                     className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 text-xs font-bold text-slate-800"
                   >
                     {availableDinnerDates.map(d => (
-                      <option key={d} value={d}>{d}</option>
+                      <option key={d.key} value={d.key}>{d.label}</option>
                     ))}
                   </select>
                 </div>
@@ -1441,7 +1255,7 @@ export default function App() {
                     ¿No juegas hoy pero te vienes a cenar? 🍻
                   </p>
                   <button
-                    onClick={() => handleToggleSoloCena(activeDinnerDate, isUserInDinner ? 'NO' : 'SI')}
+                    onClick={() => handleToggleSoloCena(activeDinnerKey, isUserInDinner ? 'NO' : 'SI')}
                     className={`py-2 px-4 rounded-xl text-xs font-bold transition shadow-xs ${
                       isUserInDinner
                         ? 'bg-rose-600 hover:bg-rose-700 text-white'
@@ -1452,11 +1266,12 @@ export default function App() {
                   </button>
                 </div>
 
-                <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-xs space-y-4">
+                {/* PANEL DE MESA UNIFICADA */}
+                <div className="bg-white rounded-3xl p-5 border border-slate-200 shadow-xs space-y-4">
                   <div className="flex justify-between items-center pb-3 border-b border-slate-100">
                     <div>
                       <h3 className="text-sm font-black text-slate-900">Mesa Unificada</h3>
-                      <p className="text-xs text-slate-500 font-bold">{activeDinnerDate}</p>
+                      <p className="text-xs text-slate-500 font-bold capitalize">{currentVisualDinnerLabel}</p>
                     </div>
                     <div className="text-right">
                       <span className="text-2xl font-black text-emerald-600">
@@ -1466,7 +1281,23 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* LISTA DE COMENSALES CON FOTOS */}
+                  {/* 3 CAJAS RESUMEN DE ESTADO */}
+                  <div className="grid grid-cols-3 gap-2 text-center">
+                    <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-2.5">
+                      <span className="text-base font-black text-emerald-700 block">{dinnerYes.length + dinnerGuests.length}</span>
+                      <span className="text-[10px] font-bold text-emerald-900 uppercase">Cenan SÍ</span>
+                    </div>
+                    <div className="bg-rose-50 border border-rose-200 rounded-2xl p-2.5">
+                      <span className="text-base font-black text-rose-700 block">{dinnerNo.length}</span>
+                      <span className="text-[10px] font-bold text-rose-900 uppercase">Se Rajan</span>
+                    </div>
+                    <div className="bg-amber-50 border border-amber-200 rounded-2xl p-2.5">
+                      <span className="text-base font-black text-amber-700 block">{dinnerPending.length}</span>
+                      <span className="text-[10px] font-bold text-amber-900 uppercase">Pendientes</span>
+                    </div>
+                  </div>
+
+                  {/* LISTAS DETALLADAS CON AVATARES */}
                   <div className="space-y-3 pt-2 text-xs">
                     <div>
                       <span className="font-extrabold text-emerald-800 block mb-2">
@@ -1479,6 +1310,26 @@ export default function App() {
                             <span>{item.name}</span>
                           </div>
                         ))}
+                        {dinnerYes.length === 0 && dinnerGuests.length === 0 && (
+                          <span className="text-slate-400 italic text-[11px]">Nadie confirmado aún</span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div>
+                      <span className="font-extrabold text-rose-800 block mb-2">
+                        🔴 Se Rajan ({dinnerNo.length}):
+                      </span>
+                      <div className="flex flex-wrap gap-2">
+                        {dinnerNo.map((item, i) => (
+                          <div key={i} className="flex items-center gap-1.5 bg-rose-50 border border-rose-200 text-rose-950 px-2.5 py-1 rounded-xl font-semibold text-xs">
+                            <UserAvatar name={item.name} photo={item.photo} size="sm" />
+                            <span>{item.name}</span>
+                          </div>
+                        ))}
+                        {dinnerNo.length === 0 && (
+                          <span className="text-slate-400 italic text-[11px]">Nadie se ha rajado aún 🎉</span>
+                        )}
                       </div>
                     </div>
 
@@ -1493,14 +1344,36 @@ export default function App() {
                             <span>{item.name}</span>
                           </div>
                         ))}
+                        {dinnerPending.length === 0 && (
+                          <span className="text-slate-400 italic text-[11px]">¡Todos han respondido!</span>
+                        )}
                       </div>
                     </div>
+                  </div>
+
+                  {/* BOTONES DE ACCIÓN: PUSH Y WHATSAPP */}
+                  <div className="pt-2 space-y-2 border-t border-slate-100">
+                    {dinnerPending.length > 0 && (
+                      <button
+                        onClick={() => handleNotifyPending(dinnerPending, currentVisualDinnerLabel)}
+                        className="w-full bg-amber-500 hover:bg-amber-600 text-white font-bold py-2.5 rounded-2xl text-xs flex items-center justify-center gap-1.5 shadow-sm transition"
+                      >
+                        🔔 Enviar Notificación Push a los {dinnerPending.length} Pendientes
+                      </button>
+                    )}
+
+                    <button
+                      onClick={() => handleShareClubWhatsapp(currentVisualDinnerLabel, dinnerYes, dinnerGuests)}
+                      className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 rounded-2xl text-xs flex items-center justify-center gap-1.5 shadow-sm transition"
+                    >
+                      📲 Avisar al Restaurante / Club por WhatsApp ({dinnerYes.length + dinnerGuests.length} comensales)
+                    </button>
                   </div>
                 </div>
               </div>
             )}
 
-            {/* TAB 3: RANKINGS DEL GRUPO CON FOTOS */}
+            {/* TAB 3: RANKINGS DEL GRUPO */}
             {activeTab === 'rankings' && (
               <div className="bg-white rounded-2xl p-4 border border-slate-200">
                 <div className="flex justify-between items-center mb-3">
@@ -1553,7 +1426,7 @@ export default function App() {
               </div>
             )}
 
-            {/* TAB 4: BOTE CON FOTOS */}
+            {/* TAB 4: BOTE */}
             {activeTab === 'bote' && (
               <div className="bg-white rounded-2xl p-4 border border-slate-200 space-y-3">
                 <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-900">
@@ -1592,7 +1465,7 @@ export default function App() {
         )}
       </main>
 
-      {/* MODAL 1: RECARGAR PARTIDO DESDE PLAYTOMIC */}
+      {/* MODAL RECARGAR PLAYTOMIC */}
       {showReloadPlaytomicModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl max-w-sm w-full p-5 shadow-2xl">
@@ -1616,7 +1489,7 @@ export default function App() {
         </div>
       )}
 
-      {/* MODAL 2: CAMBIAR JUGADORES MANUALMENTE (SUPLENTES) */}
+      {/* MODAL CAMBIAR SUPLENTES */}
       {showEditPlayersModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl max-w-sm w-full p-5 shadow-2xl">
@@ -1690,7 +1563,7 @@ export default function App() {
               </div>
 
               <div className="flex gap-2 pt-1">
-                <button type="button" onClick={() => setShowAddModal(false)} className="flex-1 py-2 bg-slate-100 text-slate-600 rounded-xl text-xs">Cancelar</button>
+                <button type="button" onClick={() => setShowAddModal(false)} className="flex-1 py-2 bg-slate-100 text-slate-600 font-bold rounded-xl text-xs">Cancelar</button>
                 <button type="submit" disabled={syncing} className="flex-1 py-2 bg-blue-600 text-white rounded-xl text-xs font-bold">Crear</button>
               </div>
             </form>
