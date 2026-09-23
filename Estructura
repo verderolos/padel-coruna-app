@@ -1,0 +1,7 @@
+padel-coruna-app/
+├── package.json
+├── index.html
+├── vite.config.js
+└── src/
+    ├── main.jsx
+    └── App.jsx
