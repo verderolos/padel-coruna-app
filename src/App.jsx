@@ -642,3 +642,31 @@ export default function App() {
                 </div>
               </form>
             </div>
+          </div>
+        )}
+
+        {/* Barra de Navegación Inferior */}
+        <nav className="fixed bottom-0 max-w-md w-full bg-white border-t border-gray-100 flex justify-around py-2 z-40 shadow-sm">
+          <button 
+            onClick={() => setActiveTab('partidos')} 
+            className={`flex flex-col items-center py-1 px-4 text-[10px] font-black ${activeTab === 'partidos' ? 'text-blue-600' : 'text-gray-400'}`}
+          >
+            <Home className="w-5 h-5 mb-0.5" /> Partidos
+          </button>
+          <button 
+            onClick={() => setActiveTab('rankings')} 
+            className={`flex flex-col items-center py-1 px-4 text-[10px] font-black ${activeTab === 'rankings' ? 'text-purple-600' : 'text-gray-400'}`}
+          >
+            <Trophy className="w-5 h-5 mb-0.5" /> Rankings
+          </button>
+          <button 
+            onClick={() => setActiveTab('bote')} 
+            className={`flex flex-col items-center py-1 px-4 text-[10px] font-black ${activeTab === 'bote' ? 'text-rose-500' : 'text-gray-400'}`}
+          >
+            <PiggyBank className="w-5 h-5 mb-0.5" /> Bote
+          </button>
+        </nav>
+      </div>
+    </div>
+  );
+}
