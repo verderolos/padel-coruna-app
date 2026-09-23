@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 
-// URL de tu Google Apps Script
+// URL de tu Apps Script
 const DEFAULT_API_URL = 'https://script.google.com/macros/s/AKfycbxkd-BmLpYxmLtev5wcxwsyda94bG1mFW9gtDpEAgsmhV1HCfDwn2-syPDEvBUPwiiiGw/exec';
 
 const FALLBACK_USERS = [];
@@ -41,7 +41,7 @@ function CriteriosModal({ isOpen, onClose }) {
           <ul className="text-xs text-amber-900 space-y-1 list-disc list-inside">
             <li><strong>Derrota jugada:</strong> +1 € por partido perdido.</li>
             <li><strong>Victoria jugada:</strong> 0 € (el ganador no paga bote).</li>
-            <li><strong>Rajarse de la cena:</strong> +1 € por no quedarse habiendo jugado.</li>
+            <li><strong>Rajarse de la cena:</strong> +1 € por no quedarse al 3º tiempo habiendo jugado.</li>
           </ul>
         </section>
 
@@ -125,40 +125,7 @@ function SettingsModal({ isOpen, onClose, user, onSaveNotifications, notifEnable
     </div>
   );
 }
-// Modal y parser de Playtomic (versión original)
-  const [showAddModal, setShowAddModal] = useState(false);
-  const [playtomicText, setPlaytomicText] = useState('');
-  const [matchGroup, setMatchGroup] = useState('chicos');
 
-  const handleAddPlaytomicMatch = async (e) => {
-    e.preventDefault();
-    if (!playtomicText.trim()) return;
-
-    setSyncing(true);
-    try {
-      const res = await fetch(apiUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({
-          action: 'CREAR_PARTIDO_PLAYTOMIC',
-          textoCrudo: playtomicText,
-          grupo: matchGroup
-        })
-      });
-      const data = await res.json();
-      if (data.ok) {
-        setShowAddModal(false);
-        setPlaytomicText('');
-        fetchData();
-      } else {
-        alert('Error: ' + data.error);
-      }
-    } catch (err) {
-      alert('Error de conexión: ' + err.message);
-    } finally {
-      setSyncing(false);
-    }
-  };
 // Modal PIN
 function PinModal({ isOpen, onClose, targetUser, onPinSuccess, apiUrl }) {
   const [pinInput, setPinInput] = useState('');
@@ -307,12 +274,19 @@ export default function App() {
 
   const [targetPinUser, setTargetPinUser] = useState(null);
 
+  // Registro de nuevo usuario
   const [showRegisterForm, setShowRegisterForm] = useState(false);
   const [newUserName, setNewUserName] = useState('');
   const [newUserGroup, setNewUserGroup] = useState('Chicos');
   const [newUserPlaytomic, setNewUserPlaytomic] = useState('');
   const [newUserPin, setNewUserPin] = useState('');
 
+  // Creación de partido desde Playtomic
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [playtomicText, setPlaytomicText] = useState('');
+  const [matchGroup, setMatchGroup] = useState('chicos');
+
+  // Marcador
   const [showScoreModal, setShowScoreModal] = useState(false);
   const [winnerTeam, setWinnerTeam] = useState(1);
   const [scoreText, setScoreText] = useState('6-4, 6-3');
@@ -367,6 +341,37 @@ export default function App() {
     setCurrentUser(null);
     localStorage.removeItem('padel_current_user');
     setSelectedMatchId(null);
+  };
+
+  // Crear nuevo partido desde texto crudo de Playtomic
+  const handleAddPlaytomicMatch = async (e) => {
+    e.preventDefault();
+    if (!playtomicText.trim()) return;
+
+    setSyncing(true);
+    try {
+      const res = await fetch(apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({
+          action: 'CREAR_PARTIDO_PLAYTOMIC',
+          textoCrudo: playtomicText,
+          grupo: matchGroup
+        })
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setShowAddModal(false);
+        setPlaytomicText('');
+        fetchData();
+      } else {
+        alert('Error: ' + data.error);
+      }
+    } catch (err) {
+      alert('Error de conexión: ' + err.message);
+    } finally {
+      setSyncing(false);
+    }
   };
 
   const handleRegisterUser = async (e) => {
@@ -538,7 +543,6 @@ export default function App() {
     }
   };
 
-  // ACCIÓN DE CANCELAR PARTIDO
   const handleCancelMatch = async (matchId) => {
     if (!confirm('¿Seguro que quieres cancelar este partido? Quedará marcado como CANCELADO.')) return;
     setSyncing(true);
@@ -553,7 +557,6 @@ export default function App() {
           reiniciar: true
         })
       });
-      // Actualizar local
       setMatches(prev => prev.map(m => m.id === matchId ? { ...m, status: 'CANCELADO' } : m));
       fetchData();
     } catch (e) {
@@ -612,7 +615,7 @@ export default function App() {
     });
   });
 
-  // Identificación previa con PIN
+  // IDENTIFICACIÓN CON PIN
   if (!currentUser) {
     return (
       <div className="min-h-screen bg-slate-900 text-white flex flex-col justify-center items-center p-4">
@@ -803,7 +806,6 @@ export default function App() {
             </button>
 
             <div className="bg-white rounded-3xl p-5 shadow-sm border border-slate-200">
-              {/* CABECERA DE LA TARJETA DEL PARTIDO CON BOTONES CANCELAR Y MARCADOR */}
               <div className="flex justify-between items-center mb-2">
                 <div className="flex items-center gap-2">
                   <span className="text-[10px] font-black uppercase tracking-wider bg-blue-50 text-blue-700 px-2.5 py-1 rounded-full border border-blue-200">
@@ -815,7 +817,6 @@ export default function App() {
                 </div>
 
                 <div className="flex items-center gap-2">
-                  {/* BOTÓN CANCELAR PARTIDO */}
                   {currentMatch.status !== 'CANCELADO' && (
                     <button
                       onClick={() => handleCancelMatch(currentMatch.id)}
@@ -825,7 +826,6 @@ export default function App() {
                     </button>
                   )}
 
-                  {/* BOTÓN MARCADOR */}
                   {(() => {
                     const { canReport } = parseMatchTiming(currentMatch.date);
                     return (
@@ -851,7 +851,6 @@ export default function App() {
                 📍 {currentMatch.location}
               </p>
 
-              {/* BANNER +2H */}
               {currentMatch.status !== 'FINALIZADO' && currentMatch.status !== 'CANCELADO' && parseMatchTiming(currentMatch.date).shouldPrompt && (
                 <div className="bg-amber-50 border border-amber-300 text-amber-900 rounded-xl p-3 text-xs font-semibold my-3 flex items-center justify-between">
                   <span>⚠️ Han pasado 2h. Reporta el resultado oficial.</span>
@@ -864,7 +863,6 @@ export default function App() {
                 </div>
               )}
 
-              {/* AVISO DE CANCELADO */}
               {currentMatch.status === 'CANCELADO' && (
                 <div className="bg-rose-50 border border-rose-200 rounded-2xl p-3.5 text-center my-4">
                   <span className="text-xs font-black text-rose-700 uppercase tracking-wide">
@@ -879,7 +877,6 @@ export default function App() {
                 </div>
               )}
 
-              {/* RESULTADO OFICIAL */}
               {currentMatch.status === 'FINALIZADO' && (
                 <div className="bg-purple-50/80 border border-purple-200 rounded-2xl p-4 text-center my-4">
                   <span className="text-[10px] font-black uppercase tracking-wider text-purple-600 block">
@@ -904,7 +901,6 @@ export default function App() {
                 </div>
               )}
 
-              {/* ENLACE PLAYTOMIC */}
               {currentMatch.url && (
                 <a
                   href={currentMatch.url}
@@ -916,7 +912,6 @@ export default function App() {
                 </a>
               )}
 
-              {/* VINCULACIÓN EXPLÍCITA SI EL NOMBRE COINCIDE */}
               {(() => {
                 const targetSlot = (currentMatch.players || []).find(p =>
                   p.id !== currentUser.id &&
@@ -948,7 +943,6 @@ export default function App() {
                 return null;
               })()}
 
-              {/* SECCIÓN JUGADORES CONVOCADOS EN LA PISTA Y EQUIPOS */}
               <div className="mt-5 space-y-4">
                 <div className="flex justify-between items-center border-b pb-2">
                   <h3 className="text-xs font-black text-slate-800 uppercase tracking-wider">
@@ -959,7 +953,6 @@ export default function App() {
                   </span>
                 </div>
 
-                {/* PAREJA 1 Y PAREJA 2 */}
                 {[1, 2].map(teamNum => {
                   const teamPlayers = (currentMatch.players || []).filter(p => (p.team || 1) === teamNum);
                   const isP1 = teamNum === 1;
@@ -977,12 +970,12 @@ export default function App() {
                         }`}>
                           Pareja {teamNum}
                         </span>
-                        <span className="text-[10px] text-slate-400 font-medium">Pulsa P1/P2 para alternar pareja</span>
+                        <span className="text-[10px] text-slate-400 font-medium">Pulsa P1/P2 para alternar</span>
                       </div>
 
                       <div className="space-y-2">
                         {teamPlayers.length === 0 ? (
-                          <p className="text-[11px] text-slate-400 italic py-1">Sin jugadores asignados en esta pareja</p>
+                          <p className="text-[11px] text-slate-400 italic py-1">Sin jugadores asignados</p>
                         ) : (
                           teamPlayers.map(p => {
                             const isMe = p.id === currentUser.id || p.name.toLowerCase() === currentUser.name.toLowerCase();
@@ -995,7 +988,6 @@ export default function App() {
                                   <button
                                     onClick={() => handleToggleTeam(currentMatch.id, p.id)}
                                     className="text-[10px] font-black bg-slate-100 hover:bg-slate-200 text-slate-700 px-2 py-0.5 rounded"
-                                    title="Mover a otra pareja"
                                   >
                                     P{p.team || 1} ⇄
                                   </button>
@@ -1009,7 +1001,6 @@ export default function App() {
                                   </div>
                                 </div>
 
-                                {/* BOTONES DIRECTOS PARA CAMBIAR CENA */}
                                 <div className="flex items-center gap-1.5">
                                   <button
                                     onClick={() => handleUpdateDinner(currentMatch.id, p.id, p.name, p.dinner === 'SI' ? 'PENDIENTE' : 'SI')}
@@ -1042,7 +1033,6 @@ export default function App() {
                 })}
               </div>
 
-              {/* PREGUNTA RÁPIDA INFERIOR "¿TE QUEDAS AL 3º TIEMPO?" (USUARIO ACTIVO) */}
               {(() => {
                 const mySlot = (currentMatch.players || []).find(p => p.id === currentUser.id || p.name.toLowerCase() === currentUser.name.toLowerCase());
                 if (!mySlot) return null;
@@ -1120,19 +1110,19 @@ export default function App() {
             {/* TAB 1: PARTIDOS */}
             {activeTab === 'partidos' && (
               <div className="space-y-3">
-                {/* ⬇️ PEGA AQUÍ EL BOTÓN ⬇️ */}
+                {/* BOTÓN AÑADIR PARTIDO DESDE PLAYTOMIC */}
                 <button
                   onClick={() => setShowAddModal(true)}
                   className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 px-4 rounded-2xl text-xs flex items-center justify-center gap-2 shadow-sm transition"
                 >
                   <span>➕</span> Añadir Partido (Pegar desde Playtomic)
                 </button>
-                {/* ⬆️ HASTA AQUÍ ⬆️ */}
+
                 {matches.length === 0 ? (
                   <div className="bg-white rounded-2xl p-8 text-center border border-slate-200">
                     <p className="text-2xl mb-1">🎾</p>
                     <p className="text-sm font-bold text-slate-700">No hay partidos programados</p>
-                    <p className="text-xs text-slate-400 mt-1">Añade una fila en la hoja Partidos para que aparezca aquí.</p>
+                    <p className="text-xs text-slate-400 mt-1">Usa el botón de arriba para añadir uno pegando el texto de Playtomic.</p>
                   </div>
                 ) : (
                   matches.map(m => (
@@ -1391,32 +1381,7 @@ export default function App() {
         </div>
       )}
 
-      {/* MODALES AUXILIARES */}
-      <CriteriosModal isOpen={showRulesModal} onClose={() => setShowRulesModal(false)} />
-      <SettingsModal
-        isOpen={showSettingsModal}
-        onClose={() => setShowSettingsModal(false)}
-        user={currentUser}
-        notifEnabled={notifEnabled}
-        onSaveNotifications={(val) => {
-          setNotifEnabled(val);
-          localStorage.setItem('padel_notif', String(val));
-        }}
-      />
-      {/* MODALES AUXILIARES */}
-      <CriteriosModal isOpen={showRulesModal} onClose={() => setShowRulesModal(false)} />
-      <SettingsModal
-        isOpen={showSettingsModal}
-        onClose={() => setShowSettingsModal(false)}
-        user={currentUser}
-        notifEnabled={notifEnabled}
-        onSaveNotifications={(val) => {
-          setNotifEnabled(val);
-          localStorage.setItem('padel_notif', String(val));
-        }}
-      />
-
-      {/* ⬇️ PEGA AQUÍ EL MODAL DE PLAYTOMIC ⬇️ */}
+      {/* MODAL AÑADIR PARTIDO PLAYTOMIC */}
       {showAddModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl max-w-sm w-full p-5 shadow-2xl">
@@ -1485,7 +1450,19 @@ export default function App() {
           </div>
         </div>
       )}
-      {/* ⬆️ HASTA AQUÍ ⬆️ */}
+
+      {/* MODALES AUXILIARES */}
+      <CriteriosModal isOpen={showRulesModal} onClose={() => setShowRulesModal(false)} />
+      <SettingsModal
+        isOpen={showSettingsModal}
+        onClose={() => setShowSettingsModal(false)}
+        user={currentUser}
+        notifEnabled={notifEnabled}
+        onSaveNotifications={(val) => {
+          setNotifEnabled(val);
+          localStorage.setItem('padel_notif', String(val));
+        }}
+      />
     </div>
   );
 }
