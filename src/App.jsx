@@ -18,16 +18,7 @@ function extractCleanDate(dateStr) {
     .toLowerCase();
 }
 
-function normalizeName(str) {
-  if (!str) return '';
-  return String(str)
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .trim()
-    .toLowerCase();
-}
-
-// Convertir fecha del partido en objeto Date para horario
+// Convertir fecha de partido en objeto Date real
 function parseMatchDateObject(dateStr) {
   if (!dateStr) return null;
   const timeMatch = dateStr.match(/(\d{1,2}):(\d{2})/);
@@ -66,7 +57,36 @@ function parseMatchTiming(dateStr) {
   };
 }
 
-// Avatar con foto o iniciales
+// Comprobar si un partido pertenece estrictamente a la semana actual (Lunes a Domingo)
+function isCurrentWeek(dateStr) {
+  const matchDate = parseMatchDateObject(dateStr);
+  if (!matchDate) return true;
+
+  const now = new Date();
+  const currentDay = now.getDay(); // 0 es Domingo
+  const distanceToMonday = (currentDay + 6) % 7;
+
+  const monday = new Date(now);
+  monday.setDate(now.getDate() - distanceToMonday);
+  monday.setHours(0, 0, 0, 0);
+
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+  sunday.setHours(23, 59, 59, 999);
+
+  return matchDate >= monday && matchDate <= sunday;
+}
+
+// Comprobar si un partido es futuro (desde hoy en adelante)
+function isUpcoming(dateStr) {
+  const matchDate = parseMatchDateObject(dateStr);
+  if (!matchDate) return true;
+  const startOfToday = new Date();
+  startOfToday.setHours(0, 0, 0, 0);
+  return matchDate >= startOfToday;
+}
+
+// Avatar
 function UserAvatar({ name, photo, size = 'md', className = '' }) {
   const sizeClasses = {
     sm: 'w-7 h-7 text-[10px]',
@@ -136,9 +156,7 @@ function CriteriosModal({ isOpen, onClose }) {
 
         <section className="bg-purple-50 border border-purple-200 rounded-2xl p-4 space-y-1.5">
           <h4 className="font-extrabold text-purple-950 text-xs uppercase tracking-wide">⚡ 3. Ranking Híbrido (Corona General)</h4>
-          <p className="text-xs text-purple-900">
-            Suma directa del <strong>Ranking Deportivo + Ranking Barandas</strong>.
-          </p>
+          <p className="text-xs text-purple-900">Suma directa del <strong>Ranking Deportivo + Ranking Barandas</strong>.</p>
         </section>
 
         <section className="bg-amber-50 border border-amber-200 rounded-2xl p-4 space-y-1.5">
@@ -158,28 +176,10 @@ function CriteriosModal({ isOpen, onClose }) {
   );
 }
 
-// Modal Perfil de Usuario con Estadísticas, Edición de Datos Personales y Subida de Foto
-function UserProfileModal({ isOpen, onClose, user, matches, onPhotoUploaded, onUpdateUserData, isCurrentUser }) {
+// Modal Perfil de Usuario con Notificaciones Push y Subida de Foto
+function UserProfileModal({ isOpen, onClose, user, matches, onPhotoUploaded, notifEnabled, onToggleNotif }) {
   const fileInputRef = useRef(null);
   const [uploading, setUploading] = useState(false);
-  const [editing, setEditing] = useState(false);
-
-  // Estados de edición
-  const [editName, setEditName] = useState('');
-  const [editPhone, setEditPhone] = useState('');
-  const [editGroup, setEditGroup] = useState('Chicos');
-  const [editPlaytomic, setEditPlaytomic] = useState('');
-  const [savingData, setSavingData] = useState(false);
-
-  useEffect(() => {
-    if (user) {
-      setEditName(user.name || '');
-      setEditPhone(user.phone || '');
-      setEditGroup(user.group === 'chicas' ? 'Chicas' : 'Chicos');
-      setEditPlaytomic(user.playtomic || '');
-      setEditing(false);
-    }
-  }, [user]);
 
   if (!isOpen || !user) return null;
 
@@ -198,15 +198,9 @@ function UserProfileModal({ isOpen, onClose, user, matches, onPhotoUploaded, onU
         let height = img.height;
 
         if (width > height) {
-          if (width > maxSize) {
-            height *= maxSize / width;
-            width = maxSize;
-          }
+          if (width > maxSize) { height *= maxSize / width; width = maxSize; }
         } else {
-          if (height > maxSize) {
-            width *= maxSize / height;
-            height = maxSize;
-          }
+          if (height > maxSize) { width *= maxSize / height; height = maxSize; }
         }
 
         canvas.width = width;
@@ -223,19 +217,6 @@ function UserProfileModal({ isOpen, onClose, user, matches, onPhotoUploaded, onU
     reader.readAsDataURL(file);
   };
 
-  const handleSaveProfileData = async (e) => {
-    e.preventDefault();
-    setSavingData(true);
-    await onUpdateUserData(user.id, {
-      nombre: editName,
-      telefono: editPhone,
-      grupo: editGroup,
-      playtomic: editPlaytomic
-    });
-    setSavingData(false);
-    setEditing(false);
-  };
-
   const stats = (() => {
     let played = 0, won = 0, lost = 0, dinnerYes = 0, dinnerNo = 0;
     const partnerStats = {};
@@ -243,7 +224,7 @@ function UserProfileModal({ isOpen, onClose, user, matches, onPhotoUploaded, onU
 
     matches.forEach(m => {
       if (m.status !== 'FINALIZADO') return;
-      const mySlot = (m.players || []).find(p => p.id === user.id || normalizeName(p.name) === normalizeName(user.name));
+      const mySlot = (m.players || []).find(p => p.id === user.id || p.name.toLowerCase() === user.name.toLowerCase());
       if (!mySlot) return;
 
       played++;
@@ -256,7 +237,7 @@ function UserProfileModal({ isOpen, onClose, user, matches, onPhotoUploaded, onU
       const myTeam = mySlot.team;
 
       (m.players || []).forEach(p => {
-        if (normalizeName(p.name) === normalizeName(user.name)) return;
+        if (p.name.toLowerCase() === user.name.toLowerCase()) return;
         if (p.team === myTeam) {
           if (!partnerStats[p.name]) partnerStats[p.name] = { played: 0, won: 0 };
           partnerStats[p.name].played++;
@@ -298,99 +279,43 @@ function UserProfileModal({ isOpen, onClose, user, matches, onPhotoUploaded, onU
         {/* Cabecera */}
         <div className="flex items-center justify-between border-b pb-4">
           <div className="flex items-center gap-3">
-            <div className={`relative ${isCurrentUser ? 'group cursor-pointer' : ''}`} onClick={() => isCurrentUser && fileInputRef.current && fileInputRef.current.click()}>
+            <div className="relative group cursor-pointer" onClick={() => fileInputRef.current && fileInputRef.current.click()}>
               <UserAvatar name={user.name} photo={user.photo} size="lg" />
-              {isCurrentUser && (
-                <div className="absolute inset-0 bg-black/40 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition text-white text-xs font-bold">
-                  📷
-                </div>
-              )}
-              {isCurrentUser && <input type="file" ref={fileInputRef} accept="image/*" className="hidden" onChange={handleFileChange} />}
+              <div className="absolute inset-0 bg-black/40 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition text-white text-xs font-bold">
+                📷
+              </div>
+              <input type="file" ref={fileInputRef} accept="image/*" className="hidden" onChange={handleFileChange} />
             </div>
             <div>
               <h3 className="text-base font-black text-slate-900">{user.name}</h3>
               <p className="text-xs text-blue-600 font-bold">{user.titulo}</p>
-              {isCurrentUser && (
-                <div className="flex gap-2 mt-0.5">
-                  <button
-                    onClick={() => fileInputRef.current && fileInputRef.current.click()}
-                    disabled={uploading}
-                    className="text-[10px] text-slate-500 underline font-semibold hover:text-blue-600"
-                  >
-                    {uploading ? 'Guardando foto...' : 'Cambiar foto'}
-                  </button>
-                  <button
-                    onClick={() => setEditing(!editing)}
-                    className="text-[10px] text-blue-600 underline font-semibold"
-                  >
-                    {editing ? 'Cancelar edición' : '✏️ Editar mis datos'}
-                  </button>
-                </div>
-              )}
+              <button
+                onClick={() => fileInputRef.current && fileInputRef.current.click()}
+                disabled={uploading}
+                className="text-[10px] text-slate-500 underline font-semibold mt-0.5 block hover:text-blue-600"
+              >
+                {uploading ? 'Guardando...' : 'Cambiar foto de perfil'}
+              </button>
             </div>
           </div>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-700 text-2xl font-bold">&times;</button>
         </div>
 
-        {/* FORMULARIO PARA EDITAR DATOS (Solo para el usuario activo) */}
-        {isCurrentUser && editing && (
-          <form onSubmit={handleSaveProfileData} className="bg-slate-50 p-3 rounded-2xl border border-slate-200 space-y-2 text-xs">
-            <div>
-              <label className="block text-[10px] font-bold text-slate-600 mb-0.5">Nombre completo</label>
-              <input
-                type="text"
-                required
-                value={editName}
-                onChange={e => setEditName(e.target.value)}
-                className="w-full bg-white border border-slate-300 rounded-xl p-2 font-semibold"
-              />
-            </div>
-            <div>
-              <label className="block text-[10px] font-bold text-slate-600 mb-0.5">Teléfono móvil (WhatsApp)</label>
-              <input
-                type="tel"
-                value={editPhone}
-                onChange={e => setEditPhone(e.target.value)}
-                placeholder="Ej: 600123456"
-                className="w-full bg-white border border-slate-300 rounded-xl p-2 font-semibold"
-              />
-            </div>
-            <div>
-              <label className="block text-[10px] font-bold text-slate-600 mb-0.5">Grupo</label>
-              <div className="flex gap-2">
-                {['Chicos', 'Chicas'].map(g => (
-                  <button
-                    type="button"
-                    key={g}
-                    onClick={() => setEditGroup(g)}
-                    className={`flex-1 py-1 rounded-lg font-bold border ${
-                      editGroup === g ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-700 border-slate-200'
-                    }`}
-                  >
-                    {g}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div>
-              <label className="block text-[10px] font-bold text-slate-600 mb-0.5">Usuario de Playtomic</label>
-              <input
-                type="text"
-                value={editPlaytomic}
-                onChange={e => setEditPlaytomic(e.target.value)}
-                placeholder="Ej: marcos-padel"
-                className="w-full bg-white border border-slate-300 rounded-xl p-2 font-semibold"
-              />
-            </div>
-            <button
-              type="submit"
-              disabled={savingData}
-              className="w-full py-2 bg-blue-600 text-white rounded-xl font-bold shadow-xs transition"
-            >
-              {savingData ? 'Guardando...' : 'Guardar Cambios'}
-            </button>
-          </form>
-        )}
+        {/* ACTIVACIÓN DE NOTIFICACIONES PUSH */}
+        <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200 flex items-center justify-between">
+          <div>
+            <p className="text-xs font-bold text-slate-800">Avisos de Convocatoria y Cena</p>
+            <p className="text-[10px] text-slate-400">Recibir aviso si estás pendiente de responder</p>
+          </div>
+          <button
+            onClick={onToggleNotif}
+            className={`px-3 py-1.5 rounded-xl font-bold text-xs transition ${
+              notifEnabled ? 'bg-emerald-600 text-white shadow-xs' : 'bg-blue-600 text-white hover:bg-blue-700'
+            }`}
+          >
+            {notifEnabled ? '✓ Activas' : '🔔 Activar'}
+          </button>
+        </div>
 
         {/* Marcadores */}
         <div className="grid grid-cols-4 gap-2 text-center">
@@ -454,7 +379,7 @@ function UserProfileModal({ isOpen, onClose, user, matches, onPhotoUploaded, onU
           </div>
         </div>
 
-        <button onClick={onClose} className="w-full py-2.5 bg-slate-900 text-white font-bold rounded-xl text-xs">Cerrar</button>
+        <button onClick={onClose} className="w-full py-2.5 bg-slate-900 text-white font-bold rounded-xl text-xs">Cerrar Perfil</button>
       </div>
     </div>
   );
@@ -543,9 +468,9 @@ export default function App() {
 
   const [selectedDinnerDate, setSelectedDinnerDate] = useState('');
   const [showRulesModal, setShowRulesModal] = useState(false);
-  
-  // Perfil seleccionado para inspeccionar estadísticas (el tuyo o cualquier otro jugador)
-  const [inspectedUser, setInspectedUser] = useState(null);
+  const [showProfileModal, setShowProfileModal] = useState(false);
+
+  const [notifEnabled, setNotifEnabled] = useState(() => localStorage.getItem('padel_notif') === 'true');
 
   const [currentUser, setCurrentUser] = useState(() => {
     const saved = localStorage.getItem('padel_current_user');
@@ -558,7 +483,6 @@ export default function App() {
   // Registro de nuevo usuario en la landing page
   const [showRegisterForm, setShowRegisterForm] = useState(false);
   const [newUserName, setNewUserName] = useState('');
-  const [newUserPhone, setNewUserPhone] = useState('');
   const [newUserGroup, setNewUserGroup] = useState('Chicos');
   const [newUserPlaytomic, setNewUserPlaytomic] = useState('');
   const [newUserPin, setNewUserPin] = useState('');
@@ -578,9 +502,6 @@ export default function App() {
   const [showScoreModal, setShowScoreModal] = useState(false);
   const [winnerTeam, setWinnerTeam] = useState(1);
   const [scoreText, setScoreText] = useState('6-4, 6-3');
-
-  // Estado local para evitar pulsaciones múltiples y lentitud al votar cena
-  const [loadingDinnerId, setLoadingDinnerId] = useState(null);
 
   const fetchData = async () => {
     try {
@@ -647,7 +568,6 @@ export default function App() {
         body: JSON.stringify({
           action: 'REGISTRAR_JUGADOR',
           nombre: newUserName.trim(),
-          telefono: newUserPhone.trim(),
           grupo: newUserGroup,
           playtomic: newUserPlaytomic.trim(),
           pin: newUserPin.trim()
@@ -658,7 +578,6 @@ export default function App() {
         const createdUser = {
           id: json.id || 'u' + (players.length + 1),
           name: newUserName.trim(),
-          phone: newUserPhone.trim(),
           group: newUserGroup.toLowerCase(),
           photo: '',
           pJ: 0, pG: 0, cSi: 0, cNo: 0,
@@ -680,27 +599,32 @@ export default function App() {
     }
   };
 
-  // Actualizar datos de perfil desde el modal
-  const handleUpdateUserData = async (idJugador, payload) => {
-    setSyncing(true);
-    try {
-      const res = await fetch(apiUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({ action: 'ACTUALIZAR_DATOS_PERFIL', idJugador, ...payload })
+  const handleToggleNotif = async () => {
+    if (!('Notification' in window)) {
+      alert('Tu navegador no soporta notificaciones web.');
+      return;
+    }
+
+    if (notifEnabled) {
+      setNotifEnabled(false);
+      localStorage.setItem('padel_notif', 'false');
+      alert('Notificaciones desactivadas.');
+      return;
+    }
+
+    const permission = await Notification.requestPermission();
+    if (permission === 'granted') {
+      setNotifEnabled(true);
+      localStorage.setItem('padel_notif', 'true');
+      new Notification('Pádel CTC 🎾', {
+        body: `¡Hola ${currentUser.name}! Notificaciones activadas con éxito.`,
+        icon: 'https://cdn-icons-png.flaticon.com/512/2855/2855613.png'
       });
-      const json = await res.json();
-      if (json.ok) {
-        setCurrentUser(prev => ({ ...prev, ...payload }));
-        localStorage.setItem('padel_current_user', JSON.stringify({ ...currentUser, ...payload }));
-        fetchData();
-      } else {
-        alert('Error al guardar datos: ' + json.error);
-      }
-    } catch (err) {
-      alert('Error de red: ' + err.message);
-    } finally {
-      setSyncing(false);
+      alert('¡Notificaciones activadas!');
+    } else {
+      setNotifEnabled(false);
+      localStorage.setItem('padel_notif', 'false');
+      alert('No se otorgaron permisos de notificación.');
     }
   };
 
@@ -725,7 +649,7 @@ export default function App() {
     }
   };
 
-  // Borrar Partido
+  // Borrar Partido Completo
   const handleDeleteMatchComplete = async (matchId) => {
     if (!confirm('¿Quieres BORRAR POR COMPLETO esta reserva? Se eliminará de la app y de Google Sheets.')) return;
     setSyncing(true);
@@ -765,7 +689,7 @@ export default function App() {
         alert('Error: ' + data.error);
       }
     } catch (err) {
-      alert('Error de conexión: ' + err.message);
+      alert('Error: ' + err.message);
     } finally {
       setSyncing(false);
     }
@@ -814,84 +738,15 @@ export default function App() {
     }
   };
 
-  // Apuntarse solo a cenar (Respuesta instantánea)
+  // Apuntarse solo a cenar
   const handleToggleSoloCena = async (dateStr, newState) => {
-    if (loadingDinnerId) return;
-    setLoadingDinnerId('solo_cena');
-
+    setSyncing(true);
     try {
       await fetch(apiUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify({ action: 'APUNTARSE_SOLO_CENA', fecha: dateStr, nombreJugador: currentUser.name, estado: newState })
       });
-      await fetchData();
-    } catch (e) {
-      alert('Error: ' + e.message);
-    } finally {
-      setLoadingDinnerId(null);
-    }
-  };
-
-  // Voto cena en partido (Optimistic UI: cambio visual inmediato sin lag)
-  const handleUpdateDinner = async (matchId, targetId, targetName, newStatus) => {
-    if (loadingDinnerId) return;
-    setLoadingDinnerId(targetId || targetName);
-
-    // 1. Actualización inmediata en memoria de la UI
-    setMatches(prevMatches => prevMatches.map(m => {
-      if (m.id !== matchId) return m;
-      return {
-        ...m,
-        players: (m.players || []).map(p => {
-          if (p.id === targetId || normalizeName(p.name) === normalizeName(targetName)) {
-            return { ...p, dinner: newStatus };
-          }
-          return p;
-        })
-      };
-    }));
-
-    // 2. Persistencia en backend
-    try {
-      await fetch(apiUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({ action: 'ACTUALIZAR_CENA', idPartido: matchId, idJugador: targetId, nombreJugador: targetName, estado: newStatus })
-      });
-    } catch (e) {
-      console.error(e);
-      fetchData();
-    } finally {
-      setLoadingDinnerId(null);
-    }
-  };
-
-  const handleToggleTeam = (matchId, playerId) => {
-    setMatches(prev => prev.map(m => {
-      if (m.id !== matchId) return m;
-      return {
-        ...m,
-        players: m.players.map(p => p.id === playerId ? { ...p, team: p.team === 1 ? 2 : 1 } : p)
-      };
-    }));
-  };
-
-  const handleSaveResult = async (matchId) => {
-    const match = matches.find(m => m.id === matchId);
-    if (!match) return;
-
-    const winningPlayers = match.players.filter(p => p.team === Number(winnerTeam));
-    const ganadoresNombres = winningPlayers.map(p => p.name);
-
-    setSyncing(true);
-    try {
-      await fetch(apiUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({ action: 'GUARDAR_RESULTADO', idPartido: matchId, marcador: scoreText, ganadores: ganadoresNombres, reiniciar: false })
-      });
-      setShowScoreModal(false);
       fetchData();
     } catch (e) {
       alert('Error: ' + e.message);
@@ -900,37 +755,148 @@ export default function App() {
     }
   };
 
-  // WhatsApp individual para confirmación de cena a los pendientes
-  const handleNotifyPendingWhatsApp = (playerItem, dateLabel) => {
-    const appUrl = window.location.origin;
-    const phoneClean = (playerItem.phone || '').replace(/\D/g, '');
-    const cleanPhoneTarget = phoneClean.length === 9 ? '34' + phoneClean : phoneClean;
-
-    const msg = `🎾 *Pádel CTC - Confirmación de Cena*\n\n¡Hola ${playerItem.name}! Tienes pendiente confirmar si te quedas a cenar para la jornada del *${dateLabel}*.\n\n👉 Confirma tu asistencia aquí: ${appUrl}`;
-    
-    if (cleanPhoneTarget) {
-      window.open(`https://api.whatsapp.com/send?phone=${cleanPhoneTarget}&text=${encodeURIComponent(msg)}`, '_blank');
-    } else {
-      window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`, '_blank');
+  // Voto cena en partido
+  const handleUpdateDinner = async (matchId, targetId, targetName, newStatus) => {
+    setSyncing(true);
+    try {
+      await fetch(apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ action: 'ACTUALIZAR_CENA', idPartido: matchId, idJugador: targetId, nombreJugador: targetName, estado: newStatus })
+      });
+      fetchData();
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setSyncing(false);
     }
   };
 
-  // WhatsApp al club/restaurante con tu texto exacto (Punto 3)
+  // Mover pareja en directo y guardar en Sheets
+  const handleToggleTeam = async (matchId, playerId) => {
+    let newTeam = 1;
+    setMatches(prev => prev.map(m => {
+      if (m.id !== matchId) return m;
+      return {
+        ...m,
+        players: m.players.map(p => {
+          if (p.id === playerId) {
+            newTeam = p.team === 1 ? 2 : 1;
+            return { ...p, team: newTeam };
+          }
+          return p;
+        })
+      };
+    }));
+
+    try {
+      fetch(apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({
+          action: 'CAMBIAR_PAREJA_JUGADOR',
+          idPartido: matchId,
+          idJugador: playerId,
+          team: newTeam
+        })
+      });
+    } catch (e) {
+      console.warn('Error guardando pareja:', e);
+    }
+  };
+
+  // Guardar Marcador Exacto con IDs de ganadores
+  const handleSaveResult = async (matchId) => {
+    const match = matches.find(m => m.id === matchId);
+    if (!match) return;
+
+    const winningPlayers = match.players.filter(p => Number(p.team || 1) === Number(winnerTeam));
+    const ganadorIds = winningPlayers.map(p => p.id);
+    const ganadorNombres = winningPlayers.map(p => p.name);
+
+    const parejasMap = {};
+    (match.players || []).forEach(p => {
+      parejasMap[p.id] = p.team || 1;
+      parejasMap[p.name] = p.team || 1;
+    });
+
+    setSyncing(true);
+    try {
+      const res = await fetch(apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({
+          action: 'GUARDAR_RESULTADO',
+          idPartido: matchId,
+          marcador: scoreText,
+          ganadorIds: ganadorIds,
+          ganadorNombres: ganadorNombres,
+          parejas: parejasMap,
+          reiniciar: false
+        })
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setShowScoreModal(false);
+        fetchData();
+      } else {
+        alert('Error al guardar: ' + data.error);
+      }
+    } catch (e) {
+      alert('Error: ' + e.message);
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  // Push a pendientes
+  const handleNotifyPending = (pendingList, dateLabel) => {
+    if (!pendingList || pendingList.length === 0) {
+      alert('¡No hay jugadores pendientes!');
+      return;
+    }
+    if ('Notification' in window && Notification.permission === 'granted') {
+      new Notification('📢 Confirmación 3º Tiempo CTC', {
+        body: `Hay ${pendingList.length} jugadores pendientes de confirmar cena para ${dateLabel}.`,
+        icon: 'https://cdn-icons-png.flaticon.com/512/2855/2855613.png'
+      });
+      alert(`Aviso enviado para los ${pendingList.length} pendientes.`);
+    } else {
+      alert('Activa primero las Notificaciones en tu Perfil 👤 pulsando en tu avatar arriba a la izquierda.');
+    }
+  };
+
+  // WhatsApp
   const handleShareClubWhatsapp = (dateTarget, yesList, guestsList) => {
     const totalCount = yesList.length + guestsList.length;
-    const msg = `Hola, para cenar este ${dateTarget} seremos un total de ${totalCount} personas. Muchas gracias.`;
-    window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`, '_blank');
+    let msg = `🎾 *RESERVA 3º TIEMPO - PÁDEL CTC*\n`;
+    msg += `📅 *Fecha:* ${dateTarget}\n`;
+    msg += `👥 *Total Comensales Confirmados:* ${totalCount} personas\n\n`;
+    msg += `*Jugadores:* \n` + (yesList.length ? yesList.map(n => `- ${n.name || n}`).join('\n') : '- Ninguno aún') + '\n';
+    if (guestsList.length) {
+      msg += `\n*Acompañantes / Sin partido:* \n` + guestsList.map(g => `- ${g.name || g}`).join('\n') + '\n';
+    }
+    msg += `\nConfirmado vía App Pádel CTC.`;
+    window.open(`https://api.whatsapp.com/send?text=${encodeURI(msg)}`, '_blank');
   };
 
   const currentMatch = matches.find(m => m.id === selectedMatchId);
   const myGroup = (currentUser?.group || 'chicos').toLowerCase();
 
+  // FILTRO TEMPORAL EXACTO (SEMANA EN CURSO VS PRÓXIMOS VS HISTÓRICO)
   const filteredMatches = useMemo(() => {
     return matches.filter(m => {
       if ((m.grupo || 'chicos').toLowerCase() !== myGroup) return false;
+
       if (filterTime === 'todos') return true;
-      if (filterTime === 'semana') return m.week === 'actual' || m.status === 'PROGRAMADO';
-      if (filterTime === 'proximos') return m.status === 'PROGRAMADO';
+      if (filterTime === 'semana') {
+        // Estrictamente Lunes a Domingo de la semana actual
+        return isCurrentWeek(m.date);
+      }
+      if (filterTime === 'proximos') {
+        // Desde hoy hacia el futuro (incluye semanas siguientes)
+        return isUpcoming(m.date);
+      }
       return true;
     });
   }, [matches, myGroup, filterTime]);
@@ -962,7 +928,6 @@ export default function App() {
     return matches.filter(m => extractCleanDate(m.date) === activeDinnerKey);
   }, [matches, activeDinnerKey]);
 
-  // Consolidación de comensales (Con soporte de teléfono y normalización Bruno)
   const { dinnerYes, dinnerNo, dinnerPending, dinnerGuests } = useMemo(() => {
     const yesMap = new Map();
     const noMap = new Map();
@@ -971,20 +936,17 @@ export default function App() {
 
     matchesForDinner.forEach(m => {
       (m.players || []).forEach(p => {
-        const normKey = normalizeName(p.name);
-        const playerObj = { name: p.name, photo: p.photo, phone: p.phone, id: p.id };
-
         if (p.dinner === 'SI') {
-          yesMap.set(normKey, playerObj);
-          pendingMap.delete(normKey);
-          noMap.delete(normKey);
+          yesMap.set(p.name, p.photo);
+          pendingMap.delete(p.name);
+          noMap.delete(p.name);
         } else if (p.dinner === 'NO') {
-          noMap.set(normKey, playerObj);
-          pendingMap.delete(normKey);
-          yesMap.delete(normKey);
+          noMap.set(p.name, p.photo);
+          pendingMap.delete(p.name);
+          yesMap.delete(p.name);
         } else {
-          if (!yesMap.has(normKey) && !noMap.has(normKey)) {
-            pendingMap.set(normKey, playerObj);
+          if (!yesMap.has(p.name) && !noMap.has(p.name)) {
+            pendingMap.set(p.name, p.photo);
           }
         }
       });
@@ -992,14 +954,14 @@ export default function App() {
     });
 
     return {
-      dinnerYes: Array.from(yesMap.values()),
-      dinnerNo: Array.from(noMap.values()),
-      dinnerPending: Array.from(pendingMap.values()),
+      dinnerYes: Array.from(yesMap.entries()).map(([name, photo]) => ({ name, photo })),
+      dinnerNo: Array.from(noMap.entries()).map(([name, photo]) => ({ name, photo })),
+      dinnerPending: Array.from(pendingMap.entries()).map(([name, photo]) => ({ name, photo })),
       dinnerGuests: guestList
     };
   }, [matchesForDinner]);
 
-  const isUserInDinner = dinnerYes.some(item => normalizeName(item.name) === normalizeName(currentUser?.name));
+  const isUserInDinner = dinnerYes.some(item => item.name === currentUser?.name);
 
   const currentVisualDinnerLabel = useMemo(() => {
     const found = availableDinnerDates.find(d => d.key === activeDinnerKey);
@@ -1050,6 +1012,7 @@ export default function App() {
               </button>
             </>
           ) : (
+            /* FORMULARIO DE ALTA DE NUEVO JUGADOR */
             <form onSubmit={handleRegisterUser} className="space-y-3">
               <div>
                 <label className="block text-xs font-bold text-slate-300 mb-1">Nombre y Apellido *</label>
@@ -1059,18 +1022,6 @@ export default function App() {
                   value={newUserName}
                   onChange={(e) => setNewUserName(e.target.value)}
                   placeholder="Ej: Marcos Iglesias"
-                  className="w-full bg-slate-700 border border-slate-600 rounded-xl p-2.5 text-xs text-white placeholder-slate-400 focus:outline-none focus:border-blue-500 font-semibold"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-300 mb-1">Teléfono Móvil (WhatsApp) *</label>
-                <input
-                  type="tel"
-                  required
-                  value={newUserPhone}
-                  onChange={(e) => setNewUserPhone(e.target.value)}
-                  placeholder="Ej: 600123456"
                   className="w-full bg-slate-700 border border-slate-600 rounded-xl p-2.5 text-xs text-white placeholder-slate-400 focus:outline-none focus:border-blue-500 font-semibold"
                 />
               </div>
@@ -1156,9 +1107,9 @@ export default function App() {
       <header className="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm">
         <div className="max-w-xl mx-auto px-4 py-3 flex items-center justify-between">
           <div
-            onClick={() => setInspectedUser(currentUser)}
+            onClick={() => setShowProfileModal(true)}
             className="flex items-center gap-2.5 cursor-pointer group"
-            title="Ver mis estadísticas y editar perfil"
+            title="Ver estadísticas y activar notificaciones"
           >
             <UserAvatar name={currentUser.name} photo={currentUser.photo} size="md" className="group-hover:ring-2 group-hover:ring-blue-500 transition" />
             <div>
@@ -1295,9 +1246,7 @@ export default function App() {
 
                       <div className="space-y-2">
                         {teamPlayers.map(p => {
-                          const isMe = p.id === currentUser.id || normalizeName(p.name) === normalizeName(currentUser.name);
-                          const isProcessing = loadingDinnerId === (p.id || p.name);
-
+                          const isMe = p.id === currentUser.id || p.name.toLowerCase() === currentUser.name.toLowerCase();
                           return (
                             <div
                               key={p.id || p.name}
@@ -1310,12 +1259,7 @@ export default function App() {
                                 >
                                   P{p.team || 1} ⇄
                                 </button>
-                                <div onClick={() => {
-                                  const fullU = players.find(u => u.id === p.id || normalizeName(u.name) === normalizeName(p.name));
-                                  setInspectedUser(fullU || p);
-                                }} className="cursor-pointer">
-                                  <UserAvatar name={p.name} photo={p.photo} size="sm" />
-                                </div>
+                                <UserAvatar name={p.name} photo={p.photo} size="sm" />
                                 <div>
                                   <span className={`text-xs font-bold block ${isMe ? 'text-blue-600 font-black' : 'text-slate-800'}`}>
                                     {p.name} {isMe && '(Tú)'}
@@ -1328,20 +1272,18 @@ export default function App() {
 
                               <div className="flex items-center gap-1.5">
                                 <button
-                                  disabled={isProcessing}
                                   onClick={() => handleUpdateDinner(currentMatch.id, p.id, p.name, p.dinner === 'SI' ? 'PENDIENTE' : 'SI')}
-                                  className={`px-2.5 py-1 rounded-xl text-[10px] font-bold transition ${
+                                  className={`px-2.5 py-1 rounded-xl text-[10px] font-bold ${
                                     p.dinner === 'SI' ? 'bg-emerald-600 text-white shadow-xs' : 'bg-slate-100 text-slate-600'
-                                  } ${isProcessing ? 'opacity-50 cursor-wait' : ''}`}
+                                  }`}
                                 >
                                   Cena 🍻
                                 </button>
                                 <button
-                                  disabled={isProcessing}
                                   onClick={() => handleUpdateDinner(currentMatch.id, p.id, p.name, p.dinner === 'NO' ? 'PENDIENTE' : 'NO')}
-                                  className={`px-2.5 py-1 rounded-xl text-[10px] font-bold transition ${
+                                  className={`px-2.5 py-1 rounded-xl text-[10px] font-bold ${
                                     p.dinner === 'NO' ? 'bg-rose-600 text-white shadow-xs' : 'bg-slate-100 text-slate-600'
-                                  } ${isProcessing ? 'opacity-50 cursor-wait' : ''}`}
+                                  }`}
                                 >
                                   No 🏃‍♂️
                                 </button>
@@ -1355,11 +1297,10 @@ export default function App() {
                 })}
               </div>
 
-              {/* PREGUNTA RÁPIDA DE CENA AL USUARIO ACTIVO (CON RESPUESTA INSTANTÁNEA) */}
+              {/* TARJETA DESTACADA: ¿TE QUEDAS AL 3º TIEMPO? */}
               {(() => {
-                const mySlot = (currentMatch.players || []).find(p => p.id === currentUser.id || normalizeName(p.name) === normalizeName(currentUser.name));
+                const mySlot = (currentMatch.players || []).find(p => p.id === currentUser.id || p.name.toLowerCase() === currentUser.name.toLowerCase());
                 if (!mySlot) return null;
-                const isProcessing = loadingDinnerId === (mySlot.id || mySlot.name);
 
                 return (
                   <div className="mt-5 pt-4 border-t border-slate-100 text-center">
@@ -1368,24 +1309,22 @@ export default function App() {
                     </p>
                     <div className="flex gap-2.5">
                       <button
-                        disabled={isProcessing}
                         onClick={() => handleUpdateDinner(currentMatch.id, mySlot.id, mySlot.name, 'SI')}
                         className={`flex-1 py-2.5 rounded-xl font-extrabold text-xs transition border ${
                           mySlot.dinner === 'SI'
                             ? 'bg-emerald-600 text-white border-emerald-600 shadow-md'
                             : 'bg-white text-slate-700 border-slate-200 hover:bg-emerald-50'
-                        } ${isProcessing ? 'opacity-60 cursor-wait' : ''}`}
+                        }`}
                       >
                         ✓ ¡SÍ, CLARO! 🍻
                       </button>
                       <button
-                        disabled={isProcessing}
                         onClick={() => handleUpdateDinner(currentMatch.id, mySlot.id, mySlot.name, 'NO')}
                         className={`flex-1 py-2.5 rounded-xl font-extrabold text-xs transition border ${
                           mySlot.dinner === 'NO'
                             ? 'bg-rose-600 text-white border-rose-600 shadow-md'
                             : 'bg-white text-slate-700 border-slate-200 hover:bg-rose-50'
-                        } ${isProcessing ? 'opacity-60 cursor-wait' : ''}`}
+                        }`}
                       >
                         ME RAJO 🏃‍♂️
                       </button>
@@ -1425,7 +1364,7 @@ export default function App() {
               </button>
             </div>
 
-            {/* TAB 1: PARTIDOS */}
+            {/* TAB 1: PARTIDOS CON FILTRADO EXACTO */}
             {activeTab === 'partidos' && (
               <div className="space-y-3">
                 <button
@@ -1454,7 +1393,12 @@ export default function App() {
                 {filteredMatches.length === 0 ? (
                   <div className="bg-white rounded-2xl p-8 text-center border border-slate-200">
                     <p className="text-2xl mb-1">🎾</p>
-                    <p className="text-sm font-bold text-slate-700">No hay partidos de {currentUser.group}</p>
+                    <p className="text-sm font-bold text-slate-700">No hay partidos de {currentUser.group} en esta vista</p>
+                    <p className="text-xs text-slate-400 mt-1">
+                      {filterTime === 'semana'
+                        ? 'No hay partidos programados entre este lunes y domingo. Prueba en "⏳ Próximos".'
+                        : 'No se encontraron partidos con este filtro.'}
+                    </p>
                   </div>
                 ) : (
                   filteredMatches.map(m => (
@@ -1483,7 +1427,7 @@ export default function App() {
               </div>
             )}
 
-            {/* TAB 2: CENA & CLUB UNIFICADA */}
+            {/* TAB 2: CENA & CLUB UNIFICADA POR DÍA */}
             {activeTab === 'cenas' && (
               <div className="space-y-4">
                 <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-xs">
@@ -1507,13 +1451,12 @@ export default function App() {
                     ¿No juegas hoy pero te vienes a cenar? 🍻
                   </p>
                   <button
-                    disabled={loadingDinnerId === 'solo_cena'}
                     onClick={() => handleToggleSoloCena(activeDinnerKey, isUserInDinner ? 'NO' : 'SI')}
                     className={`py-2 px-4 rounded-xl text-xs font-bold transition shadow-xs ${
                       isUserInDinner
                         ? 'bg-rose-600 hover:bg-rose-700 text-white'
                         : 'bg-emerald-600 hover:bg-emerald-700 text-white'
-                    } ${loadingDinnerId === 'solo_cena' ? 'opacity-60 cursor-wait' : ''}`}
+                    }`}
                   >
                     {isUserInDinner ? '✓ Apuntado a la cena (Clic para borrarte)' : '+ ¡Me apunto a cenar sin jugar!'}
                   </button>
@@ -1558,14 +1501,7 @@ export default function App() {
                       </span>
                       <div className="flex flex-wrap gap-2">
                         {dinnerYes.concat(dinnerGuests).map((item, i) => (
-                          <div
-                            key={i}
-                            onClick={() => {
-                              const found = players.find(u => normalizeName(u.name) === normalizeName(item.name));
-                              setInspectedUser(found || item);
-                            }}
-                            className="flex items-center gap-1.5 bg-emerald-50 border border-emerald-200 text-emerald-950 px-2.5 py-1 rounded-xl font-bold text-xs shadow-2xs cursor-pointer hover:bg-emerald-100 transition"
-                          >
+                          <div key={i} className="flex items-center gap-1.5 bg-emerald-50 border border-emerald-200 text-emerald-950 px-2.5 py-1 rounded-xl font-bold text-xs shadow-2xs">
                             <UserAvatar name={item.name} photo={item.photo} size="sm" />
                             <span>{item.name}</span>
                           </div>
@@ -1582,14 +1518,7 @@ export default function App() {
                       </span>
                       <div className="flex flex-wrap gap-2">
                         {dinnerNo.map((item, i) => (
-                          <div
-                            key={i}
-                            onClick={() => {
-                              const found = players.find(u => normalizeName(u.name) === normalizeName(item.name));
-                              setInspectedUser(found || item);
-                            }}
-                            className="flex items-center gap-1.5 bg-rose-50 border border-rose-200 text-rose-950 px-2.5 py-1 rounded-xl font-semibold text-xs cursor-pointer hover:bg-rose-100 transition"
-                          >
+                          <div key={i} className="flex items-center gap-1.5 bg-rose-50 border border-rose-200 text-rose-950 px-2.5 py-1 rounded-xl font-semibold text-xs">
                             <UserAvatar name={item.name} photo={item.photo} size="sm" />
                             <span>{item.name}</span>
                           </div>
@@ -1606,24 +1535,9 @@ export default function App() {
                       </span>
                       <div className="flex flex-wrap gap-2">
                         {dinnerPending.map((item, i) => (
-                          <div
-                            key={i}
-                            className="flex items-center gap-1.5 bg-amber-50 border border-amber-200 text-amber-950 px-2.5 py-1 rounded-xl font-semibold text-xs"
-                          >
-                            <div onClick={() => {
-                              const found = players.find(u => normalizeName(u.name) === normalizeName(item.name));
-                              setInspectedUser(found || item);
-                            }} className="cursor-pointer">
-                              <UserAvatar name={item.name} photo={item.photo} size="sm" />
-                            </div>
+                          <div key={i} className="flex items-center gap-1.5 bg-amber-50 border border-amber-200 text-amber-950 px-2.5 py-1 rounded-xl font-semibold text-xs">
+                            <UserAvatar name={item.name} photo={item.photo} size="sm" />
                             <span>{item.name}</span>
-                            <button
-                              onClick={() => handleNotifyPendingWhatsApp(item, currentVisualDinnerLabel)}
-                              className="ml-1 bg-emerald-600 hover:bg-emerald-700 text-white px-1.5 py-0.5 rounded text-[10px] font-bold flex items-center gap-0.5"
-                              title="Avisar por WhatsApp directo"
-                            >
-                              📲
-                            </button>
                           </div>
                         ))}
                         {dinnerPending.length === 0 && (
@@ -1633,20 +1547,29 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* BOTÓN WHATSAPP AL RESTAURANTE (CON TU TEXTO EXACTO) */}
-                  <div className="pt-2 border-t border-slate-100">
+                  {/* BOTONES DE ACCIÓN: PUSH Y WHATSAPP */}
+                  <div className="pt-2 space-y-2 border-t border-slate-100">
+                    {dinnerPending.length > 0 && (
+                      <button
+                        onClick={() => handleNotifyPending(dinnerPending, currentVisualDinnerLabel)}
+                        className="w-full bg-amber-500 hover:bg-amber-600 text-white font-bold py-2.5 rounded-2xl text-xs flex items-center justify-center gap-1.5 shadow-sm transition"
+                      >
+                        🔔 Enviar Notificación Push a los {dinnerPending.length} Pendientes
+                      </button>
+                    )}
+
                     <button
                       onClick={() => handleShareClubWhatsapp(currentVisualDinnerLabel, dinnerYes, dinnerGuests)}
                       className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 rounded-2xl text-xs flex items-center justify-center gap-1.5 shadow-sm transition"
                     >
-                      📲 Enviar Reserva al Club / Restaurante por WhatsApp ({dinnerYes.length + dinnerGuests.length} comensales)
+                      📲 Avisar al Restaurante / Club por WhatsApp ({dinnerYes.length + dinnerGuests.length} comensales)
                     </button>
                   </div>
                 </div>
               </div>
             )}
 
-            {/* TAB 3: RANKINGS DEL GRUPO (Pulsar en cualquier avatar para ver su dossier) */}
+            {/* TAB 3: RANKINGS DEL GRUPO */}
             {activeTab === 'rankings' && (
               <div className="bg-white rounded-2xl p-4 border border-slate-200">
                 <div className="flex justify-between items-center mb-3">
@@ -1678,12 +1601,7 @@ export default function App() {
                       return b.hibrido - a.hibrido;
                     })
                     .map((p, idx) => (
-                      <div
-                        key={p.id}
-                        onClick={() => setInspectedUser(p)}
-                        className="flex items-center justify-between p-2 rounded-2xl bg-slate-50 text-xs hover:bg-blue-50/60 cursor-pointer transition"
-                        title="Toca para ver estadísticas"
-                      >
+                      <div key={p.id} className="flex items-center justify-between p-2 rounded-2xl bg-slate-50 text-xs">
                         <div className="flex items-center gap-2.5">
                           <span className="font-black text-slate-400 w-4 text-center">{idx + 1}</span>
                           <UserAvatar name={p.name} photo={p.photo} size="md" />
@@ -1704,7 +1622,7 @@ export default function App() {
               </div>
             )}
 
-            {/* TAB 4: BOTE DEL GRUPO (Pulsar en cualquier avatar para ver su dossier) */}
+            {/* TAB 4: BOTE */}
             {activeTab === 'bote' && (
               <div className="bg-white rounded-2xl p-4 border border-slate-200 space-y-3">
                 <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-900">
@@ -1721,12 +1639,7 @@ export default function App() {
                   {[...groupPlayers]
                     .sort((a, b) => b.deuda - a.deuda)
                     .map(p => (
-                      <div
-                        key={p.id}
-                        onClick={() => setInspectedUser(p)}
-                        className="flex items-center justify-between p-2.5 rounded-2xl bg-slate-50 text-xs hover:bg-amber-50/60 cursor-pointer transition"
-                        title="Toca para ver estadísticas"
-                      >
+                      <div key={p.id} className="flex items-center justify-between p-2.5 rounded-2xl bg-slate-50 text-xs">
                         <div className="flex items-center gap-2.5">
                           <UserAvatar name={p.name} photo={p.photo} size="md" />
                           <div>
@@ -1895,16 +1808,14 @@ export default function App() {
 
       {/* MODALES AUXILIARES */}
       <CriteriosModal isOpen={showRulesModal} onClose={() => setShowRulesModal(false)} />
-      
-      {/* DOSSIER / PERFIL DEL JUGADOR (Inspeccionable para cualquiera o para el usuario activo) */}
       <UserProfileModal
-        isOpen={Boolean(inspectedUser)}
-        onClose={() => setInspectedUser(null)}
-        user={inspectedUser}
+        isOpen={showProfileModal}
+        onClose={() => setShowProfileModal(false)}
+        user={currentUser}
         matches={matches}
         onPhotoUploaded={handlePhotoUploaded}
-        onUpdateUserData={handleUpdateUserData}
-        isCurrentUser={Boolean(inspectedUser && currentUser && inspectedUser.id === currentUser.id)}
+        notifEnabled={notifEnabled}
+        onToggleNotif={handleToggleNotif}
       />
     </div>
   );
