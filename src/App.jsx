@@ -72,7 +72,7 @@ function isCurrentWeek(dateStr) {
   if (!matchDate) return true;
 
   const now = new Date();
-  const currentDay = now.getDay(); // 0 es Domingo
+  const currentDay = now.getDay();
   const distanceToMonday = (currentDay + 6) % 7;
 
   const monday = new Date(now);
@@ -86,7 +86,6 @@ function isCurrentWeek(dateStr) {
   return matchDate >= monday && matchDate <= sunday;
 }
 
-// Comprobar si un partido es futuro (desde hoy en adelante)
 function isUpcoming(dateStr) {
   const matchDate = parseMatchDateObject(dateStr);
   if (!matchDate) return true;
@@ -98,6 +97,7 @@ function isUpcoming(dateStr) {
 // Avatar con foto o iniciales
 function UserAvatar({ name, photo, size = 'md', className = '' }) {
   const sizeClasses = {
+    xs: 'w-6 h-6 text-[9px]',
     sm: 'w-7 h-7 text-[10px]',
     md: 'w-9 h-9 text-xs',
     lg: 'w-14 h-14 text-lg font-black',
@@ -258,11 +258,10 @@ function UserProfileModal({ isOpen, onClose, user, matches, onPhotoUploaded, onU
     setEditing(false);
   };
 
-  // CÁLCULO DE ESTADÍSTICAS INDIVIDUALES CORREGIDO
   const stats = (() => {
     let played = 0, won = 0, lost = 0, dinnerYes = 0, dinnerNo = 0;
-    const partnerStats = {}; // { nombre: { played, won, lost } }
-    const rivalStats = {};   // { nombre: { played, wonAgainst, lostAgainst } }
+    const partnerStats = {};
+    const rivalStats = {};
 
     matches.forEach(m => {
       if (m.status !== 'FINALIZADO') return;
@@ -294,11 +293,9 @@ function UserProfileModal({ isOpen, onClose, user, matches, onPhotoUploaded, onU
       });
     });
 
-    // 1. MEJOR PAREJA: mayor % de victorias (requiere al menos 1 victoria)
     let bestPartner = null;
     let bestPartnerWinPct = -1;
 
-    // 2. PAREJA GAFE: mayor % de derrotas (requiere al menos 1 derrota con él)
     let worstPartner = null;
     let worstPartnerLossPct = 0;
 
@@ -311,18 +308,15 @@ function UserProfileModal({ isOpen, onClose, user, matches, onPhotoUploaded, onU
         bestPartner = { name, ...data, pct: winPct.toFixed(0) };
       }
 
-      // Solo es pareja gafe si habéis perdido juntos al menos una vez
       if (data.lost > 0 && lossPct >= worstPartnerLossPct) {
         worstPartnerLossPct = lossPct;
         worstPartner = { name, ...data, pct: lossPct.toFixed(0) };
       }
     });
 
-    // 3. RIVAL FAVORITO: mayor % de victorias sobre él (requiere al menos 1 victoria vs él)
     let easiestRival = null;
     let easiestWinPct = -1;
 
-    // 4. BESTIA NEGRA: mayor % de derrotas contra él (requiere al menos 1 derrota vs él)
     let hardestRival = null;
     let hardestLossPct = 0;
 
@@ -335,7 +329,6 @@ function UserProfileModal({ isOpen, onClose, user, matches, onPhotoUploaded, onU
         easiestRival = { name, ...data, pct: winPct.toFixed(0) };
       }
 
-      // Solo es bestia negra si te ha ganado al menos una vez
       if (data.lostAgainst > 0 && lossPct >= hardestLossPct) {
         hardestLossPct = lossPct;
         hardestRival = { name, ...data, pct: lossPct.toFixed(0) };
@@ -354,7 +347,6 @@ function UserProfileModal({ isOpen, onClose, user, matches, onPhotoUploaded, onU
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-3xl max-w-sm w-full max-h-[90vh] overflow-y-auto p-5 shadow-2xl text-left space-y-4">
-        {/* Cabecera */}
         <div className="flex items-center justify-between border-b pb-4">
           <div className="flex items-center gap-3">
             <div className={`relative ${isCurrentUser ? 'group cursor-pointer' : ''}`} onClick={() => isCurrentUser && fileInputRef.current && fileInputRef.current.click()}>
@@ -391,7 +383,6 @@ function UserProfileModal({ isOpen, onClose, user, matches, onPhotoUploaded, onU
           <button onClick={onClose} className="text-slate-400 hover:text-slate-700 text-2xl font-bold">&times;</button>
         </div>
 
-        {/* FORMULARIO PARA EDITAR DATOS (Solo para el usuario activo) */}
         {isCurrentUser && editing && (
           <form onSubmit={handleSaveProfileData} className="bg-slate-50 p-3 rounded-2xl border border-slate-200 space-y-2 text-xs">
             <div>
@@ -451,7 +442,6 @@ function UserProfileModal({ isOpen, onClose, user, matches, onPhotoUploaded, onU
           </form>
         )}
 
-        {/* Marcadores */}
         <div className="grid grid-cols-4 gap-2 text-center">
           <div className="bg-slate-50 border border-slate-200 rounded-xl p-2">
             <span className="text-base font-black text-slate-900 block">{stats.played}</span>
@@ -471,7 +461,6 @@ function UserProfileModal({ isOpen, onClose, user, matches, onPhotoUploaded, onU
           </div>
         </div>
 
-        {/* 3º Tiempo */}
         <div className="grid grid-cols-2 gap-2 text-center">
           <div className="bg-amber-50 border border-amber-200 rounded-xl p-2.5">
             <span className="text-base font-black text-amber-800 block">{stats.dinnerYes}</span>
@@ -483,32 +472,27 @@ function UserProfileModal({ isOpen, onClose, user, matches, onPhotoUploaded, onU
           </div>
         </div>
 
-        {/* Dossier de Compañeros y Rivales Corregido */}
         <div className="space-y-2 pt-1">
           <h4 className="text-xs font-black text-slate-800 uppercase tracking-wide">Compañeros y Rivales</h4>
           <div className="grid grid-cols-2 gap-2 text-xs">
-            {/* Mejor Pareja */}
             <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-2.5">
               <span className="text-[10px] font-bold text-emerald-800 block uppercase">🌟 Mejor Pareja</span>
               <p className="font-black text-slate-900 text-xs mt-0.5 truncate">{stats.bestPartner ? stats.bestPartner.name : 'Sin datos'}</p>
               {stats.bestPartner && <span className="text-[10px] text-emerald-700 font-semibold">{stats.bestPartner.pct}% victorias</span>}
             </div>
 
-            {/* Pareja Gafe (Vacío si no hay derrotas juntos) */}
             <div className="bg-rose-50 border border-rose-200 rounded-2xl p-2.5">
               <span className="text-[10px] font-bold text-rose-800 block uppercase">💔 Pareja Gafe</span>
               <p className="font-black text-slate-900 text-xs mt-0.5 truncate">{stats.worstPartner ? stats.worstPartner.name : 'Sin datos'}</p>
               {stats.worstPartner && <span className="text-[10px] text-rose-700 font-semibold">{stats.worstPartner.pct}% derrotas</span>}
             </div>
 
-            {/* Bestia Negra (Vacío si no has perdido contra ningún rival) */}
             <div className="bg-amber-50 border border-amber-200 rounded-2xl p-2.5">
               <span className="text-[10px] font-bold text-amber-800 block uppercase">😈 Bestia Negra</span>
               <p className="font-black text-slate-900 text-xs mt-0.5 truncate">{stats.hardestRival ? stats.hardestRival.name : 'Sin datos'}</p>
               {stats.hardestRival && <span className="text-[10px] text-amber-700 font-semibold">{stats.hardestRival.pct}% derrotas vs él</span>}
             </div>
 
-            {/* Rival Favorito */}
             <div className="bg-blue-50 border border-blue-200 rounded-2xl p-2.5">
               <span className="text-[10px] font-bold text-blue-800 block uppercase">🍰 Rival Favorito</span>
               <p className="font-black text-slate-900 text-xs mt-0.5 truncate">{stats.easiestRival ? stats.easiestRival.name : 'Sin datos'}</p>
@@ -606,8 +590,6 @@ export default function App() {
 
   const [selectedDinnerDate, setSelectedDinnerDate] = useState('');
   const [showRulesModal, setShowRulesModal] = useState(false);
-  
-  // Perfil seleccionado para inspeccionar estadísticas (el tuyo o cualquier otro jugador)
   const [inspectedUser, setInspectedUser] = useState(null);
 
   const [currentUser, setCurrentUser] = useState(() => {
@@ -618,7 +600,7 @@ export default function App() {
   const [filterTime, setFilterTime] = useState('semana');
   const [targetPinUser, setTargetPinUser] = useState(null);
 
-  // Registro de nuevo usuario en la landing page
+  // Registro de nuevo usuario
   const [showRegisterForm, setShowRegisterForm] = useState(false);
   const [newUserName, setNewUserName] = useState('');
   const [newUserPhone, setNewUserPhone] = useState('');
@@ -637,12 +619,17 @@ export default function App() {
   const [showEditPlayersModal, setShowEditPlayersModal] = useState(false);
   const [editPlayerSlots, setEditPlayerSlots] = useState(['', '', '', '']);
 
-  // Marcador
+  // Marcador estructurado por sets
   const [showScoreModal, setShowScoreModal] = useState(false);
   const [winnerTeam, setWinnerTeam] = useState(1);
-  const [scoreText, setScoreText] = useState('6-4, 6-3');
+  const [set1P1, setSet1P1] = useState(6);
+  const [set1P2, setSet1P2] = useState(4);
+  const [set2P1, setSet2P1] = useState(6);
+  const [set2P2, setSet2P2] = useState(3);
+  const [hasSet3, setHasSet3] = useState(false);
+  const [set3P1, setSet3P1] = useState(6);
+  const [set3P2, setSet3P2] = useState(4);
 
-  // Estado local para evitar pulsaciones múltiples y lentitud al votar cena
   const [loadingDinnerId, setLoadingDinnerId] = useState(null);
 
   const fetchData = async () => {
@@ -693,7 +680,6 @@ export default function App() {
     setSelectedMatchId(null);
   };
 
-  // REGISTRO DE NUEVO USUARIO
   const handleRegisterUser = async (e) => {
     e.preventDefault();
     if (!newUserName.trim()) return;
@@ -743,7 +729,6 @@ export default function App() {
     }
   };
 
-  // Actualizar datos de perfil desde el modal
   const handleUpdateUserData = async (idJugador, payload) => {
     setSyncing(true);
     try {
@@ -767,7 +752,6 @@ export default function App() {
     }
   };
 
-  // Subir Foto
   const handlePhotoUploaded = async (idJugador, photoBase64) => {
     setSyncing(true);
     setCurrentUser(prev => ({ ...prev, photo: photoBase64 }));
@@ -788,7 +772,6 @@ export default function App() {
     }
   };
 
-  // Borrar Partido
   const handleDeleteMatchComplete = async (matchId) => {
     if (!confirm('¿Quieres BORRAR POR COMPLETO esta reserva? Se eliminará de la app y de Google Sheets.')) return;
     setSyncing(true);
@@ -807,7 +790,6 @@ export default function App() {
     }
   };
 
-  // Crear Partido
   const handleAddPlaytomicMatch = async (e) => {
     e.preventDefault();
     if (!playtomicText.trim()) return;
@@ -834,7 +816,6 @@ export default function App() {
     }
   };
 
-  // Recargar Playtomic
   const handleReloadPlaytomic = async (e) => {
     e.preventDefault();
     if (!reloadPlaytomicText.trim() || !selectedMatchId) return;
@@ -856,7 +837,6 @@ export default function App() {
     }
   };
 
-  // Guardar Suplentes Manuales
   const handleSaveManualPlayers = async (e) => {
     e.preventDefault();
     if (!selectedMatchId) return;
@@ -877,7 +857,6 @@ export default function App() {
     }
   };
 
-  // Apuntarse solo a cenar
   const handleToggleSoloCena = async (dateStr, newState) => {
     if (loadingDinnerId) return;
     setLoadingDinnerId('solo_cena');
@@ -896,7 +875,6 @@ export default function App() {
     }
   };
 
-  // Voto cena en partido
   const handleUpdateDinner = async (matchId, targetId, targetName, newStatus) => {
     if (loadingDinnerId) return;
     setLoadingDinnerId(targetId || targetName);
@@ -928,7 +906,6 @@ export default function App() {
     }
   };
 
-  // Sincronizar parejas en tiempo real con Sheets
   const handleToggleTeam = async (matchId, playerId) => {
     let newTeam = 1;
     setMatches(prev => prev.map(m => {
@@ -961,7 +938,6 @@ export default function App() {
     }
   };
 
-  // Guardar Marcador con IDs exactos de la pareja ganadora
   const handleSaveResult = async (matchId) => {
     const match = matches.find(m => m.id === matchId);
     if (!match) return;
@@ -969,6 +945,11 @@ export default function App() {
     const winningPlayers = match.players.filter(p => Number(p.team || 1) === Number(winnerTeam));
     const ganadorIds = winningPlayers.map(p => p.id);
     const ganadorNombres = winningPlayers.map(p => p.name);
+
+    let setsText = `${set1P1}-${set1P2}, ${set2P1}-${set2P2}`;
+    if (hasSet3) {
+      setsText += `, ${set3P1}-${set3P2}`;
+    }
 
     const parejasMap = {};
     (match.players || []).forEach(p => {
@@ -984,7 +965,7 @@ export default function App() {
         body: JSON.stringify({
           action: 'GUARDAR_RESULTADO',
           idPartido: matchId,
-          marcador: scoreText,
+          marcador: setsText,
           ganadorIds: ganadorIds,
           ganadorNombres: ganadorNombres,
           parejas: parejasMap,
@@ -1005,7 +986,6 @@ export default function App() {
     }
   };
 
-  // WhatsApp individual para confirmación de cena a los pendientes
   const handleNotifyPendingWhatsApp = (playerItem, dateLabel) => {
     const appUrl = window.location.origin;
     const phoneClean = (playerItem.phone || '').replace(/\D/g, '');
@@ -1020,7 +1000,6 @@ export default function App() {
     }
   };
 
-  // WhatsApp al club/restaurante
   const handleShareClubWhatsapp = (dateTarget, yesList, guestsList) => {
     const totalCount = yesList.length + guestsList.length;
     const msg = `Hola, para cenar este ${dateTarget} seremos un total de ${totalCount} personas. Muchas gracias.`;
@@ -1030,7 +1009,6 @@ export default function App() {
   const currentMatch = matches.find(m => m.id === selectedMatchId);
   const myGroup = (currentUser?.group || 'chicos').toLowerCase();
 
-  // Filtro temporal exacto
   const filteredMatches = useMemo(() => {
     return matches.filter(m => {
       if ((m.grupo || 'chicos').toLowerCase() !== myGroup) return false;
@@ -1050,7 +1028,6 @@ export default function App() {
     return players.filter(p => (p.group || 'chicos').toLowerCase() === myGroup);
   }, [players, myGroup]);
 
-  // Lista de fechas únicas para la cena normalizadas
   const availableDinnerDates = useMemo(() => {
     const datesMap = new Map();
     matches.forEach(m => {
@@ -1067,13 +1044,11 @@ export default function App() {
 
   const activeDinnerKey = selectedDinnerDate || (availableDinnerDates.length > 0 ? availableDinnerDates[0].key : '');
 
-  // Partidos del día de la cena
   const matchesForDinner = useMemo(() => {
     if (!activeDinnerKey) return [];
     return matches.filter(m => extractCleanDate(m.date) === activeDinnerKey);
   }, [matches, activeDinnerKey]);
 
-  // Consolidación de comensales
   const { dinnerYes, dinnerNo, dinnerPending, dinnerGuests } = useMemo(() => {
     const yesMap = new Map();
     const noMap = new Map();
@@ -1152,7 +1127,6 @@ export default function App() {
                 )}
               </div>
 
-              {/* BOTÓN ALTA NUEVO JUGADOR */}
               <button
                 onClick={() => setShowRegisterForm(true)}
                 className="w-full py-3 bg-slate-700 hover:bg-slate-600 text-blue-300 hover:text-white rounded-2xl text-xs font-bold transition border border-dashed border-slate-500 flex items-center justify-center gap-1.5"
@@ -1355,6 +1329,18 @@ export default function App() {
                 📍 {currentMatch.location}
               </p>
 
+              {/* TARJETA DE RESULTADO OFICIAL SI ESTÁ FINALIZADO */}
+              {currentMatch.status === 'FINALIZADO' && (
+                <div className="bg-purple-50/80 border border-purple-200 rounded-2xl p-3.5 text-center my-3.5 space-y-1.5">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-purple-600 block">
+                    Marcador Final Oficial
+                  </span>
+                  <div className="inline-block bg-purple-900 text-white font-mono font-black text-sm px-3.5 py-1 rounded-xl shadow-xs">
+                    {currentMatch.score || 'Finalizado'}
+                  </div>
+                </div>
+              )}
+
               <div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-slate-100">
                 <button
                   onClick={() => setShowReloadPlaytomicModal(true)}
@@ -1374,6 +1360,7 @@ export default function App() {
                 </button>
               </div>
 
+              {/* CONVOCATORIA DE PAREJAS DESTACANDO A LA GANADORA CON COLOR Y CORONA */}
               <div className="mt-5 space-y-4">
                 <div className="flex justify-between items-center border-b pb-2">
                   <h3 className="text-xs font-black text-slate-800 uppercase tracking-wider">
@@ -1387,20 +1374,37 @@ export default function App() {
                 {[1, 2].map(teamNum => {
                   const teamPlayers = (currentMatch.players || []).filter(p => (p.team || 1) === teamNum);
                   const isP1 = teamNum === 1;
+                  const isFinalizado = currentMatch.status === 'FINALIZADO';
+                  const isWinningTeam = isFinalizado && teamPlayers.some(p => p.won === 'SI');
 
                   return (
                     <div
                       key={teamNum}
-                      className={`border rounded-2xl p-3.5 ${
-                        isP1 ? 'bg-blue-50/40 border-blue-200' : 'bg-amber-50/40 border-amber-200'
+                      className={`border rounded-2xl p-3.5 transition-all ${
+                        isWinningTeam
+                          ? 'bg-emerald-50/70 border-emerald-300 ring-1 ring-emerald-300 shadow-xs'
+                          : isP1
+                          ? 'bg-blue-50/40 border-blue-200'
+                          : 'bg-amber-50/40 border-amber-200'
                       }`}
                     >
                       <div className="flex justify-between items-center mb-2.5">
-                        <span className={`text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-md ${
-                          isP1 ? 'bg-blue-600 text-white' : 'bg-amber-600 text-white'
-                        }`}>
-                          Pareja {teamNum}
-                        </span>
+                        <div className="flex items-center gap-1.5">
+                          <span className={`text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-md ${
+                            isWinningTeam
+                              ? 'bg-emerald-600 text-white shadow-2xs'
+                              : isP1
+                              ? 'bg-blue-600 text-white'
+                              : 'bg-amber-600 text-white'
+                          }`}>
+                            Pareja {teamNum}
+                          </span>
+                          {isWinningTeam && (
+                            <span className="text-[10px] font-black uppercase tracking-wide text-emerald-800 bg-emerald-100/90 px-2 py-0.5 rounded-md flex items-center gap-1">
+                              👑 Ganadores
+                            </span>
+                          )}
+                        </div>
                         <span className="text-[10px] text-slate-400 font-medium">Pulsa P1/P2 para mover</span>
                       </div>
 
@@ -1412,7 +1416,9 @@ export default function App() {
                           return (
                             <div
                               key={p.id || p.name}
-                              className="bg-white rounded-2xl p-2.5 flex items-center justify-between border border-slate-200 shadow-xs"
+                              className={`rounded-2xl p-2.5 flex items-center justify-between border shadow-xs ${
+                                isWinningTeam ? 'bg-white border-emerald-200' : 'bg-white border-slate-200'
+                              }`}
                             >
                               <div className="flex items-center gap-2.5">
                                 <button
@@ -1536,7 +1542,7 @@ export default function App() {
               </button>
             </div>
 
-            {/* TAB 1: PARTIDOS */}
+            {/* TAB 1: PARTIDOS CON GANADORES DESTACADOS EN COLOR Y CORONA */}
             {activeTab === 'partidos' && (
               <div className="space-y-3">
                 <button
@@ -1568,28 +1574,102 @@ export default function App() {
                     <p className="text-sm font-bold text-slate-700">No hay partidos de {currentUser.group} en esta vista</p>
                   </div>
                 ) : (
-                  filteredMatches.map(m => (
-                    <div
-                      key={m.id}
-                      onClick={() => setSelectedMatchId(m.id)}
-                      className="bg-white rounded-2xl p-4 border border-slate-200 shadow-xs hover:border-blue-400 cursor-pointer transition"
-                    >
-                      <div className="flex justify-between items-start">
-                        <div>
-                          <span className="text-[10px] font-black uppercase tracking-wider bg-slate-100 text-slate-600 px-2 py-0.5 rounded">
-                            {m.grupo}
+                  filteredMatches.map(m => {
+                    const p1 = (m.players || []).filter(p => (p.team || 1) === 1);
+                    const p2 = (m.players || []).filter(p => (p.team || 1) === 2);
+                    const isFinalizado = m.status === 'FINALIZADO';
+                    const p1Won = isFinalizado && p1.some(p => p.won === 'SI');
+                    const p2Won = isFinalizado && p2.some(p => p.won === 'SI');
+
+                    return (
+                      <div
+                        key={m.id}
+                        onClick={() => setSelectedMatchId(m.id)}
+                        className={`bg-white rounded-2xl p-4 border shadow-xs hover:border-blue-400 cursor-pointer transition ${
+                          isFinalizado ? 'border-purple-200' : 'border-slate-200'
+                        }`}
+                      >
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <span className="text-[10px] font-black uppercase tracking-wider bg-slate-100 text-slate-600 px-2 py-0.5 rounded">
+                              {m.grupo}
+                            </span>
+                            <h3 className="text-base font-black text-slate-900 mt-1">{m.date}</h3>
+                            <p className="text-xs text-slate-500 mt-0.5">📍 {m.location}</p>
+                          </div>
+                          <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded ${
+                            isFinalizado ? 'bg-purple-100 text-purple-700' : 'bg-emerald-100 text-emerald-700'
+                          }`}>
+                            {m.status}
                           </span>
-                          <h3 className="text-base font-black text-slate-900 mt-1">{m.date}</h3>
-                          <p className="text-xs text-slate-500 mt-0.5">📍 {m.location}</p>
                         </div>
-                        <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded ${
-                          m.status === 'FINALIZADO' ? 'bg-purple-100 text-purple-700' : 'bg-emerald-100 text-emerald-700'
-                        }`}>
-                          {m.status}
-                        </span>
+
+                        {/* VISTA PREVIA DIRECTA DE LOS EQUIPOS P1 VS P2 CON COLOR Y CORONA */}
+                        <div className="mt-3 pt-3 border-t border-slate-100">
+                          <div className="flex items-center justify-between gap-1 text-[11px]">
+                            {/* Pareja 1 */}
+                            <div className={`flex items-center gap-1.5 flex-1 min-w-0 p-1.5 rounded-xl transition ${
+                              p1Won
+                                ? 'bg-emerald-50 border border-emerald-300 text-emerald-950 font-black'
+                                : isFinalizado
+                                ? 'opacity-60 text-slate-600'
+                                : 'bg-slate-50/70 text-slate-700'
+                            }`}>
+                              <span className={`text-[9px] font-black px-1 py-0.5 rounded shrink-0 ${
+                                p1Won ? 'bg-emerald-600 text-white' : 'bg-blue-100 text-blue-800'
+                              }`}>
+                                {p1Won ? '👑 P1' : 'P1'}
+                              </span>
+                              <div className="flex items-center gap-1 truncate">
+                                {p1.map((p, idx) => (
+                                  <div key={idx} className="flex items-center gap-1 truncate" title={p.name}>
+                                    <UserAvatar name={p.name} photo={p.photo} size="xs" />
+                                    <span className="truncate text-[10px]">{p.name.split(' ')[0]}</span>
+                                  </div>
+                                ))}
+                                {p1.length === 0 && <span className="text-slate-400 italic text-[10px]">Sin asignar</span>}
+                              </div>
+                            </div>
+
+                            {/* Separador o Marcador */}
+                            <div className="shrink-0 px-1 text-center">
+                              {isFinalizado && m.score ? (
+                                <span className="text-[10px] font-mono font-black text-purple-900 bg-purple-100 px-1.5 py-0.5 rounded">
+                                  {m.score}
+                                </span>
+                              ) : (
+                                <span className="font-black text-slate-300 text-[9px]">VS</span>
+                              )}
+                            </div>
+
+                            {/* Pareja 2 */}
+                            <div className={`flex items-center justify-end gap-1.5 flex-1 min-w-0 p-1.5 rounded-xl transition ${
+                              p2Won
+                                ? 'bg-emerald-50 border border-emerald-300 text-emerald-950 font-black'
+                                : isFinalizado
+                                ? 'opacity-60 text-slate-600'
+                                : 'bg-slate-50/70 text-slate-700'
+                            }`}>
+                              <div className="flex items-center gap-1 truncate justify-end">
+                                {p2.map((p, idx) => (
+                                  <div key={idx} className="flex items-center gap-1 truncate" title={p.name}>
+                                    <UserAvatar name={p.name} photo={p.photo} size="xs" />
+                                    <span className="truncate text-[10px]">{p.name.split(' ')[0]}</span>
+                                  </div>
+                                ))}
+                                {p2.length === 0 && <span className="text-slate-400 italic text-[10px]">Sin asignar</span>}
+                              </div>
+                              <span className={`text-[9px] font-black px-1 py-0.5 rounded shrink-0 ${
+                                p2Won ? 'bg-emerald-600 text-white' : 'bg-amber-100 text-amber-800'
+                              }`}>
+                                {p2Won ? '👑 P2' : 'P2'}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
             )}
@@ -1645,7 +1725,6 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* 3 CAJAS RESUMEN DE ESTADO */}
                   <div className="grid grid-cols-3 gap-2 text-center">
                     <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-2.5">
                       <span className="text-base font-black text-emerald-700 block">{dinnerYes.length + dinnerGuests.length}</span>
@@ -1661,7 +1740,6 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* LISTAS DETALLADAS CON AVATARES */}
                   <div className="space-y-3 pt-2 text-xs">
                     <div>
                       <span className="font-extrabold text-emerald-800 block mb-2">
@@ -1744,7 +1822,6 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* BOTÓN WHATSAPP AL RESTAURANTE */}
                   <div className="pt-2 border-t border-slate-100">
                     <button
                       onClick={() => handleShareClubWhatsapp(currentVisualDinnerLabel, dinnerYes, dinnerGuests)}
@@ -1956,27 +2033,29 @@ export default function App() {
 
               <div className="flex gap-2 pt-1">
                 <button type="button" onClick={() => setShowAddModal(false)} className="flex-1 py-2 bg-slate-100 text-slate-600 rounded-xl text-xs">Cancelar</button>
-                <button type="submit" disabled={syncing} className="flex-1 py-2 bg-blue-600 text-white rounded-xl text-xs">Crear</button>
+                <button type="submit" disabled={syncing} className="flex-1 py-2 bg-blue-600 text-white rounded-xl text-xs font-bold">Crear</button>
               </div>
             </form>
           </div>
         </div>
       )}
 
-      {/* MODAL MARCADOR */}
+      {/* MODAL MARCADOR INTERACTIVO POR SETS */}
       {showScoreModal && currentMatch && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-sm w-full p-5 shadow-2xl">
+          <div className="bg-white rounded-3xl max-w-sm w-full p-5 shadow-2xl">
             <h3 className="text-base font-black text-slate-900 mb-3">Reportar Marcador Oficial</h3>
-            <div className="space-y-3 text-xs">
+            <div className="space-y-4 text-xs">
               <div>
-                <label className="font-bold text-slate-700 block mb-1">Pareja Ganadora:</label>
+                <label className="font-bold text-slate-700 block mb-1.5">Pareja Ganadora del Partido:</label>
                 <div className="flex gap-2">
                   {[1, 2].map(num => (
                     <button
                       key={num}
                       onClick={() => setWinnerTeam(num)}
-                      className={`flex-1 py-2 font-bold rounded-xl border transition ${winnerTeam === num ? 'bg-blue-600 text-white border-blue-600' : 'bg-slate-50 text-slate-700 border-slate-200'}`}
+                      className={`flex-1 py-2.5 font-black rounded-xl border transition ${
+                        winnerTeam === num ? 'bg-blue-600 text-white border-blue-600 shadow-sm' : 'bg-slate-50 text-slate-700 border-slate-200'
+                      }`}
                     >
                       Pareja {num}
                     </button>
@@ -1984,20 +2063,97 @@ export default function App() {
                 </div>
               </div>
 
-              <div>
-                <label className="font-bold text-slate-700 block mb-1">Marcador (Sets):</label>
-                <input
-                  type="text"
-                  value={scoreText}
-                  onChange={(e) => setScoreText(e.target.value)}
-                  placeholder="ej: 6-4, 6-3"
-                  className="w-full border border-slate-300 rounded-xl p-2 font-semibold"
-                />
+              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3 space-y-2.5">
+                <div className="flex justify-between items-center text-[10px] font-bold text-slate-500 uppercase pb-1 border-b border-slate-200">
+                  <span>Sets disputados</span>
+                  <span>Juegos P1 - P2</span>
+                </div>
+
+                <div className="flex justify-between items-center">
+                  <span className="font-bold text-slate-700">Set 1:</span>
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      type="number"
+                      min="0"
+                      max="7"
+                      value={set1P1}
+                      onChange={e => setSet1P1(e.target.value)}
+                      className="w-12 bg-white border border-slate-300 rounded-lg p-1.5 text-center font-bold text-slate-900"
+                    />
+                    <span className="font-black text-slate-400">-</span>
+                    <input
+                      type="number"
+                      min="0"
+                      max="7"
+                      value={set1P2}
+                      onChange={e => setSet1P2(e.target.value)}
+                      className="w-12 bg-white border border-slate-300 rounded-lg p-1.5 text-center font-bold text-slate-900"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex justify-between items-center">
+                  <span className="font-bold text-slate-700">Set 2:</span>
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      type="number"
+                      min="0"
+                      max="7"
+                      value={set2P1}
+                      onChange={e => setSet2P1(e.target.value)}
+                      className="w-12 bg-white border border-slate-300 rounded-lg p-1.5 text-center font-bold text-slate-900"
+                    />
+                    <span className="font-black text-slate-400">-</span>
+                    <input
+                      type="number"
+                      min="0"
+                      max="7"
+                      value={set2P2}
+                      onChange={e => setSet2P2(e.target.value)}
+                      className="w-12 bg-white border border-slate-300 rounded-lg p-1.5 text-center font-bold text-slate-900"
+                    />
+                  </div>
+                </div>
+
+                {hasSet3 ? (
+                  <div className="flex justify-between items-center">
+                    <div className="flex items-center gap-1">
+                      <span className="font-bold text-slate-700">Set 3:</span>
+                      <button onClick={() => setHasSet3(false)} className="text-[10px] text-rose-500 font-bold ml-1 hover:underline">Quitar</button>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        type="number"
+                        min="0"
+                        max="7"
+                        value={set3P1}
+                        onChange={e => setSet3P1(e.target.value)}
+                        className="w-12 bg-white border border-slate-300 rounded-lg p-1.5 text-center font-bold text-slate-900"
+                      />
+                      <span className="font-black text-slate-400">-</span>
+                      <input
+                        type="number"
+                        min="0"
+                        max="7"
+                        value={set3P2}
+                        onChange={e => setSet3P2(e.target.value)}
+                        className="w-12 bg-white border border-slate-300 rounded-lg p-1.5 text-center font-bold text-slate-900"
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setHasSet3(true)}
+                    className="text-[11px] text-blue-600 font-bold hover:underline block pt-1"
+                  >
+                    + Añadir 3er Set (Desempate)
+                  </button>
+                )}
               </div>
 
               <div className="flex gap-2 pt-2">
-                <button onClick={() => setShowScoreModal(false)} className="flex-1 py-2 font-bold bg-slate-100 text-slate-600 rounded-xl">Cancelar</button>
-                <button onClick={() => handleSaveResult(currentMatch.id)} className="flex-1 py-2 font-bold bg-blue-600 text-white rounded-xl">Guardar</button>
+                <button onClick={() => setShowScoreModal(false)} className="flex-1 py-2.5 font-bold bg-slate-100 text-slate-600 rounded-xl">Cancelar</button>
+                <button onClick={() => handleSaveResult(currentMatch.id)} className="flex-1 py-2.5 font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-md transition">Guardar Marcador</button>
               </div>
             </div>
           </div>
