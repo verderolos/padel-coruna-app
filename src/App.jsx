@@ -27,6 +27,16 @@ function normalizeName(str) {
     .toLowerCase();
 }
 
+// Extraer duración del partido en minutos (ej: "(90min)") o 90 min por defecto
+function extractMatchDurationMinutes(dateStr, rawText) {
+  const combined = `${dateStr || ''} ${rawText || ''}`;
+  const durMatch = combined.match(/\((\d+)\s*min\)/i) || combined.match(/(\d+)\s*min/i);
+  if (durMatch) {
+    return parseInt(durMatch[1], 10);
+  }
+  return 90; // Duración estándar de 90 minutos si no se especifica
+}
+
 // Convertir fecha del partido en objeto Date para horario y calendario
 function parseMatchDateObject(dateStr) {
   if (!dateStr) return null;
@@ -52,6 +62,29 @@ function parseMatchDateObject(dateStr) {
   }
   matchDate.setHours(hours, minutes, 0, 0);
   return matchDate;
+}
+
+// CÁLCULO DINÁMICO DE ESTADOS (PROGRAMADO, EN JUEGO, SIN RESULTADO, FINALIZADO, CANCELADO)
+function computeMatchStatus(m) {
+  const baseStatus = String(m.status || '').toUpperCase();
+  if (baseStatus === 'FINALIZADO' || baseStatus === 'CANCELADO') {
+    return baseStatus;
+  }
+
+  const matchDate = parseMatchDateObject(m.date);
+  if (!matchDate) return 'PROGRAMADO';
+
+  const now = new Date();
+  const durationMin = extractMatchDurationMinutes(m.date, m.rawText);
+  const endTime = new Date(matchDate.getTime() + durationMin * 60 * 1000);
+
+  if (now < matchDate) {
+    return 'PROGRAMADO';
+  } else if (now >= matchDate && now <= endTime) {
+    return 'EN JUEGO';
+  } else {
+    return 'SIN RESULTADO';
+  }
 }
 
 function parseMatchTiming(dateStr) {
@@ -590,6 +623,7 @@ export default function App() {
 
   const [selectedDinnerDate, setSelectedDinnerDate] = useState('');
   const [showRulesModal, setShowRulesModal] = useState(false);
+  
   const [inspectedUser, setInspectedUser] = useState(null);
 
   const [currentUser, setCurrentUser] = useState(() => {
@@ -938,6 +972,7 @@ export default function App() {
     }
   };
 
+  // Guardar Marcador estructurado
   const handleSaveResult = async (matchId) => {
     const match = matches.find(m => m.id === matchId);
     if (!match) return;
@@ -1009,6 +1044,7 @@ export default function App() {
   const currentMatch = matches.find(m => m.id === selectedMatchId);
   const myGroup = (currentUser?.group || 'chicos').toLowerCase();
 
+  // Filtro temporal exacto
   const filteredMatches = useMemo(() => {
     return matches.filter(m => {
       if ((m.grupo || 'chicos').toLowerCase() !== myGroup) return false;
@@ -1049,6 +1085,7 @@ export default function App() {
     return matches.filter(m => extractCleanDate(m.date) === activeDinnerKey);
   }, [matches, activeDinnerKey]);
 
+  // Consolidación de comensales
   const { dinnerYes, dinnerNo, dinnerPending, dinnerGuests } = useMemo(() => {
     const yesMap = new Map();
     const noMap = new Map();
@@ -1127,6 +1164,7 @@ export default function App() {
                 )}
               </div>
 
+              {/* BOTÓN ALTA NUEVO JUGADOR */}
               <button
                 onClick={() => setShowRegisterForm(true)}
                 className="w-full py-3 bg-slate-700 hover:bg-slate-600 text-blue-300 hover:text-white rounded-2xl text-xs font-bold transition border border-dashed border-slate-500 flex items-center justify-center gap-1.5"
@@ -1293,17 +1331,39 @@ export default function App() {
 
             <div className="bg-white rounded-3xl p-5 shadow-sm border border-slate-200">
               <div className="flex justify-between items-center mb-2">
-                <span className="text-[10px] font-black uppercase tracking-wider bg-blue-50 text-blue-700 px-2.5 py-1 rounded-full border border-blue-200">
-                  {currentMatch.grupo}
-                </span>
+                {/* ESTADO DINÁMICO DE PARTIDO */}
+                {(() => {
+                  const dynamicStatus = computeMatchStatus(currentMatch);
+                  const badgeColors = {
+                    'PROGRAMADO': 'bg-blue-50 text-blue-700 border-blue-200',
+                    'EN JUEGO': 'bg-amber-50 text-amber-700 border-amber-300 animate-pulse font-black',
+                    'SIN RESULTADO': 'bg-orange-50 text-orange-700 border-orange-300 font-black',
+                    'FINALIZADO': 'bg-purple-50 text-purple-700 border-purple-200',
+                    'CANCELADO': 'bg-rose-50 text-rose-700 border-rose-200'
+                  };
+
+                  return (
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[10px] font-black uppercase tracking-wider bg-slate-100 text-slate-600 px-2.5 py-1 rounded-full border border-slate-200">
+                        {currentMatch.grupo}
+                      </span>
+                      <span className={`text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-full border ${badgeColors[dynamicStatus] || badgeColors['PROGRAMADO']}`}>
+                        {dynamicStatus === 'EN JUEGO' ? '🎾 EN JUEGO' : dynamicStatus}
+                      </span>
+                    </div>
+                  );
+                })()}
 
                 <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => handleDeleteMatchComplete(currentMatch.id)}
-                    className="text-xs font-bold text-rose-600 hover:bg-rose-50 px-2.5 py-1 rounded-lg border border-rose-200 transition"
-                  >
-                    🗑️ Borrar Partido
-                  </button>
+                  {/* SOLO SE PUEDE BORRAR SI ESTÁ ESTRICTAMENTE EN ESTADO PROGRAMADO */}
+                  {computeMatchStatus(currentMatch) === 'PROGRAMADO' && (
+                    <button
+                      onClick={() => handleDeleteMatchComplete(currentMatch.id)}
+                      className="text-xs font-bold text-rose-600 hover:bg-rose-50 px-2.5 py-1 rounded-lg border border-rose-200 transition"
+                    >
+                      🗑️ Borrar Partido
+                    </button>
+                  )}
 
                   {(() => {
                     const { canReport } = parseMatchTiming(currentMatch.date);
@@ -1329,7 +1389,7 @@ export default function App() {
                 📍 {currentMatch.location}
               </p>
 
-              {/* TARJETA DE RESULTADO OFICIAL SI ESTÁ FINALIZADO */}
+              {/* TARJETA DE RESULTADO OFICIAL EN DETALLE */}
               {currentMatch.status === 'FINALIZADO' && (
                 <div className="bg-purple-50/80 border border-purple-200 rounded-2xl p-3.5 text-center my-3.5 space-y-1.5">
                   <span className="text-[10px] font-black uppercase tracking-wider text-purple-600 block">
@@ -1542,7 +1602,7 @@ export default function App() {
               </button>
             </div>
 
-            {/* TAB 1: PARTIDOS CON GANADORES DESTACADOS EN COLOR Y CORONA */}
+            {/* TAB 1: PARTIDOS CON GANADORES DESTACADOS Y SIN RESULTADO CENTRAL */}
             {activeTab === 'partidos' && (
               <div className="space-y-3">
                 <button
@@ -1577,9 +1637,18 @@ export default function App() {
                   filteredMatches.map(m => {
                     const p1 = (m.players || []).filter(p => (p.team || 1) === 1);
                     const p2 = (m.players || []).filter(p => (p.team || 1) === 2);
-                    const isFinalizado = m.status === 'FINALIZADO';
+                    const dynamicStatus = computeMatchStatus(m);
+                    const isFinalizado = dynamicStatus === 'FINALIZADO';
                     const p1Won = isFinalizado && p1.some(p => p.won === 'SI');
                     const p2Won = isFinalizado && p2.some(p => p.won === 'SI');
+
+                    const badgeColors = {
+                      'PROGRAMADO': 'bg-blue-50 text-blue-700 border-blue-200',
+                      'EN JUEGO': 'bg-amber-50 text-amber-700 border-amber-300 animate-pulse font-black',
+                      'SIN RESULTADO': 'bg-orange-50 text-orange-700 border-orange-300 font-black',
+                      'FINALIZADO': 'bg-purple-100 text-purple-700 border-purple-200',
+                      'CANCELADO': 'bg-rose-100 text-rose-700 border-rose-200'
+                    };
 
                     return (
                       <div
@@ -1597,16 +1666,14 @@ export default function App() {
                             <h3 className="text-base font-black text-slate-900 mt-1">{m.date}</h3>
                             <p className="text-xs text-slate-500 mt-0.5">📍 {m.location}</p>
                           </div>
-                          <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded ${
-                            isFinalizado ? 'bg-purple-100 text-purple-700' : 'bg-emerald-100 text-emerald-700'
-                          }`}>
-                            {m.status}
+                          <span className={`text-[10px] font-black uppercase px-2.5 py-1 rounded-full border ${badgeColors[dynamicStatus] || badgeColors['PROGRAMADO']}`}>
+                            {dynamicStatus === 'EN JUEGO' ? '🎾 EN JUEGO' : dynamicStatus}
                           </span>
                         </div>
 
-                        {/* VISTA PREVIA DIRECTA DE LOS EQUIPOS P1 VS P2 CON COLOR Y CORONA */}
+                        {/* VISTA PREVIA LIMPIA DE EQUIPOS P1 VS P2 SIN TEXTO DE MARCADOR CENTRAL */}
                         <div className="mt-3 pt-3 border-t border-slate-100">
-                          <div className="flex items-center justify-between gap-1 text-[11px]">
+                          <div className="flex items-center justify-between gap-2 text-[11px]">
                             {/* Pareja 1 */}
                             <div className={`flex items-center gap-1.5 flex-1 min-w-0 p-1.5 rounded-xl transition ${
                               p1Won
@@ -1615,32 +1682,24 @@ export default function App() {
                                 ? 'opacity-60 text-slate-600'
                                 : 'bg-slate-50/70 text-slate-700'
                             }`}>
-                              <span className={`text-[9px] font-black px-1 py-0.5 rounded shrink-0 ${
+                              <span className={`text-[9px] font-black px-1.5 py-0.5 rounded shrink-0 ${
                                 p1Won ? 'bg-emerald-600 text-white' : 'bg-blue-100 text-blue-800'
                               }`}>
                                 {p1Won ? '👑 P1' : 'P1'}
                               </span>
-                              <div className="flex items-center gap-1 truncate">
+                              <div className="flex items-center gap-1.5 truncate">
                                 {p1.map((p, idx) => (
                                   <div key={idx} className="flex items-center gap-1 truncate" title={p.name}>
                                     <UserAvatar name={p.name} photo={p.photo} size="xs" />
-                                    <span className="truncate text-[10px]">{p.name.split(' ')[0]}</span>
+                                    <span className="truncate text-xs font-semibold">{p.name.split(' ')[0]}</span>
                                   </div>
                                 ))}
                                 {p1.length === 0 && <span className="text-slate-400 italic text-[10px]">Sin asignar</span>}
                               </div>
                             </div>
 
-                            {/* Separador o Marcador */}
-                            <div className="shrink-0 px-1 text-center">
-                              {isFinalizado && m.score ? (
-                                <span className="text-[10px] font-mono font-black text-purple-900 bg-purple-100 px-1.5 py-0.5 rounded">
-                                  {m.score}
-                                </span>
-                              ) : (
-                                <span className="font-black text-slate-300 text-[9px]">VS</span>
-                              )}
-                            </div>
+                            {/* Separador limpio VS */}
+                            <span className="font-black text-slate-300 text-[10px] px-1 shrink-0">VS</span>
 
                             {/* Pareja 2 */}
                             <div className={`flex items-center justify-end gap-1.5 flex-1 min-w-0 p-1.5 rounded-xl transition ${
@@ -1650,16 +1709,16 @@ export default function App() {
                                 ? 'opacity-60 text-slate-600'
                                 : 'bg-slate-50/70 text-slate-700'
                             }`}>
-                              <div className="flex items-center gap-1 truncate justify-end">
+                              <div className="flex items-center gap-1.5 truncate justify-end">
                                 {p2.map((p, idx) => (
                                   <div key={idx} className="flex items-center gap-1 truncate" title={p.name}>
                                     <UserAvatar name={p.name} photo={p.photo} size="xs" />
-                                    <span className="truncate text-[10px]">{p.name.split(' ')[0]}</span>
+                                    <span className="truncate text-xs font-semibold">{p.name.split(' ')[0]}</span>
                                   </div>
                                 ))}
                                 {p2.length === 0 && <span className="text-slate-400 italic text-[10px]">Sin asignar</span>}
                               </div>
-                              <span className={`text-[9px] font-black px-1 py-0.5 rounded shrink-0 ${
+                              <span className={`text-[9px] font-black px-1.5 py-0.5 rounded shrink-0 ${
                                 p2Won ? 'bg-emerald-600 text-white' : 'bg-amber-100 text-amber-800'
                               }`}>
                                 {p2Won ? '👑 P2' : 'P2'}
@@ -1725,6 +1784,7 @@ export default function App() {
                     </div>
                   </div>
 
+                  {/* 3 CAJAS RESUMEN DE ESTADO */}
                   <div className="grid grid-cols-3 gap-2 text-center">
                     <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-2.5">
                       <span className="text-base font-black text-emerald-700 block">{dinnerYes.length + dinnerGuests.length}</span>
@@ -1740,6 +1800,7 @@ export default function App() {
                     </div>
                   </div>
 
+                  {/* LISTAS DETALLADAS CON AVATARES */}
                   <div className="space-y-3 pt-2 text-xs">
                     <div>
                       <span className="font-extrabold text-emerald-800 block mb-2">
