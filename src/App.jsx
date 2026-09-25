@@ -187,7 +187,7 @@ function CriteriosModal({ isOpen, onClose }) {
   );
 }
 
-// Modal Perfil de Usuario con Estadísticas, Edición de Datos Personales y Subida de Foto
+// Modal Perfil de Usuario con Estadísticas Corregidas
 function UserProfileModal({ isOpen, onClose, user, matches, onPhotoUploaded, onUpdateUserData, isCurrentUser }) {
   const fileInputRef = useRef(null);
   const [uploading, setUploading] = useState(false);
@@ -226,15 +226,9 @@ function UserProfileModal({ isOpen, onClose, user, matches, onPhotoUploaded, onU
         let height = img.height;
 
         if (width > height) {
-          if (width > maxSize) {
-            height *= maxSize / width;
-            width = maxSize;
-          }
+          if (width > maxSize) { height *= maxSize / width; width = maxSize; }
         } else {
-          if (height > maxSize) {
-            width *= maxSize / height;
-            height = maxSize;
-          }
+          if (height > maxSize) { width *= maxSize / height; height = maxSize; }
         }
 
         canvas.width = width;
@@ -264,10 +258,11 @@ function UserProfileModal({ isOpen, onClose, user, matches, onPhotoUploaded, onU
     setEditing(false);
   };
 
+  // CÁLCULO DE ESTADÍSTICAS INDIVIDUALES CORREGIDO
   const stats = (() => {
     let played = 0, won = 0, lost = 0, dinnerYes = 0, dinnerNo = 0;
-    const partnerStats = {};
-    const rivalStats = {};
+    const partnerStats = {}; // { nombre: { played, won, lost } }
+    const rivalStats = {};   // { nombre: { played, wonAgainst, lostAgainst } }
 
     matches.forEach(m => {
       if (m.status !== 'FINALIZADO') return;
@@ -286,29 +281,65 @@ function UserProfileModal({ isOpen, onClose, user, matches, onPhotoUploaded, onU
       (m.players || []).forEach(p => {
         if (normalizeName(p.name) === normalizeName(user.name)) return;
         if (p.team === myTeam) {
-          if (!partnerStats[p.name]) partnerStats[p.name] = { played: 0, won: 0 };
+          if (!partnerStats[p.name]) partnerStats[p.name] = { played: 0, won: 0, lost: 0 };
           partnerStats[p.name].played++;
           if (didWin) partnerStats[p.name].won++;
+          else partnerStats[p.name].lost++;
         } else {
-          if (!rivalStats[p.name]) rivalStats[p.name] = { played: 0, wonAgainst: 0 };
+          if (!rivalStats[p.name]) rivalStats[p.name] = { played: 0, wonAgainst: 0, lostAgainst: 0 };
           rivalStats[p.name].played++;
           if (didWin) rivalStats[p.name].wonAgainst++;
+          else rivalStats[p.name].lostAgainst++;
         }
       });
     });
 
-    let bestPartner = null, worstPartner = null, bestPartnerPct = -1, worstPartnerPct = 999;
+    // 1. MEJOR PAREJA: mayor % de victorias (requiere al menos 1 victoria)
+    let bestPartner = null;
+    let bestPartnerWinPct = -1;
+
+    // 2. PAREJA GAFE: mayor % de derrotas (requiere al menos 1 derrota con él)
+    let worstPartner = null;
+    let worstPartnerLossPct = 0;
+
     Object.entries(partnerStats).forEach(([name, data]) => {
-      const pct = (data.won / data.played) * 100;
-      if (pct > bestPartnerPct) { bestPartnerPct = pct; bestPartner = { name, ...data, pct: pct.toFixed(0) }; }
-      if (pct < worstPartnerPct) { worstPartnerPct = pct; worstPartner = { name, ...data, pct: pct.toFixed(0) }; }
+      const winPct = (data.won / data.played) * 100;
+      const lossPct = (data.lost / data.played) * 100;
+
+      if (data.won > 0 && winPct > bestPartnerWinPct) {
+        bestPartnerWinPct = winPct;
+        bestPartner = { name, ...data, pct: winPct.toFixed(0) };
+      }
+
+      // Solo es pareja gafe si habéis perdido juntos al menos una vez
+      if (data.lost > 0 && lossPct >= worstPartnerLossPct) {
+        worstPartnerLossPct = lossPct;
+        worstPartner = { name, ...data, pct: lossPct.toFixed(0) };
+      }
     });
 
-    let hardestRival = null, easiestRival = null, hardestPct = 999, easiestPct = -1;
+    // 3. RIVAL FAVORITO: mayor % de victorias sobre él (requiere al menos 1 victoria vs él)
+    let easiestRival = null;
+    let easiestWinPct = -1;
+
+    // 4. BESTIA NEGRA: mayor % de derrotas contra él (requiere al menos 1 derrota vs él)
+    let hardestRival = null;
+    let hardestLossPct = 0;
+
     Object.entries(rivalStats).forEach(([name, data]) => {
-      const pct = (data.wonAgainst / data.played) * 100;
-      if (pct < hardestPct) { hardestPct = pct; hardestRival = { name, ...data, pct: pct.toFixed(0) }; }
-      if (pct > easiestPct) { easiestPct = pct; easiestRival = { name, ...data, pct: pct.toFixed(0) }; }
+      const winPct = (data.wonAgainst / data.played) * 100;
+      const lossPct = (data.lostAgainst / data.played) * 100;
+
+      if (data.wonAgainst > 0 && winPct > easiestWinPct) {
+        easiestWinPct = winPct;
+        easiestRival = { name, ...data, pct: winPct.toFixed(0) };
+      }
+
+      // Solo es bestia negra si te ha ganado al menos una vez
+      if (data.lostAgainst > 0 && lossPct >= hardestLossPct) {
+        hardestLossPct = lossPct;
+        hardestRival = { name, ...data, pct: lossPct.toFixed(0) };
+      }
     });
 
     return {
@@ -452,28 +483,32 @@ function UserProfileModal({ isOpen, onClose, user, matches, onPhotoUploaded, onU
           </div>
         </div>
 
-        {/* Dossier de Compañeros y Rivales */}
+        {/* Dossier de Compañeros y Rivales Corregido */}
         <div className="space-y-2 pt-1">
           <h4 className="text-xs font-black text-slate-800 uppercase tracking-wide">Compañeros y Rivales</h4>
           <div className="grid grid-cols-2 gap-2 text-xs">
+            {/* Mejor Pareja */}
             <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-2.5">
               <span className="text-[10px] font-bold text-emerald-800 block uppercase">🌟 Mejor Pareja</span>
               <p className="font-black text-slate-900 text-xs mt-0.5 truncate">{stats.bestPartner ? stats.bestPartner.name : 'Sin datos'}</p>
               {stats.bestPartner && <span className="text-[10px] text-emerald-700 font-semibold">{stats.bestPartner.pct}% victorias</span>}
             </div>
 
+            {/* Pareja Gafe (Vacío si no hay derrotas juntos) */}
             <div className="bg-rose-50 border border-rose-200 rounded-2xl p-2.5">
               <span className="text-[10px] font-bold text-rose-800 block uppercase">💔 Pareja Gafe</span>
               <p className="font-black text-slate-900 text-xs mt-0.5 truncate">{stats.worstPartner ? stats.worstPartner.name : 'Sin datos'}</p>
-              {stats.worstPartner && <span className="text-[10px] text-rose-700 font-semibold">{stats.worstPartner.pct}% victorias</span>}
+              {stats.worstPartner && <span className="text-[10px] text-rose-700 font-semibold">{stats.worstPartner.pct}% derrotas</span>}
             </div>
 
+            {/* Bestia Negra (Vacío si no has perdido contra ningún rival) */}
             <div className="bg-amber-50 border border-amber-200 rounded-2xl p-2.5">
               <span className="text-[10px] font-bold text-amber-800 block uppercase">😈 Bestia Negra</span>
               <p className="font-black text-slate-900 text-xs mt-0.5 truncate">{stats.hardestRival ? stats.hardestRival.name : 'Sin datos'}</p>
-              {stats.hardestRival && <span className="text-[10px] text-amber-700 font-semibold">{stats.hardestRival.pct}% victorias vs él</span>}
+              {stats.hardestRival && <span className="text-[10px] text-amber-700 font-semibold">{stats.hardestRival.pct}% derrotas vs él</span>}
             </div>
 
+            {/* Rival Favorito */}
             <div className="bg-blue-50 border border-blue-200 rounded-2xl p-2.5">
               <span className="text-[10px] font-bold text-blue-800 block uppercase">🍰 Rival Favorito</span>
               <p className="font-black text-slate-900 text-xs mt-0.5 truncate">{stats.easiestRival ? stats.easiestRival.name : 'Sin datos'}</p>
@@ -842,7 +877,7 @@ export default function App() {
     }
   };
 
-  // Apuntarse solo a cenar (Respuesta instantánea)
+  // Apuntarse solo a cenar
   const handleToggleSoloCena = async (dateStr, newState) => {
     if (loadingDinnerId) return;
     setLoadingDinnerId('solo_cena');
@@ -861,7 +896,7 @@ export default function App() {
     }
   };
 
-  // Voto cena en partido (Optimistic UI: cambio visual inmediato sin lag)
+  // Voto cena en partido
   const handleUpdateDinner = async (matchId, targetId, targetName, newStatus) => {
     if (loadingDinnerId) return;
     setLoadingDinnerId(targetId || targetName);
@@ -893,7 +928,7 @@ export default function App() {
     }
   };
 
-  // Mover pareja en directo y sincronizar físicamente con Sheets
+  // Sincronizar parejas en tiempo real con Sheets
   const handleToggleTeam = async (matchId, playerId) => {
     let newTeam = 1;
     setMatches(prev => prev.map(m => {
@@ -926,7 +961,7 @@ export default function App() {
     }
   };
 
-  // Guardar Marcador con IDs y Nombres exactos de la pareja ganadora
+  // Guardar Marcador con IDs exactos de la pareja ganadora
   const handleSaveResult = async (matchId) => {
     const match = matches.find(m => m.id === matchId);
     if (!match) return;
@@ -985,7 +1020,7 @@ export default function App() {
     }
   };
 
-  // WhatsApp al club/restaurante con tu texto exacto
+  // WhatsApp al club/restaurante
   const handleShareClubWhatsapp = (dateTarget, yesList, guestsList) => {
     const totalCount = yesList.length + guestsList.length;
     const msg = `Hola, para cenar este ${dateTarget} seremos un total de ${totalCount} personas. Muchas gracias.`;
@@ -995,7 +1030,7 @@ export default function App() {
   const currentMatch = matches.find(m => m.id === selectedMatchId);
   const myGroup = (currentUser?.group || 'chicos').toLowerCase();
 
-  // FILTRO TEMPORAL EXACTO (SEMANA EN CURSO VS PRÓXIMOS VS HISTÓRICO)
+  // Filtro temporal exacto
   const filteredMatches = useMemo(() => {
     return matches.filter(m => {
       if ((m.grupo || 'chicos').toLowerCase() !== myGroup) return false;
@@ -1126,7 +1161,6 @@ export default function App() {
               </button>
             </>
           ) : (
-            /* FORMULARIO DE ALTA DE NUEVO JUGADOR */
             <form onSubmit={handleRegisterUser} className="space-y-3">
               <div>
                 <label className="block text-xs font-bold text-slate-300 mb-1">Nombre y Apellido *</label>
@@ -1432,7 +1466,7 @@ export default function App() {
                 })}
               </div>
 
-              {/* TARJETA RESTAURADA: PREGUNTA RÁPIDA DE CENA AL USUARIO ACTIVO */}
+              {/* PREGUNTA RÁPIDA DE CENA AL USUARIO ACTIVO */}
               {(() => {
                 const mySlot = (currentMatch.players || []).find(p => p.id === currentUser.id || normalizeName(p.name) === normalizeName(currentUser.name));
                 if (!mySlot) return null;
@@ -1502,7 +1536,7 @@ export default function App() {
               </button>
             </div>
 
-            {/* TAB 1: PARTIDOS CON FILTRADO EXACTO */}
+            {/* TAB 1: PARTIDOS */}
             {activeTab === 'partidos' && (
               <div className="space-y-3">
                 <button
@@ -1532,11 +1566,6 @@ export default function App() {
                   <div className="bg-white rounded-2xl p-8 text-center border border-slate-200">
                     <p className="text-2xl mb-1">🎾</p>
                     <p className="text-sm font-bold text-slate-700">No hay partidos de {currentUser.group} en esta vista</p>
-                    <p className="text-xs text-slate-400 mt-1">
-                      {filterTime === 'semana'
-                        ? 'No hay partidos programados entre este lunes y domingo. Prueba en "⏳ Próximos".'
-                        : 'No se encontraron partidos con este filtro.'}
-                    </p>
                   </div>
                 ) : (
                   filteredMatches.map(m => (
@@ -1715,7 +1744,7 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* BOTÓN WHATSAPP AL RESTAURANTE (CON TU TEXTO EXACTO) */}
+                  {/* BOTÓN WHATSAPP AL RESTAURANTE */}
                   <div className="pt-2 border-t border-slate-100">
                     <button
                       onClick={() => handleShareClubWhatsapp(currentVisualDinnerLabel, dinnerYes, dinnerGuests)}
