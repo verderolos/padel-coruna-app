@@ -623,7 +623,6 @@ export default function App() {
 
   const [selectedDinnerDate, setSelectedDinnerDate] = useState('');
   const [showRulesModal, setShowRulesModal] = useState(false);
-  
   const [inspectedUser, setInspectedUser] = useState(null);
 
   const [currentUser, setCurrentUser] = useState(() => {
@@ -712,6 +711,51 @@ export default function App() {
     setCurrentUser(null);
     localStorage.removeItem('padel_current_user');
     setSelectedMatchId(null);
+  };
+
+  // APERTURA Y PARSEO DEL MARCADOR AL ABRIR EL MODAL (EVITA RESETEO Y DESINCRONIZACIÓN)
+  const handleOpenScoreModal = () => {
+    if (!currentMatch) return;
+
+    // 1. Determinar ganador actual si ya fue reportado
+    const p1 = (currentMatch.players || []).filter(p => (p.team || 1) === 1);
+    const p2 = (currentMatch.players || []).filter(p => (p.team || 1) === 2);
+    if (p2.some(p => p.won === 'SI')) {
+      setWinnerTeam(2);
+    } else {
+      setWinnerTeam(1);
+    }
+
+    // 2. Extraer los números reales de los sets si ya existen (ej. "7-6, 6-4" o "6-4, 3-6, 7-5")
+    const rawScore = currentMatch.score || '';
+    const setMatches = rawScore.match(/(\d+)\s*[-/]\s*(\d+)/g);
+
+    if (setMatches && setMatches.length >= 2) {
+      const s1 = setMatches[0].split(/[-/]/);
+      const s2 = setMatches[1].split(/[-/]/);
+      setSet1P1(parseInt(s1[0].trim(), 10) || 6);
+      setSet1P2(parseInt(s1[1].trim(), 10) || 4);
+      setSet2P1(parseInt(s2[0].trim(), 10) || 6);
+      setSet2P2(parseInt(s2[1].trim(), 10) || 3);
+
+      if (setMatches.length >= 3) {
+        const s3 = setMatches[2].split(/[-/]/);
+        setSet3P1(parseInt(s3[0].trim(), 10) || 6);
+        setSet3P2(parseInt(s3[1].trim(), 10) || 4);
+        setHasSet3(true);
+      } else {
+        setHasSet3(false);
+      }
+    } else {
+      // Valores por defecto
+      setSet1P1(6);
+      setSet1P2(4);
+      setSet2P1(6);
+      setSet2P2(3);
+      setHasSet3(false);
+    }
+
+    setShowScoreModal(true);
   };
 
   const handleRegisterUser = async (e) => {
@@ -972,7 +1016,7 @@ export default function App() {
     }
   };
 
-  // Guardar Marcador estructurado
+  // Guardar Marcador estructurado garantizando la consistencia exacta de quién ganó
   const handleSaveResult = async (matchId) => {
     const match = matches.find(m => m.id === matchId);
     if (!match) return;
@@ -1044,7 +1088,6 @@ export default function App() {
   const currentMatch = matches.find(m => m.id === selectedMatchId);
   const myGroup = (currentUser?.group || 'chicos').toLowerCase();
 
-  // Filtro temporal exacto
   const filteredMatches = useMemo(() => {
     return matches.filter(m => {
       if ((m.grupo || 'chicos').toLowerCase() !== myGroup) return false;
@@ -1085,7 +1128,6 @@ export default function App() {
     return matches.filter(m => extractCleanDate(m.date) === activeDinnerKey);
   }, [matches, activeDinnerKey]);
 
-  // Consolidación de comensales
   const { dinnerYes, dinnerNo, dinnerPending, dinnerGuests } = useMemo(() => {
     const yesMap = new Map();
     const noMap = new Map();
@@ -1164,7 +1206,6 @@ export default function App() {
                 )}
               </div>
 
-              {/* BOTÓN ALTA NUEVO JUGADOR */}
               <button
                 onClick={() => setShowRegisterForm(true)}
                 className="w-full py-3 bg-slate-700 hover:bg-slate-600 text-blue-300 hover:text-white rounded-2xl text-xs font-bold transition border border-dashed border-slate-500 flex items-center justify-center gap-1.5"
@@ -1370,7 +1411,7 @@ export default function App() {
                     return (
                       <button
                         disabled={!canReport || currentMatch.status === 'CANCELADO'}
-                        onClick={() => setShowScoreModal(true)}
+                        onClick={handleOpenScoreModal}
                         className={`px-3 py-1 rounded-xl text-xs font-bold flex items-center gap-1 border transition ${
                           !canReport || currentMatch.status === 'CANCELADO'
                             ? 'opacity-40 bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed'
@@ -1784,7 +1825,6 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* 3 CAJAS RESUMEN DE ESTADO */}
                   <div className="grid grid-cols-3 gap-2 text-center">
                     <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-2.5">
                       <span className="text-base font-black text-emerald-700 block">{dinnerYes.length + dinnerGuests.length}</span>
@@ -1800,7 +1840,6 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* LISTAS DETALLADAS CON AVATARES */}
                   <div className="space-y-3 pt-2 text-xs">
                     <div>
                       <span className="font-extrabold text-emerald-800 block mb-2">
@@ -2101,12 +2140,15 @@ export default function App() {
         </div>
       )}
 
-      {/* MODAL MARCADOR INTERACTIVO POR SETS */}
+      {/* MODAL MARCADOR INTERACTIVO POR SETS (SIN INCONSISTENCIAS DE NÚMEROS) */}
       {showScoreModal && currentMatch && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl max-w-sm w-full p-5 shadow-2xl">
-            <h3 className="text-base font-black text-slate-900 mb-3">Reportar Marcador Oficial</h3>
+            <h3 className="text-base font-black text-slate-900 mb-1">Reportar Marcador Oficial</h3>
+            <p className="text-[11px] text-slate-500 mb-3">Introduce los juegos obtenidos por cada pareja en cada set:</p>
+            
             <div className="space-y-4 text-xs">
+              {/* Selección de Pareja Ganadora */}
               <div>
                 <label className="font-bold text-slate-700 block mb-1.5">Pareja Ganadora del Partido:</label>
                 <div className="flex gap-2">
@@ -2118,21 +2160,26 @@ export default function App() {
                         winnerTeam === num ? 'bg-blue-600 text-white border-blue-600 shadow-sm' : 'bg-slate-50 text-slate-700 border-slate-200'
                       }`}
                     >
-                      Pareja {num}
+                      👑 Pareja {num}
                     </button>
                   ))}
                 </div>
               </div>
 
+              {/* Marcador estructurado con títulos claros para P1 y P2 */}
               <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3 space-y-2.5">
-                <div className="flex justify-between items-center text-[10px] font-bold text-slate-500 uppercase pb-1 border-b border-slate-200">
-                  <span>Sets disputados</span>
-                  <span>Juegos P1 - P2</span>
+                <div className="flex justify-between items-center text-[10px] font-black text-slate-600 uppercase pb-1 border-b border-slate-200">
+                  <span>Sets</span>
+                  <div className="flex items-center gap-5 mr-3">
+                    <span className="text-blue-600">Juegos P1</span>
+                    <span className="text-amber-600">Juegos P2</span>
+                  </div>
                 </div>
 
+                {/* Set 1 */}
                 <div className="flex justify-between items-center">
                   <span className="font-bold text-slate-700">Set 1:</span>
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex items-center gap-2">
                     <input
                       type="number"
                       min="0"
@@ -2153,9 +2200,10 @@ export default function App() {
                   </div>
                 </div>
 
+                {/* Set 2 */}
                 <div className="flex justify-between items-center">
                   <span className="font-bold text-slate-700">Set 2:</span>
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex items-center gap-2">
                     <input
                       type="number"
                       min="0"
@@ -2176,13 +2224,14 @@ export default function App() {
                   </div>
                 </div>
 
+                {/* Set 3 Opcional */}
                 {hasSet3 ? (
                   <div className="flex justify-between items-center">
                     <div className="flex items-center gap-1">
                       <span className="font-bold text-slate-700">Set 3:</span>
                       <button onClick={() => setHasSet3(false)} className="text-[10px] text-rose-500 font-bold ml-1 hover:underline">Quitar</button>
                     </div>
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-2">
                       <input
                         type="number"
                         min="0"
