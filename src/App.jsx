@@ -58,6 +58,26 @@ function normalizeName(str) {
     .toLowerCase();
 }
 
+// Comprobar si un partido es oficial computable (Chicos: Jueves, Chicas: Martes)
+function isMatchOfficial(m) {
+  if (!m) return false;
+  if (m.isOfficial !== undefined) return Boolean(m.isOfficial);
+
+  const group = String(m.grupo || 'chicos').toLowerCase();
+  const combined = `${m.date || ''} ${m.rawText || ''}`.toLowerCase();
+
+  if (group === 'chicos') {
+    if (combined.includes('jue')) return true;
+    const d = parseMatchDateObject(m.date);
+    return d ? d.getDay() === 4 : false; // 4 = Jueves
+  } else if (group === 'chicas') {
+    if (combined.includes('mar')) return true;
+    const d = parseMatchDateObject(m.date);
+    return d ? d.getDay() === 2 : false; // 2 = Martes
+  }
+  return false;
+}
+
 // Extraer duración del partido en minutos (ej: "(90min)") o 90 min por defecto
 function extractMatchDurationMinutes(dateStr, rawText) {
   const combined = `${dateStr || ''} ${rawText || ''}`;
@@ -416,6 +436,9 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, onPhoto
 
     matches.forEach(m => {
       if (m.status !== 'FINALIZADO') return;
+      // Solo computan para las estadísticas de liga regular los partidos oficiales (Chicos: Jueves, Chicas: Martes)
+      if (!isMatchOfficial(m)) return;
+
       const mySlot = (m.players || []).find(p => p.id === user.id || normalizeName(p.name) === normUserName);
       if (!mySlot) return;
 
@@ -1914,7 +1937,6 @@ export default function App() {
   // Modales Partidos
   const [showAddModal, setShowAddModal] = useState(false);
   const [playtomicText, setPlaytomicText] = useState('');
-  const [matchGroup, setMatchGroup] = useState('chicos');
 
   const [showReloadPlaytomicModal, setShowReloadPlaytomicModal] = useState(false);
   const [reloadPlaytomicText, setReloadPlaytomicText] = useState('');
@@ -2145,7 +2167,7 @@ export default function App() {
       const res = await fetch(apiUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({ action: 'CREAR_PARTIDO_PLAYTOMIC', textoCrudo: playtomicText, grupo: matchGroup })
+        body: JSON.stringify({ action: 'CREAR_PARTIDO_PLAYTOMIC', textoCrudo: playtomicText, grupo: myGroup })
       });
       const data = await res.json();
       if (data.ok) {
@@ -2231,7 +2253,13 @@ export default function App() {
       await fetch(apiUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({ action: 'APUNTARSE_SOLO_CENA', fecha: dateStr, nombreJugador: currentUser.name, estado: newState })
+        body: JSON.stringify({ 
+          action: 'APUNTARSE_SOLO_CENA', 
+          fecha: dateStr, 
+          nombreJugador: currentUser.name, 
+          estado: newState,
+          grupo: myGroup 
+        })
       });
       await fetchData();
     } catch (e) {
@@ -2507,7 +2535,7 @@ export default function App() {
     return players.filter(p => (p.group || 'chicos').toLowerCase() === myGroup);
   }, [players, myGroup]);
 
-  // Privacidad de Torneos: solo visibles para los convocados o el creador
+  // Privacidad de Torneos: solo visibles para los convocados o el creador (pueden ser mixtos)
   const visibleTournaments = useMemo(() => {
     if (!currentUser) return [];
     return activeTournaments.filter(t => {
@@ -2519,9 +2547,18 @@ export default function App() {
     });
   }, [activeTournaments, currentUser]);
 
+  // Solo los partidos del día oficial del grupo (Chicos: Jueves, Chicas: Martes) computan para generar cena
+  const groupMatches = useMemo(() => {
+    return matches.filter(m => {
+      const g = (m.grupo || 'chicos').toLowerCase();
+      if (g !== myGroup) return false;
+      return isMatchOfficial(m);
+    });
+  }, [matches, myGroup]);
+
   const availableDinnerDates = useMemo(() => {
     const datesMap = new Map();
-    matches.forEach(m => {
+    groupMatches.forEach(m => {
       const cleanKey = extractCleanDate(m.date);
       if (cleanKey && cleanKey !== 'sin fecha') {
         if (!datesMap.has(cleanKey)) {
@@ -2531,20 +2568,20 @@ export default function App() {
       }
     });
     return Array.from(datesMap.entries()).map(([key, label]) => ({ key, label }));
-  }, [matches]);
+  }, [groupMatches]);
 
   const activeDinnerKey = selectedDinnerDate || (availableDinnerDates.length > 0 ? availableDinnerDates[0].key : '');
 
   const matchesForDinner = useMemo(() => {
     if (!activeDinnerKey) return [];
-    return matches.filter(m => extractCleanDate(m.date) === activeDinnerKey);
-  }, [matches, activeDinnerKey]);
+    return groupMatches.filter(m => extractCleanDate(m.date) === activeDinnerKey);
+  }, [groupMatches, activeDinnerKey]);
 
   const { dinnerYes, dinnerNo, dinnerPending, dinnerGuests } = useMemo(() => {
     const yesMap = new Map();
     const noMap = new Map();
     const pendingMap = new Map();
-    const guestList = [];
+    const guestMap = new Map();
 
     matchesForDinner.forEach(m => {
       (m.players || []).forEach(p => {
@@ -2565,14 +2602,19 @@ export default function App() {
           }
         }
       });
-      (m.guests || []).forEach(g => guestList.push(g));
+      (m.guests || []).forEach(g => {
+        const normG = normalizeName(g.name);
+        if (!guestMap.has(normG)) {
+          guestMap.set(normG, g);
+        }
+      });
     });
 
     return {
       dinnerYes: Array.from(yesMap.values()),
       dinnerNo: Array.from(noMap.values()),
       dinnerPending: Array.from(pendingMap.values()),
-      dinnerGuests: guestList
+      dinnerGuests: Array.from(guestMap.values())
     };
   }, [matchesForDinner]);
 
@@ -2829,14 +2871,21 @@ export default function App() {
                     'CANCELADO': 'bg-rose-50 text-rose-700 border-rose-200'
                   };
 
+                  const isOfficial = isMatchOfficial(currentMatch);
+
                   return (
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5 flex-wrap">
                       <span className="text-[10px] font-black uppercase tracking-wider bg-slate-100 text-slate-600 px-2.5 py-1 rounded-full border border-slate-200">
                         {currentMatch.grupo}
                       </span>
                       <span className={`text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-full border ${badgeColors[dynamicStatus] || badgeColors['PROGRAMADO']}`}>
                         {dynamicStatus === 'EN JUEGO' ? '🎾 EN JUEGO' : dynamicStatus}
                       </span>
+                      {!isOfficial && (
+                        <span className="text-[10px] font-extrabold uppercase tracking-wide bg-amber-50 text-amber-800 border border-amber-300 px-2 py-0.5 rounded-full">
+                          Amistoso (No computable)
+                        </span>
+                      )}
                     </div>
                   );
                 })()}
@@ -3033,9 +3082,20 @@ export default function App() {
 
               {/* PREGUNTA RÁPIDA DE CENA AL USUARIO ACTIVO */}
               {(() => {
+                const isOfficial = isMatchOfficial(currentMatch);
                 const mySlot = (currentMatch.players || []).find(p => p.id === currentUser.id || normalizeName(p.name) === normalizeName(currentUser.name));
                 if (!mySlot) return null;
                 const isProcessing = loadingDinnerId === (mySlot.id || mySlot.name);
+
+                if (!isOfficial) {
+                  return (
+                    <div className="mt-5 pt-3 border-t border-slate-100 text-center">
+                      <span className="text-[11px] text-slate-500 font-semibold italic block">
+                        ℹ️ Este partido es amistoso. Las cenas y puntos oficiales se computan exclusivamente los {currentMatch.grupo === 'chicas' ? 'Martes (Chicas)' : 'Jueves (Chicos)'}.
+                      </span>
+                    </div>
+                  );
+                }
 
                 return (
                   <div className="mt-5 pt-4 border-t border-slate-100 text-center">
@@ -3166,6 +3226,7 @@ export default function App() {
                     const isFinalizado = dynamicStatus === 'FINALIZADO';
                     const p1Won = isFinalizado && p1.some(p => p.won === 'SI');
                     const p2Won = isFinalizado && p2.some(p => p.won === 'SI');
+                    const isOfficial = isMatchOfficial(m);
 
                     const badgeColors = {
                       'PROGRAMADO': 'bg-blue-50 text-blue-700 border-blue-200',
@@ -3185,9 +3246,16 @@ export default function App() {
                       >
                         <div className="flex justify-between items-start">
                           <div>
-                            <span className="text-[10px] font-black uppercase tracking-wider bg-slate-100 text-slate-600 px-2 py-0.5 rounded">
-                              {m.grupo}
-                            </span>
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-[10px] font-black uppercase tracking-wider bg-slate-100 text-slate-600 px-2 py-0.5 rounded">
+                                {m.grupo}
+                              </span>
+                              {!isOfficial && (
+                                <span className="text-[9px] font-extrabold uppercase bg-amber-50 text-amber-800 border border-amber-300 px-1.5 py-0.2 rounded">
+                                  Amistoso
+                                </span>
+                              )}
+                            </div>
                             <h3 className="text-base font-black text-slate-900 mt-1">{m.date}</h3>
                             <p className="text-xs text-slate-500 mt-0.5">📍 {m.location}</p>
                           </div>
@@ -3850,20 +3918,12 @@ export default function App() {
               <button onClick={() => setShowAddModal(false)} className="text-slate-400 hover:text-slate-600 text-xl font-bold">&times;</button>
             </div>
             <form onSubmit={handleAddPlaytomicMatch} className="space-y-3">
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Grupo</label>
-                <div className="flex gap-2">
-                  {['chicos', 'chicas'].map(g => (
-                    <button
-                      type="button"
-                      key={g}
-                      onClick={() => setMatchGroup(g)}
-                      className={`flex-1 py-1.5 rounded-xl text-xs font-bold uppercase transition ${matchGroup === g ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600'}`}
-                    >
-                      {g}
-                    </button>
-                  ))}
-                </div>
+              {/* Asignación automática por el grupo del usuario creador */}
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-2.5 flex items-center justify-between text-xs">
+                <span className="font-bold text-slate-600">Grupo asignado:</span>
+                <span className="font-black text-blue-700 uppercase bg-blue-100 px-2 py-0.5 rounded-md">
+                  {myGroup === 'chicas' ? 'Chicas (Martes)' : 'Chicos (Jueves)'}
+                </span>
               </div>
 
               <div>
