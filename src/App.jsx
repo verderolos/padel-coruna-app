@@ -6,6 +6,37 @@ const DEFAULT_API_URL = 'https://script.google.com/macros/s/AKfycbxkd-BmLpYxmLte
 const FALLBACK_USERS = [];
 const FALLBACK_MATCHES = [];
 
+// REGLAS OFICIALES DETALLADAS POR MODALIDAD PARA EL MOTOR DE GEMINI
+const OFFICIAL_TOURNAMENT_RULES = {
+  pozo: `REGLAS OFICIALES POZO CONTINUO (SUBE Y BAJA):
+- Pista 1 es la Pista Reina (Corona). Las demás pistas son secundarias descendentes (Pista 2, 3...).
+- Duración por partido prefijada con bocinazo de fin de turno.
+- Los ganadores de cada pista SUBEN una pista hacia la Pista 1 (los ganadores en Pista 1 defienden el trono y se quedan).
+- Los perdedores de cada pista BAJAN una pista hacia el pozo inferior (los de la última pista se quedan en ella).
+- En caso de empate al sonar el tiempo: punto de oro decisivo para determinar quién asciende.
+- Emparejamiento inicial: nivelación por estrellas para que la Pista Reina comience con las parejas de mayor handicap.`,
+
+  americano: `REGLAS OFICIALES TORNEO AMERICANO INDIVIDUAL:
+- Competición individual con rotación constante de parejas en cada turno.
+- En cada ronda, los 4 jugadores de una pista juegan juntos cambiando de compañero o rotando rivales.
+- Puntuación por juegos: cada juego ganado suma 1 punto individual en la tabla general al jugador.
+- Se compensan niveles: un jugador de mayor ranking hace dupla con uno en desarrollo frente a un dúo equilibrado similar.
+- El campeón es el jugador que más juegos individuales haya acumulado al término de todas las rondas.`,
+
+  eliminatorio: `REGLAS OFICIALES CUADRO CON FASES FINALES:
+- Parejas fijas compensadas por promedio de estrellas combinadas.
+- Cabezas de serie distribuidos en Fase de Grupos para evitar cruces prematuros entre los favoritos.
+- Los 2 mejores de cada grupo clasifican a Semifinales del Cuadro Principal (Oro).
+- Los semifinalistas ganadores disputan la Gran Final por el Trofeo de Campeón 🏆.
+- Los semifinalistas perdedores disputan el partido por el 3º y 4º Puesto (Bronce 🥉).`,
+
+  equipos: `REGLAS OFICIALES RYDER CUP POR EQUIPOS:
+- Dos escuadras enfrentadas: Equipo Azul 🔵 vs Equipo Rojo 🔴 dirigidos por sus respectivos Capitanes.
+- Cada capitán calibra y empareja a sus jugadores frente a la pareja equivalente en nivel del equipo rival.
+- Cada partido ganado en cualquier pista otorga 1 punto global al marcador de la escuadra.
+- El equipo que más victorias sume al término de todas las rondas se proclama Campeón de la Ryder CTC.`
+};
+
 // Limpiar y normalizar fecha
 function extractCleanDate(dateStr) {
   if (!dateStr) return 'Sin fecha';
@@ -34,7 +65,7 @@ function extractMatchDurationMinutes(dateStr, rawText) {
   if (durMatch) {
     return parseInt(durMatch[1], 10);
   }
-  return 90; // Duración estándar de 90 minutos si no se especifica
+  return 90;
 }
 
 // Convertir fecha del partido en objeto Date para horario y calendario
@@ -127,7 +158,7 @@ function isUpcoming(dateStr) {
   return matchDate >= startOfToday;
 }
 
-// Avatar con foto o iniciales
+// Componente Avatar
 function UserAvatar({ name, photo, size = 'md', className = '' }) {
   const sizeClasses = {
     xs: 'w-6 h-6 text-[9px]',
@@ -161,6 +192,94 @@ function UserAvatar({ name, photo, size = 'md', className = '' }) {
       {initials}
     </div>
   );
+}
+
+// Selector visual de estrellas interactivo para los organizadores en torneos
+function StarRating({ value, onChange }) {
+  const stars = [1, 2, 3, 4, 5];
+  return (
+    <div className="flex items-center gap-1">
+      {stars.map(s => {
+        const active = s <= Math.round(value);
+        return (
+          <button
+            type="button"
+            key={s}
+            onClick={() => onChange(s)}
+            className={`text-xl leading-none transition-transform active:scale-125 ${
+              active ? 'text-amber-400 drop-shadow-xs' : 'text-slate-200'
+            }`}
+            title={`Nivel ${s}`}
+          >
+            ★
+          </button>
+        );
+      })}
+      <span className="text-[11px] font-black text-slate-700 ml-1.5 w-6 text-right">
+        {Number(value).toFixed(1)}
+      </span>
+    </div>
+  );
+}
+
+// MOTOR DE NIVEL SUGERIDO: BASADO EXCLUSIVAMENTE EN HISTORIAL DE TORNEOS
+function calculateTournamentSuggestedLevel(user, tournaments) {
+  let baseLevel = Number(user.level) || 3.5;
+  const normUserName = normalizeName(user.name);
+
+  let tourMatches = 0;
+  let tourWon = 0;
+  (tournaments || []).forEach(t => {
+    (t.rounds || []).forEach(r => {
+      (r.matches || []).forEach(m => {
+        if (m.status !== 'FINALIZADO') return;
+        const inT1 = normalizeName(m.team1 || '').includes(normUserName);
+        const inT2 = normalizeName(m.team2 || '').includes(normUserName);
+        if (inT1 || inT2) {
+          tourMatches++;
+          if (inT1 && m.winner === 1) tourWon++;
+          if (inT2 && m.winner === 2) tourWon++;
+        }
+      });
+    });
+  });
+
+  if (tourMatches === 0) {
+    return {
+      suggestedLevel: baseLevel,
+      trend: 'ESTABLE',
+      diff: 0,
+      reason: 'Sin torneos previos para calibrar',
+      winRate: 0,
+      tourMatches: 0
+    };
+  }
+
+  const winRate = (tourWon / tourMatches) * 100;
+  let modifier = 0;
+  if (winRate >= 75) modifier = +0.4;
+  else if (winRate >= 65) modifier = +0.2;
+  else if (winRate <= 25) modifier = -0.4;
+  else if (winRate <= 35) modifier = -0.2;
+
+  let calculated = Math.min(5.0, Math.max(1.5, baseLevel + modifier));
+  calculated = Math.round(calculated * 10) / 10;
+  const diff = Math.round((calculated - baseLevel) * 10) / 10;
+  const trend = diff > 0 ? 'SUBE' : diff < 0 ? 'BAJA' : 'ESTABLE';
+
+  let reason = 'Rendimiento equilibrado en torneos';
+  if (diff > 0) reason = `Rendimiento alto en torneos (${winRate.toFixed(0)}% victorias en ${tourMatches} PJ)`;
+  if (diff < 0) reason = `Racha a mejorar en torneos (${winRate.toFixed(0)}% victorias en ${tourMatches} PJ)`;
+
+  return {
+    suggestedLevel: calculated,
+    trend,
+    diff,
+    reason,
+    winRate: winRate.toFixed(0),
+    tourMatches,
+    tourWon
+  };
 }
 
 // Modal Criterios y Reglas
@@ -198,9 +317,7 @@ function CriteriosModal({ isOpen, onClose }) {
 
         <section className="bg-purple-50 border border-purple-200 rounded-2xl p-4 space-y-1.5">
           <h4 className="font-extrabold text-purple-950 text-xs uppercase tracking-wide">⚡ 3. Ranking Híbrido (Corona General)</h4>
-          <p className="text-xs text-purple-900">
-            Suma directa del <strong>Ranking Deportivo + Ranking Barandas</strong>.
-          </p>
+          <p className="text-xs text-purple-900">Suma directa del <strong>Ranking Deportivo + Ranking Barandas</strong>.</p>
         </section>
 
         <section className="bg-amber-50 border border-amber-200 rounded-2xl p-4 space-y-1.5">
@@ -220,8 +337,9 @@ function CriteriosModal({ isOpen, onClose }) {
   );
 }
 
-// Modal Perfil de Usuario con Estadísticas Corregidas
-function UserProfileModal({ isOpen, onClose, user, matches, onPhotoUploaded, onUpdateUserData, isCurrentUser }) {
+// Modal Perfil de Usuario con Estadísticas Individuales y de Torneos
+// IMPORTANTE: NO se muestra nivel de estrellas al usuario para evitar susceptibilidades
+function UserProfileModal({ isOpen, onClose, user, matches, tournaments, onPhotoUploaded, onUpdateUserData, isCurrentUser, isThursdayMember }) {
   const fileInputRef = useRef(null);
   const [uploading, setUploading] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -236,13 +354,15 @@ function UserProfileModal({ isOpen, onClose, user, matches, onPhotoUploaded, onU
     if (user) {
       setEditName(user.name || '');
       setEditPhone(user.phone || '');
-      setEditGroup(user.group === 'chicas' ? 'Chicas' : 'Chicos');
+      setEditGroup(user.group === 'torneo' ? 'Solo Torneo' : user.group === 'chicas' ? 'Chicas' : 'Chicos');
       setEditPlaytomic(user.playtomic || '');
       setEditing(false);
     }
   }, [user]);
 
   if (!isOpen || !user) return null;
+
+  const normUserName = normalizeName(user.name);
 
   const handleFileChange = (e) => {
     const file = e.target.files[0];
@@ -257,13 +377,11 @@ function UserProfileModal({ isOpen, onClose, user, matches, onPhotoUploaded, onU
         const maxSize = 200;
         let width = img.width;
         let height = img.height;
-
         if (width > height) {
           if (width > maxSize) { height *= maxSize / width; width = maxSize; }
         } else {
           if (height > maxSize) { width *= maxSize / height; height = maxSize; }
         }
-
         canvas.width = width;
         canvas.height = height;
         const ctx = canvas.getContext('2d');
@@ -284,7 +402,7 @@ function UserProfileModal({ isOpen, onClose, user, matches, onPhotoUploaded, onU
     await onUpdateUserData(user.id, {
       nombre: editName,
       telefono: editPhone,
-      grupo: editGroup,
+      grupo: editGroup === 'Solo Torneo' ? 'torneo' : editGroup,
       playtomic: editPlaytomic
     });
     setSavingData(false);
@@ -298,7 +416,7 @@ function UserProfileModal({ isOpen, onClose, user, matches, onPhotoUploaded, onU
 
     matches.forEach(m => {
       if (m.status !== 'FINALIZADO') return;
-      const mySlot = (m.players || []).find(p => p.id === user.id || normalizeName(p.name) === normalizeName(user.name));
+      const mySlot = (m.players || []).find(p => p.id === user.id || normalizeName(p.name) === normUserName);
       if (!mySlot) return;
 
       played++;
@@ -309,59 +427,44 @@ function UserProfileModal({ isOpen, onClose, user, matches, onPhotoUploaded, onU
       if (mySlot.dinner === 'NO') dinnerNo++;
 
       const myTeam = mySlot.team;
-
       (m.players || []).forEach(p => {
-        if (normalizeName(p.name) === normalizeName(user.name)) return;
+        if (normalizeName(p.name) === normUserName) return;
         if (p.team === myTeam) {
           if (!partnerStats[p.name]) partnerStats[p.name] = { played: 0, won: 0, lost: 0 };
           partnerStats[p.name].played++;
-          if (didWin) partnerStats[p.name].won++;
-          else partnerStats[p.name].lost++;
+          if (didWin) partnerStats[p.name].won++; else partnerStats[p.name].lost++;
         } else {
           if (!rivalStats[p.name]) rivalStats[p.name] = { played: 0, wonAgainst: 0, lostAgainst: 0 };
           rivalStats[p.name].played++;
-          if (didWin) rivalStats[p.name].wonAgainst++;
-          else rivalStats[p.name].lostAgainst++;
+          if (didWin) rivalStats[p.name].wonAgainst++; else rivalStats[p.name].lostAgainst++;
         }
       });
     });
 
-    let bestPartner = null;
-    let bestPartnerWinPct = -1;
-
-    let worstPartner = null;
-    let worstPartnerLossPct = 0;
-
+    let bestPartner = null, bestPartnerWinPct = -1;
+    let worstPartner = null, worstPartnerLossPct = 0;
     Object.entries(partnerStats).forEach(([name, data]) => {
       const winPct = (data.won / data.played) * 100;
       const lossPct = (data.lost / data.played) * 100;
-
       if (data.won > 0 && winPct > bestPartnerWinPct) {
         bestPartnerWinPct = winPct;
         bestPartner = { name, ...data, pct: winPct.toFixed(0) };
       }
-
       if (data.lost > 0 && lossPct >= worstPartnerLossPct) {
         worstPartnerLossPct = lossPct;
         worstPartner = { name, ...data, pct: lossPct.toFixed(0) };
       }
     });
 
-    let easiestRival = null;
-    let easiestWinPct = -1;
-
-    let hardestRival = null;
-    let hardestLossPct = 0;
-
+    let easiestRival = null, easiestWinPct = -1;
+    let hardestRival = null, hardestLossPct = 0;
     Object.entries(rivalStats).forEach(([name, data]) => {
       const winPct = (data.wonAgainst / data.played) * 100;
       const lossPct = (data.lostAgainst / data.played) * 100;
-
       if (data.wonAgainst > 0 && winPct > easiestWinPct) {
         easiestWinPct = winPct;
         easiestRival = { name, ...data, pct: winPct.toFixed(0) };
       }
-
       if (data.lostAgainst > 0 && lossPct >= hardestLossPct) {
         hardestLossPct = lossPct;
         hardestRival = { name, ...data, pct: lossPct.toFixed(0) };
@@ -377,9 +480,72 @@ function UserProfileModal({ isOpen, onClose, user, matches, onPhotoUploaded, onU
     };
   })();
 
+  const tournamentStats = (() => {
+    let tDisputed = 0, tPlayed = 0, tWon = 0, tLost = 0;
+    const modePerformance = {
+      pozo: { label: 'Pozo Continuo', played: 0, won: 0 },
+      americano: { label: 'Americano', played: 0, won: 0 },
+      eliminatorio: { label: 'Fases Finales', played: 0, won: 0 },
+      equipos: { label: 'Por Equipos (Ryder)', played: 0, won: 0 }
+    };
+    const podiums = { oro: 0, plata: 0, bronce: 0 };
+
+    (tournaments || []).forEach(t => {
+      const isParticipant = (t.participants || []).some(
+        p => p.id === user.id || normalizeName(p.name) === normUserName
+      );
+      if (!isParticipant) return;
+      tDisputed++;
+
+      const mMode = t.mode || 'pozo';
+      if (!modePerformance[mMode]) modePerformance[mMode] = { label: mMode, played: 0, won: 0 };
+
+      (t.rounds || []).forEach(r => {
+        (r.matches || []).forEach(m => {
+          if (m.status !== 'FINALIZADO') return;
+          const inT1 = normalizeName(m.team1 || '').includes(normUserName);
+          const inT2 = normalizeName(m.team2 || '').includes(normUserName);
+          if (inT1 || inT2) {
+            tPlayed++;
+            modePerformance[mMode].played++;
+            const won = (inT1 && m.winner === 1) || (inT2 && m.winner === 2);
+            if (won) {
+              tWon++;
+              modePerformance[mMode].won++;
+            } else {
+              tLost++;
+            }
+            if (m.id === 'FINAL_ORO') {
+              if (won) podiums.oro++; else podiums.plata++;
+            } else if (m.id === 'FINAL_CONSOL' && won) {
+              podiums.bronce++;
+            }
+          }
+        });
+      });
+    });
+
+    let bestMode = null, bestModeRate = -1;
+    let worstMode = null, worstModeRate = 101;
+    Object.entries(modePerformance).forEach(([k, data]) => {
+      if (data.played >= 1) {
+        const rate = (data.won / data.played) * 100;
+        if (rate > bestModeRate) { bestModeRate = rate; bestMode = { ...data, rate: rate.toFixed(0) }; }
+        if (rate < worstModeRate) { worstModeRate = rate; worstMode = { ...data, rate: rate.toFixed(0) }; }
+      }
+    });
+
+    return {
+      tDisputed, tPlayed, tWon, tLost,
+      winRate: tPlayed > 0 ? ((tWon / tPlayed) * 100).toFixed(0) : 0,
+      bestMode, worstMode, podiums
+    };
+  })();
+
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-3xl max-w-sm w-full max-h-[90vh] overflow-y-auto p-5 shadow-2xl text-left space-y-4">
+        {/* Cabecera */}
         <div className="flex items-center justify-between border-b pb-4">
           <div className="flex items-center gap-3">
             <div className={`relative ${isCurrentUser ? 'group cursor-pointer' : ''}`} onClick={() => isCurrentUser && fileInputRef.current && fileInputRef.current.click()}>
@@ -416,6 +582,7 @@ function UserProfileModal({ isOpen, onClose, user, matches, onPhotoUploaded, onU
           <button onClick={onClose} className="text-slate-400 hover:text-slate-700 text-2xl font-bold">&times;</button>
         </div>
 
+        {/* FORMULARIO EDITAR DATOS */}
         {isCurrentUser && editing && (
           <form onSubmit={handleSaveProfileData} className="bg-slate-50 p-3 rounded-2xl border border-slate-200 space-y-2 text-xs">
             <div>
@@ -439,14 +606,14 @@ function UserProfileModal({ isOpen, onClose, user, matches, onPhotoUploaded, onU
               />
             </div>
             <div>
-              <label className="block text-[10px] font-bold text-slate-600 mb-0.5">Grupo</label>
-              <div className="flex gap-2">
-                {['Chicos', 'Chicas'].map(g => (
+              <label className="block text-[10px] font-bold text-slate-600 mb-0.5">Grupo / Rol</label>
+              <div className="flex gap-1.5">
+                {['Chicos', 'Solo Torneo'].map(g => (
                   <button
                     type="button"
                     key={g}
                     onClick={() => setEditGroup(g)}
-                    className={`flex-1 py-1 rounded-lg font-bold border ${
+                    className={`flex-1 py-1 rounded-lg font-bold border text-[11px] ${
                       editGroup === g ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-700 border-slate-200'
                     }`}
                   >
@@ -475,64 +642,144 @@ function UserProfileModal({ isOpen, onClose, user, matches, onPhotoUploaded, onU
           </form>
         )}
 
-        <div className="grid grid-cols-4 gap-2 text-center">
-          <div className="bg-slate-50 border border-slate-200 rounded-xl p-2">
-            <span className="text-base font-black text-slate-900 block">{stats.played}</span>
-            <span className="text-[9px] uppercase font-bold text-slate-500">PJ</span>
-          </div>
-          <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-2">
-            <span className="text-base font-black text-emerald-700 block">{stats.won}</span>
-            <span className="text-[9px] uppercase font-bold text-emerald-900">Victorias</span>
-          </div>
-          <div className="bg-rose-50 border border-rose-200 rounded-xl p-2">
-            <span className="text-base font-black text-rose-700 block">{stats.lost}</span>
-            <span className="text-[9px] uppercase font-bold text-rose-900">Derrotas</span>
-          </div>
-          <div className="bg-blue-50 border border-blue-200 rounded-xl p-2">
-            <span className="text-base font-black text-blue-700 block">{stats.winRate}%</span>
-            <span className="text-[9px] uppercase font-bold text-blue-900">% Éxito</span>
-          </div>
-        </div>
+        {/* SECCIÓN 1: LIGA REGULAR (JUEVES) */}
+        {isThursdayMember && (
+          <div className="space-y-2">
+            <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">
+              Estadísticas Liga Regular (Jueves)
+            </span>
+            <div className="grid grid-cols-4 gap-2 text-center">
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-2">
+                <span className="text-base font-black text-slate-900 block">{stats.played}</span>
+                <span className="text-[9px] uppercase font-bold text-slate-500">PJ</span>
+              </div>
+              <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-2">
+                <span className="text-base font-black text-emerald-700 block">{stats.won}</span>
+                <span className="text-[9px] uppercase font-bold text-emerald-900">Victorias</span>
+              </div>
+              <div className="bg-rose-50 border border-rose-200 rounded-xl p-2">
+                <span className="text-base font-black text-rose-700 block">{stats.lost}</span>
+                <span className="text-[9px] uppercase font-bold text-rose-900">Derrotas</span>
+              </div>
+              <div className="bg-blue-50 border border-blue-200 rounded-xl p-2">
+                <span className="text-base font-black text-blue-700 block">{stats.winRate}%</span>
+                <span className="text-[9px] uppercase font-bold text-blue-900">% Éxito</span>
+              </div>
+            </div>
 
-        <div className="grid grid-cols-2 gap-2 text-center">
-          <div className="bg-amber-50 border border-amber-200 rounded-xl p-2.5">
-            <span className="text-base font-black text-amber-800 block">{stats.dinnerYes}</span>
-            <span className="text-[10px] font-bold text-amber-900 uppercase">Cenas Asistidas 🍻</span>
+            <div className="grid grid-cols-2 gap-2 text-center pt-1">
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-2.5">
+                <span className="text-base font-black text-amber-800 block">{stats.dinnerYes}</span>
+                <span className="text-[10px] font-bold text-amber-900 uppercase">Cenas Asistidas 🍻</span>
+              </div>
+              <div className="bg-purple-50 border border-purple-200 rounded-xl p-2.5">
+                <span className="text-base font-black text-purple-800 block">{stats.dinnerNo}</span>
+                <span className="text-[10px] font-bold text-purple-900 uppercase">Rajadas 🏃‍♂️️</span>
+              </div>
+            </div>
           </div>
-          <div className="bg-purple-50 border border-purple-200 rounded-xl p-2.5">
-            <span className="text-base font-black text-purple-800 block">{stats.dinnerNo}</span>
-            <span className="text-[10px] font-bold text-purple-900 uppercase">Rajadas 🏃‍♂️</span>
-          </div>
-        </div>
+        )}
 
-        <div className="space-y-2 pt-1">
-          <h4 className="text-xs font-black text-slate-800 uppercase tracking-wide">Compañeros y Rivales</h4>
+        {/* SECCIÓN 2: ANALÍTICA DE TORNEOS */}
+        <div className="space-y-2 pt-1 border-t border-slate-100">
+          <div className="flex justify-between items-center">
+            <span className="text-[10px] font-black text-purple-900 uppercase tracking-wider block">
+              ⚔️ Rendimiento en Torneos
+            </span>
+            <span className="text-[10px] font-bold text-purple-700 bg-purple-50 px-2 py-0.5 rounded-md">
+              {tournamentStats.tDisputed} eventos
+            </span>
+          </div>
+
+          <div className="grid grid-cols-3 gap-2 text-center">
+            <div className="bg-purple-50 border border-purple-200 rounded-xl p-2">
+              <span className="text-base font-black text-purple-900 block">{tournamentStats.tPlayed}</span>
+              <span className="text-[9px] uppercase font-bold text-purple-600">Partidos Torneo</span>
+            </div>
+            <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-2">
+              <span className="text-base font-black text-emerald-700 block">{tournamentStats.tWon}</span>
+              <span className="text-[9px] uppercase font-bold text-emerald-900">Ganados</span>
+            </div>
+            <div className="bg-blue-50 border border-blue-200 rounded-xl p-2">
+              <span className="text-base font-black text-blue-700 block">{tournamentStats.winRate}%</span>
+              <span className="text-[9px] uppercase font-bold text-blue-900">% Éxito</span>
+            </div>
+          </div>
+
           <div className="grid grid-cols-2 gap-2 text-xs">
-            <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-2.5">
-              <span className="text-[10px] font-bold text-emerald-800 block uppercase">🌟 Mejor Pareja</span>
-              <p className="font-black text-slate-900 text-xs mt-0.5 truncate">{stats.bestPartner ? stats.bestPartner.name : 'Sin datos'}</p>
-              {stats.bestPartner && <span className="text-[10px] text-emerald-700 font-semibold">{stats.bestPartner.pct}% victorias</span>}
+            <div className="bg-emerald-50/80 border border-emerald-200 rounded-2xl p-2.5">
+              <span className="text-[9px] font-extrabold text-emerald-800 uppercase block">🚀 Formato Estrella</span>
+              <p className="font-black text-slate-900 text-xs mt-0.5 truncate">
+                {tournamentStats.bestMode ? tournamentStats.bestMode.label : 'Sin torneos'}
+              </p>
+              {tournamentStats.bestMode && (
+                <span className="text-[10px] text-emerald-700 font-bold">{tournamentStats.bestMode.rate}% victorias</span>
+              )}
             </div>
 
-            <div className="bg-rose-50 border border-rose-200 rounded-2xl p-2.5">
-              <span className="text-[10px] font-bold text-rose-800 block uppercase">💔 Pareja Gafe</span>
-              <p className="font-black text-slate-900 text-xs mt-0.5 truncate">{stats.worstPartner ? stats.worstPartner.name : 'Sin datos'}</p>
-              {stats.worstPartner && <span className="text-[10px] text-rose-700 font-semibold">{stats.worstPartner.pct}% derrotas</span>}
-            </div>
-
-            <div className="bg-amber-50 border border-amber-200 rounded-2xl p-2.5">
-              <span className="text-[10px] font-bold text-amber-800 block uppercase">😈 Bestia Negra</span>
-              <p className="font-black text-slate-900 text-xs mt-0.5 truncate">{stats.hardestRival ? stats.hardestRival.name : 'Sin datos'}</p>
-              {stats.hardestRival && <span className="text-[10px] text-amber-700 font-semibold">{stats.hardestRival.pct}% derrotas vs él</span>}
-            </div>
-
-            <div className="bg-blue-50 border border-blue-200 rounded-2xl p-2.5">
-              <span className="text-[10px] font-bold text-blue-800 block uppercase">🍰 Rival Favorito</span>
-              <p className="font-black text-slate-900 text-xs mt-0.5 truncate">{stats.easiestRival ? stats.easiestRival.name : 'Sin datos'}</p>
-              {stats.easiestRival && <span className="text-[10px] text-blue-700 font-semibold">{stats.easiestRival.pct}% victorias vs él</span>}
+            <div className="bg-rose-50/80 border border-rose-200 rounded-2xl p-2.5">
+              <span className="text-[9px] font-extrabold text-rose-800 uppercase block">📉 Formato a Mejorar</span>
+              <p className="font-black text-slate-900 text-xs mt-0.5 truncate">
+                {tournamentStats.worstMode ? tournamentStats.worstMode.label : 'Sin torneos'}
+              </p>
+              {tournamentStats.worstMode && (
+                <span className="text-[10px] text-rose-700 font-bold">{tournamentStats.worstMode.rate}% victorias</span>
+              )}
             </div>
           </div>
+
+          {(tournamentStats.podiums.oro > 0 || tournamentStats.podiums.plata > 0 || tournamentStats.podiums.bronce > 0) && (
+            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-2.5 flex justify-around text-center">
+              <div>
+                <span className="text-base block">🥇</span>
+                <span className="font-black text-xs text-amber-600">{tournamentStats.podiums.oro}</span>
+                <span className="text-[9px] text-slate-400 block font-bold">Campeón</span>
+              </div>
+              <div>
+                <span className="text-base block">🥈</span>
+                <span className="font-black text-xs text-slate-600">{tournamentStats.podiums.plata}</span>
+                <span className="text-[9px] text-slate-400 block font-bold">Subcampeón</span>
+              </div>
+              <div>
+                <span className="text-base block">🥉</span>
+                <span className="font-black text-xs text-amber-800">{tournamentStats.podiums.bronce}</span>
+                <span className="text-[9px] text-slate-400 block font-bold">3º Puesto</span>
+              </div>
+            </div>
+          )}
         </div>
+
+        {/* Compañeros y Rivales de Liga Regular */}
+        {isThursdayMember && (
+          <div className="space-y-2 pt-1 border-t border-slate-100">
+            <h4 className="text-xs font-black text-slate-800 uppercase tracking-wide">Compañeros y Rivales (Liga)</h4>
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-2.5">
+                <span className="text-[10px] font-bold text-emerald-800 block uppercase">🌟 Mejor Pareja</span>
+                <p className="font-black text-slate-900 text-xs mt-0.5 truncate">{stats.bestPartner ? stats.bestPartner.name : 'Sin datos'}</p>
+                {stats.bestPartner && <span className="text-[10px] text-emerald-700 font-semibold">{stats.bestPartner.pct}% victorias</span>}
+              </div>
+
+              <div className="bg-rose-50 border border-rose-200 rounded-2xl p-2.5">
+                <span className="text-[10px] font-bold text-rose-800 block uppercase">💔 Pareja Gafe</span>
+                <p className="font-black text-slate-900 text-xs mt-0.5 truncate">{stats.worstPartner ? stats.worstPartner.name : 'Sin datos'}</p>
+                {stats.worstPartner && <span className="text-[10px] text-rose-700 font-semibold">{stats.worstPartner.pct}% derrotas</span>}
+              </div>
+
+              <div className="bg-amber-50 border border-amber-200 rounded-2xl p-2.5">
+                <span className="text-[10px] font-bold text-amber-800 block uppercase">😈 Bestia Negra</span>
+                <p className="font-black text-slate-900 text-xs mt-0.5 truncate">{stats.hardestRival ? stats.hardestRival.name : 'Sin datos'}</p>
+                {stats.hardestRival && <span className="text-[10px] text-amber-700 font-semibold">{stats.hardestRival.pct}% derrotas vs él</span>}
+              </div>
+
+              <div className="bg-blue-50 border border-blue-200 rounded-2xl p-2.5">
+                <span className="text-[10px] font-bold text-blue-800 block uppercase">🍰 Rival Favorito</span>
+                <p className="font-black text-slate-900 text-xs mt-0.5 truncate">{stats.easiestRival ? stats.easiestRival.name : 'Sin datos'}</p>
+                {stats.easiestRival && <span className="text-[10px] text-blue-700 font-semibold">{stats.easiestRival.pct}% victorias vs él</span>}
+              </div>
+            </div>
+          </div>
+        )}
 
         <button onClick={onClose} className="w-full py-2.5 bg-slate-900 text-white font-bold rounded-xl text-xs">Cerrar</button>
       </div>
@@ -611,6 +858,1029 @@ function PinModal({ isOpen, onClose, targetUser, onPinSuccess, apiUrl }) {
   );
 }
 
+// Modal Creador de Torneos con Advertencia de Privacidad, Selección de Capitanes y Nivelación Interna
+function TournamentCreatorModal({ isOpen, onClose, allPlayers, tournaments, onTournamentCreated, currentUserId, onSaveLevel }) {
+  const [step, setStep] = useState(1);
+  const [tName, setTName] = useState('Torneo CTC Fin de Semana');
+  const [tournamentMode, setTournamentMode] = useState('pozo');
+
+  const [tCourts, setTCourts] = useState(3);
+  const [tDuration, setTDuration] = useState(120);
+  const [tMatchTime, setTMatchTime] = useState(20);
+
+  // Inicializar nivelación de jugadores usando rating de torneos previo y tendencia exclusiva
+  const [participants, setParticipants] = useState(() => {
+    return allPlayers.map(p => {
+      const calc = calculateTournamentSuggestedLevel(p, tournaments);
+      return {
+        id: p.id,
+        name: p.name,
+        photo: p.photo,
+        level: calc.suggestedLevel,
+        originalLevel: p.level || 3.5,
+        diff: calc.diff,
+        trend: calc.trend,
+        selected: true,
+        isGuest: false,
+        dinner: 'SI',
+        assignedTeam: 1
+      };
+    });
+  });
+
+  const [captain1Id, setCaptain1Id] = useState('');
+  const [captain2Id, setCaptain2Id] = useState('');
+
+  const [guestName, setGuestName] = useState('');
+  const [guestLevel, setGuestLevel] = useState(3.0);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [customGeminiRules, setCustomGeminiRules] = useState('');
+
+  const [generatedFixture, setGeneratedFixture] = useState([]);
+  const [generatedTeams, setGeneratedTeams] = useState([]);
+
+  useEffect(() => {
+    const selected = participants.filter(p => p.selected);
+    if (selected.length >= 2) {
+      if (!captain1Id || !selected.some(s => s.id === captain1Id)) setCaptain1Id(selected[0].id);
+      if (!captain2Id || !selected.some(s => s.id === captain2Id)) setCaptain2Id(selected[1].id);
+    }
+  }, [participants, tournamentMode]);
+
+  useEffect(() => {
+    setCustomGeminiRules(OFFICIAL_TOURNAMENT_RULES[tournamentMode] || '');
+  }, [tournamentMode]);
+
+  if (!isOpen) return null;
+
+  const handleTogglePlayer = (id) => {
+    setParticipants(prev => prev.map(p => p.id === id ? { ...p, selected: !p.selected } : p));
+  };
+
+  const handleLevelChange = (id, newLvl) => {
+    const parsed = parseFloat(newLvl);
+    setParticipants(prev => prev.map(p => p.id === id ? { ...p, level: parsed } : p));
+    // Guardar para futuros torneos sin exponerlo en perfil
+    onSaveLevel(id, parsed);
+  };
+
+  const handleTeamToggle = (id, teamNum) => {
+    setParticipants(prev => prev.map(p => p.id === id ? { ...p, assignedTeam: teamNum } : p));
+  };
+
+  const handleAddGuest = (e) => {
+    e.preventDefault();
+    if (!guestName.trim()) return;
+    setParticipants(prev => [
+      ...prev,
+      {
+        id: 'guest_' + Date.now(),
+        name: guestName.trim() + ' (Invitado)',
+        photo: '',
+        level: parseFloat(guestLevel),
+        diff: 0,
+        trend: 'ESTABLE',
+        selected: true,
+        isGuest: true,
+        dinner: 'SI',
+        assignedTeam: 1
+      }
+    ]);
+    setGuestName('');
+  };
+
+  const selectedPlayers = participants.filter(p => p.selected);
+
+  const teamStats = (() => {
+    const team1Players = selectedPlayers.filter(p => p.assignedTeam === 1);
+    const team2Players = selectedPlayers.filter(p => p.assignedTeam === 2);
+
+    const avgT1 = team1Players.length > 0 
+      ? (team1Players.reduce((acc, p) => acc + p.level, 0) / team1Players.length).toFixed(2)
+      : '0.00';
+
+    const avgT2 = team2Players.length > 0 
+      ? (team2Players.reduce((acc, p) => acc + p.level, 0) / team2Players.length).toFixed(2)
+      : '0.00';
+
+    const delta = Math.abs(parseFloat(avgT1) - parseFloat(avgT2)).toFixed(2);
+
+    return { team1Players, team2Players, avgT1, avgT2, delta };
+  })();
+
+  const handleGenerateWithGemini = () => {
+    if (selectedPlayers.length < 4) {
+      return;
+    }
+    setIsGenerating(true);
+
+    setTimeout(() => {
+      const sorted = [...selectedPlayers].sort((a, b) => b.level - a.level);
+      const totalRounds = Math.max(2, Math.floor(tDuration / tMatchTime));
+      const rounds = [];
+
+      if (tournamentMode === 'pozo') {
+        for (let r = 1; r <= totalRounds; r++) {
+          const matchesList = [];
+          const roundPool = [...sorted];
+
+          for (let c = 1; c <= tCourts; c++) {
+            if (roundPool.length >= 4) {
+              const p1 = roundPool.shift();
+              const p2 = roundPool.shift();
+              const p3 = roundPool.shift();
+              const p4 = roundPool.shift();
+
+              matchesList.push({
+                id: `POZO_R${r}_P${c}_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+                court: c === 1 ? 'Pista 1 👑 (Pista Reina)' : `Pista ${c}`,
+                team1: `${p1.name.split(' ')[0]} & ${p4.name.split(' ')[0]}`,
+                team2: `${p2.name.split(' ')[0]} & ${p3.name.split(' ')[0]}`,
+                courtNum: c,
+                rule: c === 1 ? 'Ganadores defienden trono · Perdedores bajan a P2' : `Ganadores suben a Pista ${c - 1} · Perdedores bajan a Pista ${Math.min(c + 1, tCourts)}`,
+                score: '',
+                winner: null,
+                status: 'PENDIENTE'
+              });
+            }
+          }
+
+          const startMin = (r - 1) * tMatchTime;
+          const endMin = r * tMatchTime;
+          rounds.push({
+            round: r,
+            timeLabel: `${Math.floor(startMin / 60)}h${String(startMin % 60).padStart(2, '0')} - ${Math.floor(endMin / 60)}h${String(endMin % 60).padStart(2, '0')}`,
+            matches: matchesList
+          });
+        }
+      } else if (tournamentMode === 'americano') {
+        for (let r = 1; r <= totalRounds; r++) {
+          const matchesList = [];
+          const activePool = [...sorted].sort(() => Math.random() - 0.5);
+
+          for (let c = 1; c <= tCourts; c++) {
+            if (activePool.length >= 4) {
+              const p1 = activePool.pop();
+              const p2 = activePool.pop();
+              const p3 = activePool.pop();
+              const p4 = activePool.pop();
+
+              matchesList.push({
+                id: `AMER_R${r}_P${c}_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+                court: `Pista ${c}`,
+                team1: `${p1.name.split(' ')[0]} & ${p4.name.split(' ')[0]}`,
+                team2: `${p2.name.split(' ')[0]} & ${p3.name.split(' ')[0]}`,
+                rule: 'Puntuación individual: cada jugador suma sus juegos ganados.',
+                score: '',
+                winner: null,
+                status: 'PENDIENTE'
+              });
+            }
+          }
+
+          const startMin = (r - 1) * tMatchTime;
+          const endMin = r * tMatchTime;
+          rounds.push({
+            round: r,
+            timeLabel: `${Math.floor(startMin / 60)}h${String(startMin % 60).padStart(2, '0')} - ${Math.floor(endMin / 60)}h${String(endMin % 60).padStart(2, '0')}`,
+            matches: matchesList
+          });
+        }
+      } else if (tournamentMode === 'eliminatorio') {
+        const couples = [];
+        for (let i = 0; i < sorted.length; i += 2) {
+          if (sorted[i + 1]) {
+            couples.push({
+              name: `${sorted[i].name.split(' ')[0]} & ${sorted[i + 1].name.split(' ')[0]}`,
+              avgLvl: ((sorted[i].level + sorted[i + 1].level) / 2).toFixed(1)
+            });
+          }
+        }
+
+        const groupMatches = [];
+        for (let i = 0; i < couples.length - 1; i += 2) {
+          groupMatches.push({
+            id: `ELIM_G_${i}_${Date.now()}`,
+            court: `Pista ${(Math.floor(i / 2) % tCourts) + 1}`,
+            team1: `${couples[i].name}`,
+            team2: `${couples[i + 1].name}`,
+            phase: 'Fase de Grupos',
+            score: '',
+            winner: null,
+            status: 'PENDIENTE'
+          });
+        }
+
+        rounds.push({
+          round: 1,
+          timeLabel: 'Fase de Grupos Clasificatoria',
+          matches: groupMatches
+        });
+
+        rounds.push({
+          round: 2,
+          timeLabel: 'Semifinales (Cuadro Principal)',
+          matches: [
+            { id: 'SEMIS_1', court: 'Pista 1', team1: '1º Grupo A', team2: '2º Grupo B', phase: 'Semifinal 1', score: '', winner: null, status: 'PENDIENTE' },
+            { id: 'SEMIS_2', court: 'Pista 2', team1: '1º Grupo B', team2: '2º Grupo A', phase: 'Semifinal 2', score: '', winner: null, status: 'PENDIENTE' }
+          ]
+        });
+
+        rounds.push({
+          round: 3,
+          timeLabel: 'Gran Final CTC & 3º Puesto',
+          matches: [
+            { id: 'FINAL_ORO', court: 'Pista 1 (Central)', team1: 'Ganador Semifinal 1', team2: 'Ganador Semifinal 2', phase: 'GRAN FINAL 🏆', score: '', winner: null, status: 'PENDIENTE' },
+            { id: 'FINAL_CONSOL', court: 'Pista 2', team1: 'Perdedor Semifinal 1', team2: 'Perdedor Semifinal 2', phase: '3º y 4º Puesto 🥉', score: '', winner: null, status: 'PENDIENTE' }
+          ]
+        });
+      } else if (tournamentMode === 'equipos') {
+        const teamA = teamStats.team1Players;
+        const teamB = teamStats.team2Players;
+
+        const cap1 = selectedPlayers.find(p => p.id === captain1Id);
+        const cap2 = selectedPlayers.find(p => p.id === captain2Id);
+
+        setGeneratedTeams([
+          { name: `Equipo Azul 🔵 (Cap: ${cap1 ? cap1.name.split(' ')[0] : 'Capitán 1'})`, players: teamA, score: 0 },
+          { name: `Equipo Rojo 🔴 (Cap: ${cap2 ? cap2.name.split(' ')[0] : 'Capitán 2'})`, players: teamB, score: 0 }
+        ]);
+
+        for (let r = 1; r <= totalRounds; r++) {
+          const matchesList = [];
+          const poolA = [...teamA].sort(() => Math.random() - 0.5);
+          const poolB = [...teamB].sort(() => Math.random() - 0.5);
+
+          for (let c = 1; c <= tCourts; c++) {
+            if (poolA.length >= 2 && poolB.length >= 2) {
+              const a1 = poolA.pop();
+              const a2 = poolA.pop();
+              const b1 = poolB.pop();
+              const b2 = poolB.pop();
+
+              matchesList.push({
+                id: `RYDER_R${r}_P${c}_${Date.now()}`,
+                court: `Pista ${c}`,
+                team1: `${a1.name.split(' ')[0]} & ${a2.name.split(' ')[0]} (Azul)`,
+                team2: `${b1.name.split(' ')[0]} & ${b2.name.split(' ')[0]} (Rojo)`,
+                score: '',
+                winner: null,
+                status: 'PENDIENTE'
+              });
+            }
+          }
+
+          const startMin = (r - 1) * tMatchTime;
+          const endMin = r * tMatchTime;
+          rounds.push({
+            round: r,
+            timeLabel: `Cruce Ryder - Ronda ${r}`,
+            matches: matchesList
+          });
+        }
+      }
+
+      setGeneratedFixture(rounds);
+      setIsGenerating(false);
+      setStep(4);
+    }, 900);
+  };
+
+  const handleLaunchTournament = () => {
+    onTournamentCreated({
+      id: 'TORNEO_' + Date.now(),
+      name: tName,
+      mode: tournamentMode,
+      date: 'Fin de Semana CTC',
+      courts: tCourts,
+      duration: tDuration,
+      creatorId: currentUserId,
+      participants: selectedPlayers,
+      rounds: generatedFixture,
+      teams: generatedTeams
+    });
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-3 text-left">
+      <div className="bg-white rounded-3xl max-w-md w-full max-h-[92vh] overflow-y-auto p-5 shadow-2xl flex flex-col space-y-4">
+        <div className="flex justify-between items-center border-b pb-3">
+          <div>
+            <div className="flex items-center gap-1.5">
+              <span className="text-base">🏆</span>
+              <h3 className="text-base font-black text-slate-900">Modo Torneo CTC</h3>
+            </div>
+            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wide">
+              Paso {step} de 4 · Aislado de liga regular
+            </p>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-700 text-2xl font-bold">&times;</button>
+        </div>
+
+        {step === 1 && (
+          <div className="space-y-3.5 text-xs">
+            {/* AVISO EXPLÍCITO DE PRIVACIDAD ANTES DE CREAR */}
+            <div className="bg-amber-50 border border-amber-300 rounded-2xl p-3.5 flex items-start gap-2.5">
+              <span className="text-xl shrink-0">🔒</span>
+              <div>
+                <span className="font-extrabold text-amber-950 text-xs block">
+                  Aviso de Privacidad Absoluta
+                </span>
+                <p className="text-[11px] text-amber-900 mt-0.5 leading-relaxed">
+                  Este torneo será <strong>completamente privado</strong>. Los jugadores que <strong>no sean convocados</strong> a este evento <strong>NO verán el torneo</strong> en su aplicación para garantizar la máxima discreción.
+                </p>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-bold text-slate-600 mb-1">Nombre del Torneo</label>
+              <input
+                type="text"
+                value={tName}
+                onChange={e => setTName(e.target.value)}
+                className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 font-bold text-slate-900"
+              />
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-bold text-slate-600 mb-1.5">Formato de Competición</label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setTournamentMode('pozo')}
+                  className={`p-3 rounded-2xl border text-left transition ${
+                    tournamentMode === 'pozo' ? 'bg-blue-50 border-blue-600 text-blue-950 ring-2 ring-blue-500' : 'bg-slate-50 border-slate-200 text-slate-600'
+                  }`}
+                >
+                  <span className="text-base block mb-0.5">🔄</span>
+                  <span className="font-black block text-xs">Pozo Continuo</span>
+                  <span className="text-[10px] opacity-75">Sube y baja dinámico. La Pista 1 es la reina.</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setTournamentMode('americano')}
+                  className={`p-3 rounded-2xl border text-left transition ${
+                    tournamentMode === 'americano' ? 'bg-blue-50 border-blue-600 text-blue-950 ring-2 ring-blue-500' : 'bg-slate-50 border-slate-200 text-slate-600'
+                  }`}
+                >
+                  <span className="text-base block mb-0.5">🇺🇸</span>
+                  <span className="font-black block text-xs">Torneo Americano</span>
+                  <span className="text-[10px] opacity-75">Rotación individual y suma de juegos propios.</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setTournamentMode('eliminatorio')}
+                  className={`p-3 rounded-2xl border text-left transition ${
+                    tournamentMode === 'eliminatorio' ? 'bg-blue-600 text-white border-blue-600 ring-2 ring-blue-500' : 'bg-slate-50 border-slate-200 text-slate-600'
+                  }`}
+                >
+                  <span className="text-base block mb-0.5">🥇</span>
+                  <span className="font-black block text-xs">Fases Finales</span>
+                  <span className="text-[10px] opacity-75">Parejas fijas: Grupos + Semis y Gran Final.</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setTournamentMode('equipos')}
+                  className={`p-3 rounded-2xl border text-left transition ${
+                    tournamentMode === 'equipos' ? 'bg-blue-50 border-blue-600 text-blue-950 ring-2 ring-blue-500' : 'bg-slate-50 border-slate-200 text-slate-600'
+                  }`}
+                >
+                  <span className="text-base block mb-0.5">🛡️</span>
+                  <span className="font-black block text-xs">Por Equipos (Ryder)</span>
+                  <span className="text-[10px] opacity-75">2 Capitanes escogen escuadra y nivelan cruces.</span>
+                </button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-3 gap-2">
+              <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+                <label className="block text-[10px] font-bold text-slate-500 mb-1">Pistas CTC</label>
+                <input
+                  type="number"
+                  min="1"
+                  max="6"
+                  value={tCourts}
+                  onChange={e => setTCourts(parseInt(e.target.value) || 1)}
+                  className="w-full bg-white border border-slate-300 rounded-lg p-1.5 font-bold text-center"
+                />
+              </div>
+              <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+                <label className="block text-[10px] font-bold text-slate-500 mb-1">Tiempo Total</label>
+                <select
+                  value={tDuration}
+                  onChange={e => setTDuration(parseInt(e.target.value))}
+                  className="w-full bg-white border border-slate-300 rounded-lg p-1.5 font-bold text-center"
+                >
+                  <option value={60}>1 hora</option>
+                  <option value={90}>1h 30m</option>
+                  <option value={120}>2 horas</option>
+                  <option value={180}>3 horas</option>
+                </select>
+              </div>
+              <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+                <label className="block text-[10px] font-bold text-slate-500 mb-1">Min / Partido</label>
+                <select
+                  value={tMatchTime}
+                  onChange={e => setTMatchTime(parseInt(e.target.value))}
+                  className="w-full bg-white border border-slate-300 rounded-lg p-1.5 font-bold text-center"
+                >
+                  <option value={15}>15 min</option>
+                  <option value={20}>20 min</option>
+                  <option value={25}>25 min</option>
+                  <option value={30}>30 min</option>
+                </select>
+              </div>
+            </div>
+
+            <button
+              onClick={() => setStep(2)}
+              className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-xs transition mt-2"
+            >
+              Siguiente: Convocatoria y Nivelación →
+            </button>
+          </div>
+        )}
+
+        {step === 2 && (
+          <div className="space-y-3.5 text-xs">
+            {/* Formulario Invitado Externo */}
+            <form onSubmit={handleAddGuest} className="bg-blue-50/80 p-3 rounded-2xl border border-blue-200 space-y-2">
+              <label className="font-extrabold text-blue-950 block text-[11px]">
+                ➕ Añadir Participante Invitado (Externo)
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  placeholder="Nombre y Apellido"
+                  value={guestName}
+                  onChange={e => setGuestName(e.target.value)}
+                  className="flex-1 bg-white border border-blue-300 rounded-xl p-2 text-xs font-semibold"
+                />
+                <StarRating value={guestLevel} onChange={setGuestLevel} />
+                <button type="submit" className="bg-blue-600 text-white font-bold px-3 py-2 rounded-xl text-xs">
+                  Añadir
+                </button>
+              </div>
+            </form>
+
+            {tournamentMode === 'equipos' && (
+              <div className="bg-slate-900 text-white p-3.5 rounded-2xl space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-black uppercase text-amber-400">
+                    👑 Selección de Capitanes & Balance
+                  </span>
+                  <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full ${
+                    parseFloat(teamStats.delta) <= 0.2 ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'
+                  }`}>
+                    Δ {teamStats.delta} {parseFloat(teamStats.delta) <= 0.2 ? '✓ Equilibrado' : '⚠️ Desnivelado'}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 text-slate-800">
+                  <div className="bg-blue-50 p-2.5 rounded-xl border border-blue-300 space-y-1">
+                    <span className="text-[10px] font-black text-blue-900 uppercase block">Capitán Azul 🔵</span>
+                    <select
+                      value={captain1Id}
+                      onChange={e => setCaptain1Id(e.target.value)}
+                      className="w-full bg-white border border-blue-300 rounded-lg p-1 text-[11px] font-bold"
+                    >
+                      {selectedPlayers.map(p => (
+                        <option key={p.id} value={p.id}>{p.name}</option>
+                      ))}
+                    </select>
+                    <div className="flex justify-between items-center text-[10px] font-bold text-blue-950 pt-1">
+                      <span>{teamStats.team1Players.length} jugadores</span>
+                      <span className="bg-blue-200 px-1.5 py-0.5 rounded text-blue-900">★ {teamStats.avgT1}</span>
+                    </div>
+                  </div>
+
+                  <div className="bg-red-50 p-2.5 rounded-xl border border-red-300 space-y-1">
+                    <span className="text-[10px] font-black text-red-900 uppercase block">Capitán Rojo 🔴</span>
+                    <select
+                      value={captain2Id}
+                      onChange={e => setCaptain2Id(e.target.value)}
+                      className="w-full bg-white border border-red-300 rounded-lg p-1 text-[11px] font-bold"
+                    >
+                      {selectedPlayers.map(p => (
+                        <option key={p.id} value={p.id}>{p.name}</option>
+                      ))}
+                    </select>
+                    <div className="flex justify-between items-center text-[10px] font-bold text-red-950 pt-1">
+                      <span>{teamStats.team2Players.length} jugadores</span>
+                      <span className="bg-red-200 px-1.5 py-0.5 rounded text-red-900">★ {teamStats.avgT2}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="flex justify-between items-center pt-1">
+              <div>
+                <span className="font-black text-slate-800 uppercase text-[11px] block">
+                  Convocados ({selectedPlayers.length})
+                </span>
+                <span className="text-[9px] text-slate-400">Nivel de torneos calibrado (oculto en perfil público)</span>
+              </div>
+            </div>
+
+            <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
+              {participants.map(p => (
+                <div
+                  key={p.id}
+                  className={`p-2 rounded-xl border flex flex-col gap-1.5 transition ${
+                    p.selected ? 'bg-white border-slate-200' : 'bg-slate-50 border-slate-100 opacity-50'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={p.selected}
+                        onChange={() => handleTogglePlayer(p.id)}
+                        className="w-4 h-4 rounded text-blue-600 accent-blue-600 cursor-pointer"
+                      />
+                      <UserAvatar name={p.name} photo={p.photo} size="xs" />
+                      <div>
+                        <span className="font-bold text-slate-800 text-[11px] truncate max-w-[130px] block">{p.name}</span>
+                        {p.diff !== 0 && (
+                          <span className={`text-[9px] font-bold ${p.diff > 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                            {p.diff > 0 ? `▲ +${p.diff} sugerido torneo` : `▼ ${p.diff} sugerido torneo`}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {p.selected && (
+                      <StarRating value={p.level} onChange={(lvl) => handleLevelChange(p.id, lvl)} />
+                    )}
+                  </div>
+
+                  {tournamentMode === 'equipos' && p.selected && (
+                    <div className="flex items-center justify-end gap-1.5 pt-1 border-t border-slate-100">
+                      <span className="text-[9px] font-bold text-slate-400">Escuadra:</span>
+                      <button
+                        type="button"
+                        onClick={() => handleTeamToggle(p.id, 1)}
+                        className={`px-2 py-0.5 rounded text-[10px] font-black transition ${
+                          p.assignedTeam === 1 ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600'
+                        }`}
+                      >
+                        🔵 Azul
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleTeamToggle(p.id, 2)}
+                        className={`px-2 py-0.5 rounded text-[10px] font-black transition ${
+                          p.assignedTeam === 2 ? 'bg-red-600 text-white' : 'bg-slate-100 text-slate-600'
+                        }`}
+                      >
+                        🔴 Rojo
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            <div className="flex gap-2 pt-1">
+              <button onClick={() => setStep(1)} className="flex-1 py-2 bg-slate-100 text-slate-600 font-bold rounded-xl">
+                ← Volver
+              </button>
+              <button onClick={() => setStep(3)} className="flex-1 py-2 bg-blue-600 text-white font-bold rounded-xl">
+                Configurar con Gemini →
+              </button>
+            </div>
+          </div>
+        )}
+
+        {step === 3 && (
+          <div className="space-y-3.5 text-xs">
+            <div className="bg-purple-50 border border-purple-200 rounded-2xl p-3.5 space-y-2">
+              <h4 className="font-black text-purple-950 text-xs flex items-center gap-1">
+                <span>✨</span> Motor de Cruces Inteligente para {tournamentMode.toUpperCase()}
+              </h4>
+              <p className="text-[11px] text-purple-900 leading-relaxed">
+                Gemini procesará las reglas oficiales del formato, el número de pistas y la nivelación por estrellas de los{' '}
+                <strong>{selectedPlayers.length} jugadores</strong> convocados.
+              </p>
+            </div>
+
+            <div>
+              <div className="flex justify-between items-center mb-1">
+                <label className="font-bold text-slate-700 text-[11px]">
+                  Reglas Oficiales inyectadas en el algoritmo (Editables):
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setCustomGeminiRules(OFFICIAL_TOURNAMENT_RULES[tournamentMode] || '')}
+                  className="text-[10px] text-purple-700 underline font-semibold"
+                >
+                  Restablecer
+                </button>
+              </div>
+              <textarea
+                rows={6}
+                value={customGeminiRules}
+                onChange={e => setCustomGeminiRules(e.target.value)}
+                className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 text-[11px] font-mono leading-tight text-slate-800"
+              />
+            </div>
+
+            <div className="flex gap-2 pt-1">
+              <button onClick={() => setStep(2)} className="flex-1 py-2 bg-slate-100 text-slate-600 font-bold rounded-xl">
+                ← Volver
+              </button>
+              <button
+                onClick={handleGenerateWithGemini}
+                disabled={isGenerating}
+                className="flex-1 py-2 bg-linear-to-r from-purple-600 to-blue-600 text-white font-bold rounded-xl shadow-xs flex items-center justify-center gap-1.5"
+              >
+                {isGenerating ? (
+                  <>
+                    <span className="animate-spin text-sm">🔄</span>
+                    <span>Calculando cuadrante...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>✨</span>
+                    <span>Generar Cruces</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {step === 4 && (
+          <div className="space-y-3.5 text-xs">
+            <div className="bg-emerald-50 border border-emerald-200 p-2.5 rounded-xl flex items-center justify-between">
+              <div>
+                <span className="font-black text-emerald-900 text-xs block">
+                  ✅ Cuadrante Listo ({tournamentMode.toUpperCase()})
+                </span>
+                <span className="text-[10px] text-emerald-700">
+                  {generatedFixture.length} rondas generadas en {tCourts} pistas
+                </span>
+              </div>
+              <button onClick={() => setStep(3)} className="text-[10px] bg-white border border-emerald-300 text-emerald-800 font-bold px-2 py-0.5 rounded-md">
+                Re-calcular
+              </button>
+            </div>
+
+            <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+              {generatedFixture.map(r => (
+                <div key={r.round} className="bg-slate-50 p-2 rounded-xl border border-slate-200 space-y-1">
+                  <div className="flex justify-between text-[10px] font-bold text-slate-500">
+                    <span className="uppercase text-slate-900">{r.phase || `Ronda ${r.round}`}</span>
+                    <span>⏱️ {r.timeLabel}</span>
+                  </div>
+                  {r.matches.map((m, mIdx) => (
+                    <div key={mIdx} className="bg-white p-1.5 rounded-lg border border-slate-200 flex justify-between items-center text-[10px]">
+                      <span className="bg-purple-50 text-purple-700 font-bold px-1.5 py-0.5 rounded">{m.court}</span>
+                      <span className="truncate max-w-[110px] font-semibold">{m.team1}</span>
+                      <span className="text-slate-400 font-bold">vs</span>
+                      <span className="truncate max-w-[110px] font-semibold">{m.team2}</span>
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+
+            <div className="bg-amber-50 p-2.5 rounded-xl border border-amber-200 flex justify-between items-center">
+              <div>
+                <span className="font-extrabold text-amber-950 text-xs block">🍻 3º Tiempo del Torneo</span>
+                <p className="text-[10px] text-amber-800">Mesa con confirmación individual.</p>
+              </div>
+              <span className="text-xs bg-amber-100 text-amber-900 font-black px-2 py-0.5 rounded-lg">
+                {selectedPlayers.length} a cenar
+              </span>
+            </div>
+
+            <div className="flex gap-2 pt-1">
+              <button onClick={() => setStep(1)} className="flex-1 py-2 bg-slate-100 text-slate-600 font-bold rounded-xl">
+                Reiniciar
+              </button>
+              <button
+                onClick={handleLaunchTournament}
+                className="flex-1 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl shadow-xs"
+              >
+                🚀 Iniciar Torneo
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Modal Marcador Visual Multiset (Mínimo 2 sets, 3º de desempate y ampliable hasta 5 sets)
+function MatchVisualScoreModal({ isOpen, onClose, title, subtitle, team1Name, team2Name, p1Players = [], p2Players = [], onSaveScore }) {
+  const [winnerTeam, setWinnerTeam] = useState(1);
+
+  // Mínimo 2 sets y un 3º de desempate por defecto
+  const [sets, setSets] = useState([
+    { t1: 0, t2: 0 },
+    { t1: 0, t2: 0 },
+    { t1: 0, t2: 0 }
+  ]);
+
+  if (!isOpen) return null;
+
+  const handleScoreChange = (setIndex, teamKey, delta) => {
+    setSets(prev => {
+      const updated = [...prev];
+      const curVal = updated[setIndex][teamKey];
+      const nextVal = Math.max(0, Math.min(12, curVal + delta));
+      updated[setIndex] = { ...updated[setIndex], [teamKey]: nextVal };
+
+      let setsT1 = 0;
+      let setsT2 = 0;
+      updated.forEach(s => {
+        if (s.t1 >= 6 || s.t2 >= 6) {
+          if (s.t1 > s.t2) setsT1++;
+          if (s.t2 > s.t1) setsT2++;
+        }
+      });
+      if (setsT1 > setsT2) setWinnerTeam(1);
+      else if (setsT2 > setsT1) setWinnerTeam(2);
+
+      return updated;
+    });
+  };
+
+  const handleAddSet = () => {
+    if (sets.length < 5) {
+      setSets(prev => [...prev, { t1: 0, t2: 0 }]);
+    }
+  };
+
+  const handleRemoveSet = () => {
+    if (sets.length > 2) {
+      setSets(prev => prev.slice(0, -1));
+    }
+  };
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+
+    const playedSets = sets.filter(s => s.t1 > 0 || s.t2 > 0);
+    let composedScore = '';
+    if (playedSets.length > 0) {
+      composedScore = playedSets.map(s => `${s.t1}-${s.t2}`).join(', ');
+    } else {
+      composedScore = `Ganador Pareja ${winnerTeam}`;
+    }
+
+    onSaveScore(winnerTeam, composedScore);
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-3 text-left">
+      <div className="bg-white rounded-3xl max-w-sm w-full max-h-[92vh] overflow-y-auto p-5 shadow-2xl space-y-4">
+        <div className="flex justify-between items-center border-b pb-2">
+          <div>
+            <h3 className="text-sm font-black uppercase text-purple-700">{title}</h3>
+            <p className="text-[10px] text-slate-400 font-bold">{subtitle || 'Marcador Oficial'}</p>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-700 text-xl font-bold">&times;</button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-4 text-xs">
+          {/* SELECCIÓN OBLIGATORIA DE GANADOR */}
+          <div>
+            <label className="font-black text-slate-800 block mb-1.5 text-[11px] uppercase tracking-wide">
+              1. Pareja Ganadora (Obligatorio) *
+            </label>
+            <div className="space-y-2">
+              <button
+                type="button"
+                onClick={() => setWinnerTeam(1)}
+                className={`w-full p-2.5 rounded-2xl border text-left transition flex flex-col gap-1 ${
+                  winnerTeam === 1
+                    ? 'bg-blue-50/90 border-blue-600 ring-2 ring-blue-500 text-blue-950 shadow-xs'
+                    : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
+                }`}
+              >
+                <div className="flex justify-between items-center">
+                  <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-md ${
+                    winnerTeam === 1 ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-700'
+                  }`}>
+                    Pareja 1
+                  </span>
+                  {winnerTeam === 1 && <span className="text-[10px] font-black text-blue-600">🏆 GANADORES</span>}
+                </div>
+
+                <div className="flex items-center gap-2">
+                  {p1Players.length > 0 ? (
+                    p1Players.map((p, idx) => (
+                      <div key={idx} className="flex items-center gap-1.5 flex-1 min-w-0">
+                        <UserAvatar name={p.name} photo={p.photo} size="xs" />
+                        <span className="font-bold text-xs truncate">{p.name}</span>
+                      </div>
+                    ))
+                  ) : (
+                    <span className="font-bold text-xs truncate">{team1Name}</span>
+                  )}
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setWinnerTeam(2)}
+                className={`w-full p-2.5 rounded-2xl border text-left transition flex flex-col gap-1 ${
+                  winnerTeam === 2
+                    ? 'bg-amber-50/90 border-amber-600 ring-2 ring-amber-500 text-amber-950 shadow-xs'
+                    : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
+                }`}
+              >
+                <div className="flex justify-between items-center">
+                  <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-md ${
+                    winnerTeam === 2 ? 'bg-amber-600 text-white' : 'bg-slate-200 text-slate-700'
+                  }`}>
+                    Pareja 2
+                  </span>
+                  {winnerTeam === 2 && <span className="text-[10px] font-black text-amber-600">🏆 GANADORES</span>}
+                </div>
+
+                <div className="flex items-center gap-2">
+                  {p2Players.length > 0 ? (
+                    p2Players.map((p, idx) => (
+                      <div key={idx} className="flex items-center gap-1.5 flex-1 min-w-0">
+                        <UserAvatar name={p.name} photo={p.photo} size="xs" />
+                        <span className="font-bold text-xs truncate">{p.name}</span>
+                      </div>
+                    ))
+                  ) : (
+                    <span className="font-bold text-xs truncate">{team2Name}</span>
+                  )}
+                </div>
+              </button>
+            </div>
+          </div>
+
+          {/* PARTE MULTISET (MÍNIMO 2, 3º DESEMPATE Y HASTA 5 SETS) */}
+          <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200 space-y-2.5">
+            <div className="flex justify-between items-center">
+              <div>
+                <label className="font-extrabold text-slate-800 text-[10px] uppercase block">
+                  2. Tanteo por Sets (Opcional)
+                </label>
+                <span className="text-[9px] text-slate-400">Juegos de cada manga (2 a 5 sets)</span>
+              </div>
+              <div className="flex gap-1">
+                {sets.length < 5 && (
+                  <button
+                    type="button"
+                    onClick={handleAddSet}
+                    className="px-2 py-0.5 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-[10px] font-bold"
+                  >
+                    + Set {sets.length + 1}
+                  </button>
+                )}
+                {sets.length > 2 && (
+                  <button
+                    type="button"
+                    onClick={handleRemoveSet}
+                    className="px-1.5 py-0.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-md text-[10px] font-bold"
+                    title="Quitar último set"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              {sets.map((setVal, idx) => (
+                <div key={idx} className="bg-white p-2 rounded-xl border border-slate-200 flex items-center justify-between">
+                  <span className="text-[10px] font-extrabold uppercase text-slate-500 w-14">
+                    {idx === 2 ? 'Set 3 (Tie)' : `Set ${idx + 1}`}
+                  </span>
+
+                  {/* Puntuación Equipo 1 */}
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => handleScoreChange(idx, 't1', -1)}
+                      className="w-5 h-5 rounded bg-slate-100 font-bold text-xs flex items-center justify-center hover:bg-slate-200"
+                    >
+                      -
+                    </button>
+                    <span className="font-black text-slate-900 w-4 text-center text-sm">{setVal.t1}</span>
+                    <button
+                      type="button"
+                      onClick={() => handleScoreChange(idx, 't1', 1)}
+                      className="w-5 h-5 rounded bg-slate-100 font-bold text-xs flex items-center justify-center hover:bg-slate-200"
+                    >
+                      +
+                    </button>
+                  </div>
+
+                  <span className="font-black text-slate-300 text-xs">/</span>
+
+                  {/* Puntuación Equipo 2 */}
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => handleScoreChange(idx, 't2', -1)}
+                      className="w-5 h-5 rounded bg-slate-100 font-bold text-xs flex items-center justify-center hover:bg-slate-200"
+                    >
+                      -
+                    </button>
+                    <span className="font-black text-slate-900 w-4 text-center text-sm">{setVal.t2}</span>
+                    <button
+                      type="button"
+                      onClick={() => handleScoreChange(idx, 't2', 1)}
+                      className="w-5 h-5 rounded bg-slate-100 font-bold text-xs flex items-center justify-center hover:bg-slate-200"
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex gap-2 pt-1">
+            <button type="button" onClick={onClose} className="flex-1 py-2 bg-slate-100 text-slate-600 font-bold rounded-xl">
+              Cancelar
+            </button>
+            <button type="submit" className="flex-1 py-2 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-xl shadow-xs">
+              Confirmar Marcador
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// Modal de Vinculación Rápida de Jugadores Huérfanos a Perfiles Registrados
+function LinkPlayerSlotModal({ isOpen, onClose, slotName, allRegisteredPlayers, onConfirmLink, matchId }) {
+  const [selectedUserId, setSelectedUserId] = useState('');
+
+  if (!isOpen) return null;
+
+  const handleLink = (e) => {
+    e.preventDefault();
+    if (!selectedUserId) return;
+    const targetUser = allRegisteredPlayers.find(p => p.id === selectedUserId);
+    if (!targetUser) return;
+    onConfirmLink(matchId, selectedUserId, slotName, targetUser.name);
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 text-left">
+      <div className="bg-white rounded-3xl max-w-sm w-full p-5 shadow-2xl space-y-3">
+        <div className="border-b pb-2">
+          <h3 className="text-sm font-black text-slate-900">🔗 Vincular Jugador Huérfano</h3>
+          <p className="text-[11px] text-slate-500 mt-0.5">
+            Enlaza el texto <strong>"{slotName}"</strong> con su perfil oficial de Google Sheets para que sus victorias y puntos se computen.
+          </p>
+        </div>
+
+        <form onSubmit={handleLink} className="space-y-3 text-xs">
+          <div>
+            <label className="block text-[10px] font-bold text-slate-600 mb-1">
+              Selecciona el perfil registrado oficial:
+            </label>
+            <select
+              required
+              value={selectedUserId}
+              onChange={e => setSelectedUserId(e.target.value)}
+              className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-bold text-slate-800 text-xs"
+            >
+              <option value="">-- Elige un jugador del club --</option>
+              {allRegisteredPlayers.map(p => (
+                <option key={p.id} value={p.id}>{p.name} ({p.group})</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex gap-2 pt-1">
+            <button type="button" onClick={onClose} className="flex-1 py-2 bg-slate-100 text-slate-600 font-bold rounded-xl">
+              Cancelar
+            </button>
+            <button type="submit" className="flex-1 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-xs">
+              Vincular Perfil
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ==========================================
+// APLICACIÓN PRINCIPAL
+// ==========================================
 export default function App() {
   const [apiUrl] = useState(() => localStorage.getItem('padel_api_url') || DEFAULT_API_URL);
   const [syncing, setSyncing] = useState(false);
@@ -641,7 +1911,7 @@ export default function App() {
   const [newUserPlaytomic, setNewUserPlaytomic] = useState('');
   const [newUserPin, setNewUserPin] = useState('');
 
-  // Modales
+  // Modales Partidos
   const [showAddModal, setShowAddModal] = useState(false);
   const [playtomicText, setPlaytomicText] = useState('');
   const [matchGroup, setMatchGroup] = useState('chicos');
@@ -652,18 +1922,46 @@ export default function App() {
   const [showEditPlayersModal, setShowEditPlayersModal] = useState(false);
   const [editPlayerSlots, setEditPlayerSlots] = useState(['', '', '', '']);
 
-  // Marcador estructurado por sets
+  // Marcador Multiset Unificado
   const [showScoreModal, setShowScoreModal] = useState(false);
-  const [winnerTeam, setWinnerTeam] = useState(1);
-  const [set1P1, setSet1P1] = useState(6);
-  const [set1P2, setSet1P2] = useState(4);
-  const [set2P1, setSet2P1] = useState(6);
-  const [set2P2, setSet2P2] = useState(3);
-  const [hasSet3, setHasSet3] = useState(false);
-  const [set3P1, setSet3P1] = useState(6);
-  const [set3P2, setSet3P2] = useState(4);
+
+  // Modal para vincular slot huérfano
+  const [linkingSlot, setLinkingSlot] = useState(null);
 
   const [loadingDinnerId, setLoadingDinnerId] = useState(null);
+
+  // ESTADO TORNEOS CTC
+  const [showTournamentWizard, setShowTournamentWizard] = useState(false);
+  const [activeTournaments, setActiveTournaments] = useState(() => {
+    const saved = localStorage.getItem('padel_ctc_tournaments');
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  const [reportingTournamentMatch, setReportingTournamentMatch] = useState(null);
+  const [activeTournamentId, setActiveTournamentId] = useState(null);
+  const [tournamentSubTab, setTournamentSubTab] = useState({});
+
+  // Miembro de los jueves
+  const isThursdayMember = useMemo(() => {
+    if (!currentUser) return false;
+    const g = (currentUser.group || '').toLowerCase();
+    return g === 'chicos';
+  }, [currentUser]);
+
+  useEffect(() => {
+    if (currentUser && !isThursdayMember) {
+      setActiveTab('torneos');
+    }
+  }, [currentUser, isThursdayMember]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const torneoParam = params.get('torneo');
+    if (torneoParam) {
+      setActiveTab('torneos');
+      setActiveTournamentId(torneoParam);
+    }
+  }, []);
 
   const fetchData = async () => {
     try {
@@ -713,60 +2011,34 @@ export default function App() {
     setSelectedMatchId(null);
   };
 
-  // APERTURA Y PARSEO DEL MARCADOR AL ABRIR EL MODAL (EVITA RESETEO Y DESINCRONIZACIÓN)
-  const handleOpenScoreModal = () => {
-    if (!currentMatch) return;
-
-    // 1. Determinar ganador actual si ya fue reportado
-    const p1 = (currentMatch.players || []).filter(p => (p.team || 1) === 1);
-    const p2 = (currentMatch.players || []).filter(p => (p.team || 1) === 2);
-    if (p2.some(p => p.won === 'SI')) {
-      setWinnerTeam(2);
-    } else {
-      setWinnerTeam(1);
+  // Guardar nivel de torneo de forma persistente en backend para futuros torneos
+  const handleSaveLevel = async (idJugador, newLevel) => {
+    setPlayers(prev => prev.map(p => p.id === idJugador ? { ...p, level: newLevel } : p));
+    if (currentUser && currentUser.id === idJugador) {
+      setCurrentUser(prev => ({ ...prev, level: newLevel }));
     }
 
-    // 2. Extraer los números reales de los sets si ya existen (ej. "7-6, 6-4" o "6-4, 3-6, 7-5")
-    const rawScore = currentMatch.score || '';
-    const setMatches = rawScore.match(/(\d+)\s*[-/]\s*(\d+)/g);
-
-    if (setMatches && setMatches.length >= 2) {
-      const s1 = setMatches[0].split(/[-/]/);
-      const s2 = setMatches[1].split(/[-/]/);
-      setSet1P1(parseInt(s1[0].trim(), 10) || 6);
-      setSet1P2(parseInt(s1[1].trim(), 10) || 4);
-      setSet2P1(parseInt(s2[0].trim(), 10) || 6);
-      setSet2P2(parseInt(s2[1].trim(), 10) || 3);
-
-      if (setMatches.length >= 3) {
-        const s3 = setMatches[2].split(/[-/]/);
-        setSet3P1(parseInt(s3[0].trim(), 10) || 6);
-        setSet3P2(parseInt(s3[1].trim(), 10) || 4);
-        setHasSet3(true);
-      } else {
-        setHasSet3(false);
-      }
-    } else {
-      // Valores por defecto
-      setSet1P1(6);
-      setSet1P2(4);
-      setSet2P1(6);
-      setSet2P2(3);
-      setHasSet3(false);
+    try {
+      await fetch(apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ action: 'ACTUALIZAR_NIVEL_JUGADOR', idJugador, nivel: newLevel })
+      });
+    } catch (e) {
+      console.warn('Error guardando nivel:', e);
     }
-
-    setShowScoreModal(true);
   };
 
   const handleRegisterUser = async (e) => {
     e.preventDefault();
     if (!newUserName.trim()) return;
     if (newUserPin.trim().length !== 4) {
-      alert('Debes indicar un PIN de 4 números');
       return;
     }
 
     setSyncing(true);
+    const assignedGroup = newUserGroup === 'Solo Torneo' ? 'torneo' : newUserGroup;
+
     try {
       const res = await fetch(apiUrl, {
         method: 'POST',
@@ -775,7 +2047,7 @@ export default function App() {
           action: 'REGISTRAR_JUGADOR',
           nombre: newUserName.trim(),
           telefono: newUserPhone.trim(),
-          grupo: newUserGroup,
+          grupo: assignedGroup,
           playtomic: newUserPlaytomic.trim(),
           pin: newUserPin.trim()
         })
@@ -786,22 +2058,21 @@ export default function App() {
           id: json.id || 'u' + (players.length + 1),
           name: newUserName.trim(),
           phone: newUserPhone.trim(),
-          group: newUserGroup.toLowerCase(),
+          group: assignedGroup.toLowerCase(),
           photo: '',
+          level: 3.5,
           pJ: 0, pG: 0, cSi: 0, cNo: 0,
           ptsDeportivo: 0, ptsBarandas: 0, hibrido: 0,
-          titulo: "Fichaje Estrella ⭐",
+          titulo: assignedGroup === 'torneo' ? 'Jugador de Torneo ⚔️' : "Fichaje Estrella ⭐",
           deuda: 0,
           pin: newUserPin.trim()
         };
         handlePinSuccess(createdUser);
         setShowRegisterForm(false);
         fetchData();
-      } else {
-        alert('Error: ' + (json.error || 'No se pudo registrar'));
       }
     } catch (err) {
-      alert('Error de conexión: ' + err.message);
+      console.error(err);
     } finally {
       setSyncing(false);
     }
@@ -820,11 +2091,9 @@ export default function App() {
         setCurrentUser(prev => ({ ...prev, ...payload }));
         localStorage.setItem('padel_current_user', JSON.stringify({ ...currentUser, ...payload }));
         fetchData();
-      } else {
-        alert('Error al guardar datos: ' + json.error);
       }
     } catch (err) {
-      alert('Error de red: ' + err.message);
+      console.error(err);
     } finally {
       setSyncing(false);
     }
@@ -844,14 +2113,13 @@ export default function App() {
       });
       fetchData();
     } catch (e) {
-      alert('Error guardando foto: ' + e.message);
+      console.error(e);
     } finally {
       setSyncing(false);
     }
   };
 
   const handleDeleteMatchComplete = async (matchId) => {
-    if (!confirm('¿Quieres BORRAR POR COMPLETO esta reserva? Se eliminará de la app y de Google Sheets.')) return;
     setSyncing(true);
     try {
       await fetch(apiUrl, {
@@ -862,7 +2130,7 @@ export default function App() {
       setSelectedMatchId(null);
       fetchData();
     } catch (e) {
-      alert('Error: ' + e.message);
+      console.error(e);
     } finally {
       setSyncing(false);
     }
@@ -884,11 +2152,9 @@ export default function App() {
         setShowAddModal(false);
         setPlaytomicText('');
         fetchData();
-      } else {
-        alert('Error: ' + data.error);
       }
     } catch (err) {
-      alert('Error de conexión: ' + err.message);
+      console.error(err);
     } finally {
       setSyncing(false);
     }
@@ -909,7 +2175,7 @@ export default function App() {
       setReloadPlaytomicText('');
       fetchData();
     } catch (e) {
-      alert('Error: ' + e.message);
+      console.error(e);
     } finally {
       setSyncing(false);
     }
@@ -929,7 +2195,29 @@ export default function App() {
       setShowEditPlayersModal(false);
       fetchData();
     } catch (e) {
-      alert('Error: ' + e.message);
+      console.error(e);
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  // Acción de vinculación explícita para resolver jugadores huérfanos sin puntos
+  const handleConfirmLinkSlot = async (matchId, officialId, rawSlotName, officialName) => {
+    setSyncing(true);
+    try {
+      await fetch(apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({
+          action: 'VINCULAR_JUGADOR',
+          idPartido: matchId,
+          idJugador: officialId,
+          nombreOriginal: rawSlotName
+        })
+      });
+      fetchData();
+    } catch (e) {
+      console.error(e);
     } finally {
       setSyncing(false);
     }
@@ -947,7 +2235,7 @@ export default function App() {
       });
       await fetchData();
     } catch (e) {
-      alert('Error: ' + e.message);
+      console.error(e);
     } finally {
       setLoadingDinnerId(null);
     }
@@ -1016,22 +2304,16 @@ export default function App() {
     }
   };
 
-  // Guardar Marcador estructurado garantizando la consistencia exacta de quién ganó
-  const handleSaveResult = async (matchId) => {
-    const match = matches.find(m => m.id === matchId);
-    if (!match) return;
+  // Guardar Marcador Multiset Regular con asignación exacta de ganadores
+  const handleSaveRegularMatchScore = async (winningTeamNum, composedScoreText) => {
+    if (!currentMatch) return;
 
-    const winningPlayers = match.players.filter(p => Number(p.team || 1) === Number(winnerTeam));
+    const winningPlayers = currentMatch.players.filter(p => Number(p.team || 1) === Number(winningTeamNum));
     const ganadorIds = winningPlayers.map(p => p.id);
     const ganadorNombres = winningPlayers.map(p => p.name);
 
-    let setsText = `${set1P1}-${set1P2}, ${set2P1}-${set2P2}`;
-    if (hasSet3) {
-      setsText += `, ${set3P1}-${set3P2}`;
-    }
-
     const parejasMap = {};
-    (match.players || []).forEach(p => {
+    (currentMatch.players || []).forEach(p => {
       parejasMap[p.id] = p.team || 1;
       parejasMap[p.name] = p.team || 1;
     });
@@ -1043,8 +2325,8 @@ export default function App() {
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify({
           action: 'GUARDAR_RESULTADO',
-          idPartido: matchId,
-          marcador: setsText,
+          idPartido: currentMatch.id,
+          marcador: composedScoreText,
           ganadorIds: ganadorIds,
           ganadorNombres: ganadorNombres,
           parejas: parejasMap,
@@ -1055,11 +2337,9 @@ export default function App() {
       if (data.ok) {
         setShowScoreModal(false);
         fetchData();
-      } else {
-        alert('Error al guardar: ' + data.error);
       }
     } catch (e) {
-      alert('Error: ' + e.message);
+      console.error(e);
     } finally {
       setSyncing(false);
     }
@@ -1082,7 +2362,132 @@ export default function App() {
   const handleShareClubWhatsapp = (dateTarget, yesList, guestsList) => {
     const totalCount = yesList.length + guestsList.length;
     const msg = `Hola, para cenar este ${dateTarget} seremos un total de ${totalCount} personas. Muchas gracias.`;
-    window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`, '_blank');
+    window.open(`https://api.whatsapp.com/send?text=${encodeURI(msg)}`, '_blank');
+  };
+
+  // FUNCIONES DE TORNEO
+  const handleTournamentCreated = (newT) => {
+    const updated = [newT, ...activeTournaments];
+    setActiveTournaments(updated);
+    localStorage.setItem('padel_ctc_tournaments', JSON.stringify(updated));
+    setActiveTab('torneos');
+  };
+
+  const handleDeleteTournament = (tId) => {
+    const updated = activeTournaments.filter(t => t.id !== tId);
+    setActiveTournaments(updated);
+    localStorage.setItem('padel_ctc_tournaments', JSON.stringify(updated));
+  };
+
+  const handleShareTournamentLink = (tournamentItem) => {
+    const link = `${window.location.origin}${window.location.pathname}?torneo=${tournamentItem.id}`;
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(link);
+    } else {
+      const msg = `🏆 *Torneo CTC - ${tournamentItem.name}*\nAccede directamente a los cruces y cena aquí: ${link}`;
+      window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`, '_blank');
+    }
+  };
+
+  const handleSaveTournamentScore = (winningTeamNum, composedScoreText) => {
+    if (!activeTournamentId || !reportingTournamentMatch) return;
+    const matchId = reportingTournamentMatch.id;
+
+    setActiveTournaments(prevTournaments => {
+      const updated = prevTournaments.map(t => {
+        if (t.id !== activeTournamentId) return t;
+
+        let winningTeamName = '';
+        let losingTeamName = '';
+
+        const updatedRounds = t.rounds.map(r => ({
+          ...r,
+          matches: r.matches.map(m => {
+            if (m.id === matchId) {
+              winningTeamName = winningTeamNum === 1 ? m.team1 : m.team2;
+              losingTeamName = winningTeamNum === 1 ? m.team2 : m.team1;
+              return {
+                ...m,
+                score: composedScoreText,
+                winner: winningTeamNum,
+                status: 'FINALIZADO'
+              };
+            }
+            return m;
+          })
+        }));
+
+        if (t.mode === 'eliminatorio' && winningTeamName) {
+          if (matchId === 'SEMIS_1') {
+            updatedRounds.forEach(r => {
+              r.matches.forEach(m => {
+                if (m.id === 'FINAL_ORO') m.team1 = winningTeamName;
+                if (m.id === 'FINAL_CONSOL') m.team1 = losingTeamName;
+              });
+            });
+          } else if (matchId === 'SEMIS_2') {
+            updatedRounds.forEach(r => {
+              r.matches.forEach(m => {
+                if (m.id === 'FINAL_ORO') m.team2 = winningTeamName;
+                if (m.id === 'FINAL_CONSOL') m.team2 = losingTeamName;
+              });
+            });
+          }
+        }
+
+        let updatedTeams = t.teams || [];
+        if (t.mode === 'equipos' && updatedTeams.length === 2) {
+          let scoreA = 0;
+          let scoreB = 0;
+          updatedRounds.forEach(r => {
+            r.matches.forEach(m => {
+              if (m.winner === 1) scoreA++;
+              if (m.winner === 2) scoreB++;
+            });
+          });
+          updatedTeams = [
+            { ...updatedTeams[0], score: scoreA },
+            { ...updatedTeams[1], score: scoreB }
+          ];
+        }
+
+        return {
+          ...t,
+          rounds: updatedRounds,
+          teams: updatedTeams
+        };
+      });
+
+      localStorage.setItem('padel_ctc_tournaments', JSON.stringify(updated));
+      return updated;
+    });
+
+    setReportingTournamentMatch(null);
+  };
+
+  const handleUpdateTournamentDinner = (tId, participantId, newDinnerStatus) => {
+    setActiveTournaments(prev => {
+      const updated = prev.map(t => {
+        if (t.id !== tId) return t;
+        return {
+          ...t,
+          participants: (t.participants || []).map(p => {
+            if (p.id === participantId) {
+              return { ...p, dinner: newDinnerStatus };
+            }
+            return p;
+          })
+        };
+      });
+      localStorage.setItem('padel_ctc_tournaments', JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  const handleShareTournamentDinnerWhatsapp = (tournamentItem) => {
+    const attendingCount = (tournamentItem.participants || []).filter(p => p.dinner === 'SI').length;
+    const msg = `Hola, para cenar tras el ${tournamentItem.name} seremos un total de ${attendingCount} personas. Muchas gracias.`;
+    window.open(`https://api.whatsapp.com/send?text=${encodeURI(msg)}`, '_blank');
   };
 
   const currentMatch = matches.find(m => m.id === selectedMatchId);
@@ -1091,14 +2496,9 @@ export default function App() {
   const filteredMatches = useMemo(() => {
     return matches.filter(m => {
       if ((m.grupo || 'chicos').toLowerCase() !== myGroup) return false;
-
       if (filterTime === 'todos') return true;
-      if (filterTime === 'semana') {
-        return isCurrentWeek(m.date);
-      }
-      if (filterTime === 'proximos') {
-        return isUpcoming(m.date);
-      }
+      if (filterTime === 'semana') return isCurrentWeek(m.date);
+      if (filterTime === 'proximos') return isUpcoming(m.date);
       return true;
     });
   }, [matches, myGroup, filterTime]);
@@ -1106,6 +2506,18 @@ export default function App() {
   const groupPlayers = useMemo(() => {
     return players.filter(p => (p.group || 'chicos').toLowerCase() === myGroup);
   }, [players, myGroup]);
+
+  // Privacidad de Torneos: solo visibles para los convocados o el creador
+  const visibleTournaments = useMemo(() => {
+    if (!currentUser) return [];
+    return activeTournaments.filter(t => {
+      const isParticipant = (t.participants || []).some(
+        p => p.id === currentUser.id || normalizeName(p.name) === normalizeName(currentUser.name)
+      );
+      const isCreator = t.creatorId === currentUser.id;
+      return isParticipant || isCreator;
+    });
+  }, [activeTournaments, currentUser]);
 
   const availableDinnerDates = useMemo(() => {
     const datesMap = new Map();
@@ -1171,7 +2583,29 @@ export default function App() {
     return found ? found.label : (activeDinnerKey || 'Jornada seleccionada');
   }, [availableDinnerDates, activeDinnerKey]);
 
-  // LANDING PAGE: SELECCIÓN DE USUARIO / ALTA DE NUEVO JUGADOR
+  const allSelectableUsers = useMemo(() => {
+    const list = [...players];
+    activeTournaments.forEach(t => {
+      (t.participants || []).forEach(p => {
+        const exists = list.some(u => u.id === p.id || normalizeName(u.name) === normalizeName(p.name));
+        if (!exists) {
+          list.push({
+            id: p.id,
+            name: p.name,
+            group: 'torneo',
+            photo: p.photo || '',
+            level: p.level || 3.0,
+            titulo: 'Jugador de Torneo ⚔️',
+            pin: '',
+            pJ: 0, pG: 0, cSi: 0, cNo: 0,
+            ptsDeportivo: 0, ptsBarandas: 0, hibrido: 0, deuda: 0
+          });
+        }
+      });
+    });
+    return list;
+  }, [players, activeTournaments]);
+
   if (!currentUser) {
     return (
       <div className="min-h-screen bg-slate-900 text-white flex flex-col justify-center items-center p-4">
@@ -1187,10 +2621,10 @@ export default function App() {
           {!showRegisterForm ? (
             <>
               <div className="space-y-2 max-h-64 overflow-y-auto pr-1 mb-4">
-                {players.length === 0 ? (
+                {allSelectableUsers.length === 0 ? (
                   <p className="text-center text-slate-400 text-xs py-4">Cargando jugadores desde Google Sheets...</p>
                 ) : (
-                  players.map(u => (
+                  allSelectableUsers.map(u => (
                     <button
                       key={u.id}
                       onClick={() => handleUserClick(u)}
@@ -1198,7 +2632,14 @@ export default function App() {
                     >
                       <div className="flex items-center gap-3">
                         <UserAvatar name={u.name} photo={u.photo} size="sm" />
-                        <span className="font-semibold text-sm group-hover:text-white">{u.name}</span>
+                        <div>
+                          <span className="font-semibold text-sm group-hover:text-white block">{u.name}</span>
+                          {u.group === 'torneo' && (
+                            <span className="text-[9px] bg-purple-900/60 text-purple-300 px-1.5 py-0.2 rounded font-bold">
+                              Torneo
+                            </span>
+                          )}
+                        </div>
                       </div>
                       <span className="text-xs text-slate-400 group-hover:text-blue-100">{u.titulo}</span>
                     </button>
@@ -1240,20 +2681,23 @@ export default function App() {
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-300 mb-1">Grupo</label>
+                <label className="block text-xs font-bold text-slate-300 mb-1">¿A qué grupo perteneces?</label>
                 <div className="flex gap-2">
-                  {['Chicos', 'Chicas'].map(g => (
+                  {[
+                    { key: 'Chicos', label: 'Chicos (Jueves)' },
+                    { key: 'Solo Torneo', label: 'Solo Torneo' }
+                  ].map(g => (
                     <button
                       type="button"
-                      key={g}
-                      onClick={() => setNewUserGroup(g)}
+                      key={g.key}
+                      onClick={() => setNewUserGroup(g.key)}
                       className={`flex-1 py-2 text-xs font-bold rounded-xl border transition ${
-                        newUserGroup === g
+                        newUserGroup === g.key
                           ? 'bg-blue-600 text-white border-blue-600'
                           : 'bg-slate-700 text-slate-300 border-slate-600'
                       }`}
                     >
-                      {g}
+                      {g.label}
                     </button>
                   ))}
                 </div>
@@ -1330,17 +2774,19 @@ export default function App() {
                 {currentUser.name} <span className="text-[10px] bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded-md font-bold">Ver perfil</span>
               </h1>
               <p className="text-[11px] text-slate-500 font-bold uppercase tracking-wider">
-                {currentUser.group} · {currentUser.titulo}
+                {isThursdayMember ? `${currentUser.group} · ${currentUser.titulo}` : 'Invitado a Torneos CTC'}
               </p>
             </div>
           </div>
           <div className="flex items-center gap-1.5">
-            <button
-              onClick={() => setShowRulesModal(true)}
-              className="px-2.5 py-1 text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition"
-            >
-              📖 Reglas
-            </button>
+            {isThursdayMember && (
+              <button
+                onClick={() => setShowRulesModal(true)}
+                className="px-2.5 py-1 text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition"
+              >
+                📖 Reglas
+              </button>
+            )}
             <button
               onClick={handleLogout}
               className="px-2.5 py-1 text-xs font-semibold bg-slate-100 hover:bg-red-50 hover:text-red-600 text-slate-600 rounded-lg transition"
@@ -1360,8 +2806,8 @@ export default function App() {
 
       {/* CONTENIDO PRINCIPAL */}
       <main className="max-w-xl mx-auto px-4 py-4">
-        {selectedMatchId && currentMatch ? (
-          /* DETALLE DEL PARTIDO */
+        {selectedMatchId && currentMatch && isThursdayMember ? (
+          /* DETALLE DEL PARTIDO REGULAR (JUEVES) */
           <div className="space-y-4">
             <button
               onClick={() => setSelectedMatchId(null)}
@@ -1411,7 +2857,7 @@ export default function App() {
                     return (
                       <button
                         disabled={!canReport || currentMatch.status === 'CANCELADO'}
-                        onClick={handleOpenScoreModal}
+                        onClick={() => setShowScoreModal(true)}
                         className={`px-3 py-1 rounded-xl text-xs font-bold flex items-center gap-1 border transition ${
                           !canReport || currentMatch.status === 'CANCELADO'
                             ? 'opacity-40 bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed'
@@ -1457,11 +2903,11 @@ export default function App() {
                   }}
                   className="py-2 px-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold rounded-xl border border-slate-200 transition flex items-center justify-center gap-1"
                 >
-                  ✏️ Cambiar Suplentes
+                  ✏️️ Cambiar Suplentes
                 </button>
               </div>
 
-              {/* CONVOCATORIA DE PAREJAS DESTACANDO A LA GANADORA CON COLOR Y CORONA */}
+              {/* CONVOCATORIA DE PAREJAS DESTACANDO A LA GANADORA */}
               <div className="mt-5 space-y-4">
                 <div className="flex justify-between items-center border-b pb-2">
                   <h3 className="text-xs font-black text-slate-800 uppercase tracking-wider">
@@ -1513,6 +2959,7 @@ export default function App() {
                         {teamPlayers.map(p => {
                           const isMe = p.id === currentUser.id || normalizeName(p.name) === normalizeName(currentUser.name);
                           const isProcessing = loadingDinnerId === (p.id || p.name);
+                          const isUnlinked = !players.some(reg => reg.id === p.id || normalizeName(reg.name) === normalizeName(p.name));
 
                           return (
                             <div
@@ -1535,9 +2982,20 @@ export default function App() {
                                   <UserAvatar name={p.name} photo={p.photo} size="sm" />
                                 </div>
                                 <div>
-                                  <span className={`text-xs font-bold block ${isMe ? 'text-blue-600 font-black' : 'text-slate-800'}`}>
-                                    {p.name} {isMe && '(Tú)'}
-                                  </span>
+                                  <div className="flex items-center gap-1.5">
+                                    <span className={`text-xs font-bold block ${isMe ? 'text-blue-600 font-black' : 'text-slate-800'}`}>
+                                      {p.name} {isMe && '(Tú)'}
+                                    </span>
+                                    {isUnlinked && (
+                                      <button
+                                        onClick={() => setLinkingSlot({ matchId: currentMatch.id, name: p.name })}
+                                        className="text-[9px] bg-amber-100 hover:bg-amber-200 text-amber-900 font-extrabold px-1.5 py-0.5 rounded flex items-center gap-0.5"
+                                        title="Este jugador no tiene perfil oficial enlazado. Clic para asociarlo."
+                                      >
+                                        ⚠️ Vincular
+                                      </button>
+                                    )}
+                                  </div>
                                   <span className="text-[10px] text-slate-400">
                                     {p.dinner === 'SI' ? '🍻 Cena confirmada' : p.dinner === 'NO' ? '🏃‍♂️ Se raja' : '🟡 Cena pendiente'}
                                   </span>
@@ -1605,7 +3063,7 @@ export default function App() {
                             : 'bg-white text-slate-700 border-slate-200 hover:bg-rose-50'
                         } ${isProcessing ? 'opacity-60 cursor-wait' : ''}`}
                       >
-                        ME RAJO 🏃‍♂️
+                        ME RAJO 🏃‍♂️️
                       </button>
                     </div>
                   </div>
@@ -1616,35 +3074,56 @@ export default function App() {
         ) : (
           /* PESTAÑAS PRINCIPALES */
           <div className="space-y-4">
-            <div className="flex bg-slate-200/80 p-1 rounded-2xl text-[11px] font-black">
-              <button
-                onClick={() => setActiveTab('partidos')}
-                className={`flex-1 py-2 rounded-xl transition ${activeTab === 'partidos' ? 'bg-white shadow text-slate-900' : 'text-slate-600'}`}
-              >
-                Partidos 🎾
-              </button>
-              <button
-                onClick={() => setActiveTab('cenas')}
-                className={`flex-1 py-2 rounded-xl transition ${activeTab === 'cenas' ? 'bg-white shadow text-emerald-800' : 'text-slate-600'}`}
-              >
-                Cena & Club 🍻
-              </button>
-              <button
-                onClick={() => setActiveTab('rankings')}
-                className={`flex-1 py-2 rounded-xl transition ${activeTab === 'rankings' ? 'bg-white shadow text-slate-900' : 'text-slate-600'}`}
-              >
-                Rankings 🏆
-              </button>
-              <button
-                onClick={() => setActiveTab('bote')}
-                className={`flex-1 py-2 rounded-xl transition ${activeTab === 'bote' ? 'bg-white shadow text-slate-900' : 'text-slate-600'}`}
-              >
-                Bote 💶
-              </button>
-            </div>
+            {isThursdayMember ? (
+              <div className="flex bg-slate-200/80 p-1 rounded-2xl text-[11px] font-black">
+                <button
+                  onClick={() => setActiveTab('partidos')}
+                  className={`flex-1 py-2 rounded-xl transition ${activeTab === 'partidos' ? 'bg-white shadow text-slate-900' : 'text-slate-600'}`}
+                >
+                  Partidos 🎾
+                </button>
+                <button
+                  onClick={() => setActiveTab('cenas')}
+                  className={`flex-1 py-2 rounded-xl transition ${activeTab === 'cenas' ? 'bg-white shadow text-emerald-800' : 'text-slate-600'}`}
+                >
+                  Cena & Club 🍻
+                </button>
+                <button
+                  onClick={() => setActiveTab('rankings')}
+                  className={`flex-1 py-2 rounded-xl transition ${activeTab === 'rankings' ? 'bg-white shadow text-slate-900' : 'text-slate-600'}`}
+                >
+                  Rankings 🏆
+                </button>
+                <button
+                  onClick={() => setActiveTab('bote')}
+                  className={`flex-1 py-2 rounded-xl transition ${activeTab === 'bote' ? 'bg-white shadow text-slate-900' : 'text-slate-600'}`}
+                >
+                  Bote 💶
+                </button>
+                <button
+                  onClick={() => setActiveTab('torneos')}
+                  className={`flex-1 py-2 rounded-xl transition ${activeTab === 'torneos' ? 'bg-purple-600 text-white shadow' : 'text-purple-700 hover:text-purple-900 font-black'}`}
+                >
+                  Torneos ⚔️
+                </button>
+              </div>
+            ) : (
+              <div className="bg-purple-50 border border-purple-200 text-purple-900 rounded-2xl p-3 flex items-center justify-between shadow-xs">
+                <div className="flex items-center gap-2.5">
+                  <span className="text-2xl">⚔️</span>
+                  <div>
+                    <span className="font-black text-xs block">Acceso Exclusivo de Torneos CTC</span>
+                    <span className="text-[10px] text-purple-700 font-medium">Visualizas únicamente los eventos a los que estás convocado</span>
+                  </div>
+                </div>
+                <span className="text-[10px] font-bold bg-purple-200 text-purple-800 px-2 py-0.5 rounded-md">
+                  Modo Torneo
+                </span>
+              </div>
+            )}
 
-            {/* TAB 1: PARTIDOS CON GANADORES DESTACADOS Y SIN RESULTADO CENTRAL */}
-            {activeTab === 'partidos' && (
+            {/* TAB 1: PARTIDOS REGULARES */}
+            {isThursdayMember && activeTab === 'partidos' && (
               <div className="space-y-3">
                 <button
                   onClick={() => setShowAddModal(true)}
@@ -1673,6 +3152,11 @@ export default function App() {
                   <div className="bg-white rounded-2xl p-8 text-center border border-slate-200">
                     <p className="text-2xl mb-1">🎾</p>
                     <p className="text-sm font-bold text-slate-700">No hay partidos de {currentUser.group} en esta vista</p>
+                    <p className="text-xs text-slate-400 mt-1">
+                      {filterTime === 'semana'
+                        ? 'No hay partidos programados entre este lunes y domingo. Prueba en "⏳ Próximos".'
+                        : 'No se encontraron partidos con este filtro.'}
+                    </p>
                   </div>
                 ) : (
                   filteredMatches.map(m => {
@@ -1712,7 +3196,7 @@ export default function App() {
                           </span>
                         </div>
 
-                        {/* VISTA PREVIA LIMPIA DE EQUIPOS P1 VS P2 SIN TEXTO DE MARCADOR CENTRAL */}
+                        {/* VISTA PREVIA LIMPIA DE EQUIPOS P1 VS P2 */}
                         <div className="mt-3 pt-3 border-t border-slate-100">
                           <div className="flex items-center justify-between gap-2 text-[11px]">
                             {/* Pareja 1 */}
@@ -1775,7 +3259,7 @@ export default function App() {
             )}
 
             {/* TAB 2: CENA & CLUB UNIFICADA */}
-            {activeTab === 'cenas' && (
+            {isThursdayMember && activeTab === 'cenas' && (
               <div className="space-y-4">
                 <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-xs">
                   <label className="block text-xs font-bold text-slate-700 mb-2 uppercase tracking-wide">
@@ -1792,7 +3276,6 @@ export default function App() {
                   </select>
                 </div>
 
-                {/* BOTÓN APUNTARSE SIN JUGAR */}
                 <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 text-center">
                   <p className="text-xs font-black text-blue-900 mb-2">
                     ¿No juegas hoy pero te vienes a cenar? 🍻
@@ -1810,7 +3293,6 @@ export default function App() {
                   </button>
                 </div>
 
-                {/* PANEL DE MESA UNIFICADA */}
                 <div className="bg-white rounded-3xl p-5 border border-slate-200 shadow-xs space-y-4">
                   <div className="flex justify-between items-center pb-3 border-b border-slate-100">
                     <div>
@@ -1934,8 +3416,8 @@ export default function App() {
               </div>
             )}
 
-            {/* TAB 3: RANKINGS DEL GRUPO */}
-            {activeTab === 'rankings' && (
+            {/* TAB 3: RANKINGS REGULARES */}
+            {isThursdayMember && activeTab === 'rankings' && (
               <div className="bg-white rounded-2xl p-4 border border-slate-200">
                 <div className="flex justify-between items-center mb-3">
                   <span className="text-[10px] font-black uppercase tracking-wider bg-blue-50 text-blue-700 px-2.5 py-1 rounded-lg border border-blue-200">
@@ -1992,8 +3474,8 @@ export default function App() {
               </div>
             )}
 
-            {/* TAB 4: BOTE DEL GRUPO */}
-            {activeTab === 'bote' && (
+            {/* TAB 4: BOTE REGULAR */}
+            {isThursdayMember && activeTab === 'bote' && (
               <div className="bg-white rounded-2xl p-4 border border-slate-200 space-y-3">
                 <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-900">
                   <div className="flex justify-between items-center mb-1">
@@ -2029,6 +3511,271 @@ export default function App() {
                         </span>
                       </div>
                     ))}
+                </div>
+              </div>
+            )}
+
+            {/* TAB 5: MÓDULO TORNEOS CTC */}
+            {activeTab === 'torneos' && (
+              <div className="space-y-3">
+                <div className="bg-linear-to-r from-purple-700 to-indigo-800 rounded-3xl p-5 text-white shadow-md">
+                  <div className="flex justify-between items-start mb-2">
+                    <div>
+                      <span className="text-[10px] uppercase font-black bg-white/20 px-2 py-0.5 rounded-md tracking-wider">
+                        Modo Torneo Aislado
+                      </span>
+                      <h2 className="text-xl font-black mt-1">Torneos Especiales CTC</h2>
+                      <p className="text-xs text-purple-200 mt-0.5">
+                        Privados para convocados. Sin interferir en rankings ni bote regular.
+                      </p>
+                    </div>
+                    <span className="text-3xl">⚔️</span>
+                  </div>
+                  <button
+                    onClick={() => setShowTournamentWizard(true)}
+                    className="w-full mt-3 py-2.5 bg-white text-purple-900 hover:bg-purple-50 font-black rounded-xl text-xs transition shadow-sm flex items-center justify-center gap-1.5"
+                  >
+                    <span>✨</span> Crear Nuevo Torneo con Gemini
+                  </button>
+                </div>
+
+                <div className="space-y-3">
+                  <div className="flex justify-between items-center px-1">
+                    <span className="text-xs font-black text-slate-800 uppercase tracking-wide">
+                      Tus Torneos Convocados
+                    </span>
+                    <span className="text-[10px] text-slate-400 font-bold">{visibleTournaments.length} eventos</span>
+                  </div>
+
+                  {visibleTournaments.length === 0 ? (
+                    <div className="bg-white rounded-2xl p-8 text-center border border-slate-200">
+                      <span className="text-3xl block mb-1">🛡️</span>
+                      <p className="text-sm font-bold text-slate-700">No tienes torneos activos</p>
+                      <p className="text-xs text-slate-400 mt-1">
+                        Solo verás los torneos a los que has sido convocado. Pulsa en "Crear Nuevo Torneo" para convocar uno nuevo.
+                      </p>
+                    </div>
+                  ) : (
+                    visibleTournaments.map(t => {
+                      const curSubTab = tournamentSubTab[t.id] || 'partidos';
+                      const myParticipation = (t.participants || []).find(
+                        p => p.id === currentUser?.id || normalizeName(p.name) === normalizeName(currentUser?.name)
+                      );
+                      const totalDinners = (t.participants || []).filter(p => p.dinner === 'SI').length;
+
+                      return (
+                        <div key={t.id} className="bg-white rounded-3xl p-4 border border-slate-200 shadow-xs space-y-3">
+                          <div className="flex justify-between items-start">
+                            <div>
+                              <span className="text-[10px] font-black uppercase tracking-wider bg-purple-50 text-purple-700 px-2.5 py-0.5 rounded-lg border border-purple-200">
+                                {t.mode === 'pozo' ? 'Pozo Continuo' : t.mode === 'americano' ? 'Americano' : t.mode === 'eliminatorio' ? 'Fases Finales' : 'Por Equipos (Ryder)'} · {t.courts} pistas
+                              </span>
+                              <h3 className="text-base font-black text-slate-900 mt-1">{t.name}</h3>
+                              <p className="text-xs text-slate-500 font-semibold">
+                                👥 {t.participants.length} participantes · ⏰ {t.duration} min · 🍻 {totalDinners} a cenar
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <button
+                                onClick={() => handleShareTournamentLink(t)}
+                                className="text-[11px] font-bold text-blue-600 hover:text-blue-800 bg-blue-50 px-2 py-1 rounded-lg border border-blue-200"
+                                title="Copiar enlace para participantes"
+                              >
+                                🔗 Invitar
+                              </button>
+                              <button
+                                onClick={() => handleDeleteTournament(t.id)}
+                                className="text-[11px] font-bold text-rose-500 hover:text-rose-700 p-1 rounded-lg hover:bg-rose-50"
+                                title="Eliminar torneo"
+                              >
+                                🗑️
+                              </button>
+                            </div>
+                          </div>
+
+                          <div className="flex bg-slate-100 p-1 rounded-xl text-[11px] font-bold">
+                            <button
+                              onClick={() => setTournamentSubTab(prev => ({ ...prev, [t.id]: 'partidos' }))}
+                              className={`flex-1 py-1.5 rounded-lg transition ${
+                                curSubTab === 'partidos' ? 'bg-white shadow text-purple-800' : 'text-slate-600'
+                              }`}
+                            >
+                              ⚔️ Partidos & Marcadores
+                            </button>
+                            <button
+                              onClick={() => setTournamentSubTab(prev => ({ ...prev, [t.id]: 'cena' }))}
+                              className={`flex-1 py-1.5 rounded-lg transition ${
+                                curSubTab === 'cena' ? 'bg-white shadow text-amber-900' : 'text-slate-600'
+                              }`}
+                            >
+                              🍻 3º Tiempo del Torneo ({totalDinners})
+                            </button>
+                          </div>
+
+                          {curSubTab === 'partidos' && (
+                            <div className="space-y-2.5">
+                              {t.mode === 'equipos' && t.teams && t.teams.length === 2 && (
+                                <div className="bg-slate-900 text-white rounded-2xl p-3 flex justify-around items-center">
+                                  <div className="text-center">
+                                    <span className="text-[10px] text-blue-300 font-bold block">{t.teams[0].name}</span>
+                                    <span className="text-2xl font-black text-blue-400">{t.teams[0].score || 0}</span>
+                                  </div>
+                                  <span className="text-xs font-black text-slate-500">VS</span>
+                                  <div className="text-center">
+                                    <span className="text-[10px] text-red-300 font-bold block">{t.teams[1].name}</span>
+                                    <span className="text-2xl font-black text-rose-400">{t.teams[1].score || 0}</span>
+                                  </div>
+                                </div>
+                              )}
+
+                              <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                                {t.rounds.map(r => (
+                                  <div key={r.round} className="bg-slate-50 p-2.5 rounded-2xl border border-slate-200/80 space-y-1.5">
+                                    <div className="flex justify-between text-[10px] font-bold text-slate-500 pb-1 border-b border-slate-200/70">
+                                      <span className="font-black text-slate-900 uppercase">
+                                        {r.phase || `Ronda ${r.round}`}
+                                      </span>
+                                      <span>⏱️ {r.timeLabel}</span>
+                                    </div>
+
+                                    {r.matches.map((m, mIdx) => (
+                                      <div
+                                        key={m.id || mIdx}
+                                        onClick={() => {
+                                          setActiveTournamentId(t.id);
+                                          setReportingTournamentMatch(m);
+                                        }}
+                                        className="bg-white p-2.5 rounded-xl border border-slate-200 hover:border-purple-300 cursor-pointer shadow-2xs transition flex flex-col gap-1"
+                                      >
+                                        <div className="flex items-center justify-between text-[11px] font-bold">
+                                          <span className="text-[9px] bg-purple-50 text-purple-700 font-black px-1.5 py-0.5 rounded">
+                                            {m.court}
+                                          </span>
+
+                                          <div className="flex items-center gap-1.5 truncate">
+                                            <span className={`truncate max-w-[95px] ${m.winner === 1 ? 'text-emerald-700 font-black' : 'text-slate-800'}`}>
+                                              {m.team1}
+                                            </span>
+                                            <span className="text-[9px] text-slate-300 font-black">vs</span>
+                                            <span className={`truncate max-w-[95px] ${m.winner === 2 ? 'text-emerald-700 font-black' : 'text-slate-800'}`}>
+                                              {m.team2}
+                                            </span>
+                                          </div>
+
+                                          <span className={`text-[10px] px-2 py-0.5 rounded font-black ${
+                                            m.status === 'FINALIZADO'
+                                              ? 'bg-emerald-100 text-emerald-800'
+                                              : 'bg-slate-100 text-slate-500 hover:bg-purple-100 hover:text-purple-800'
+                                          }`}>
+                                            {m.status === 'FINALIZADO' ? (m.score || '✓ Fin') : 'Poner resultado ✍️'}
+                                          </span>
+                                        </div>
+                                        {m.rule && <span className="text-[9px] text-slate-400 italic block">{m.rule}</span>}
+                                      </div>
+                                    ))}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {curSubTab === 'cena' && (
+                            <div className="space-y-3 pt-1">
+                              {myParticipation && (
+                                <div className="bg-amber-50 p-3 rounded-2xl border border-amber-200 text-center space-y-1.5">
+                                  <p className="text-xs font-black text-amber-950">
+                                    ¿Te quedas al 3º Tiempo del {t.name}?
+                                  </p>
+                                  <div className="flex gap-2">
+                                    <button
+                                      onClick={() => handleUpdateTournamentDinner(t.id, myParticipation.id, 'SI')}
+                                      className={`flex-1 py-1.5 rounded-xl font-black text-xs transition ${
+                                        myParticipation.dinner === 'SI'
+                                          ? 'bg-emerald-600 text-white shadow-xs'
+                                          : 'bg-white text-slate-700 border border-slate-200'
+                                      }`}
+                                    >
+                                      ✓ Sí, me quedo 🍻
+                                    </button>
+                                    <button
+                                      onClick={() => handleUpdateTournamentDinner(t.id, myParticipation.id, 'NO')}
+                                      className={`flex-1 py-1.5 rounded-xl font-black text-xs transition ${
+                                        myParticipation.dinner === 'NO'
+                                          ? 'bg-rose-600 text-white shadow-xs'
+                                          : 'bg-white text-slate-700 border border-slate-200'
+                                      }`}
+                                    >
+                                      Me rajo 🏃‍♂️
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
+
+                              <div className="grid grid-cols-3 gap-2 text-center text-xs">
+                                <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-2">
+                                  <span className="text-sm font-black text-emerald-700 block">{totalDinners}</span>
+                                  <span className="text-[9px] uppercase font-bold text-emerald-900">Cenan SÍ</span>
+                                </div>
+                                <div className="bg-rose-50 border border-rose-200 rounded-xl p-2">
+                                  <span className="text-sm font-black text-rose-700 block">
+                                    {(t.participants || []).filter(p => p.dinner === 'NO').length}
+                                  </span>
+                                  <span className="text-[9px] uppercase font-bold text-rose-900">Se Rajan</span>
+                                </div>
+                                <div className="bg-amber-50 border border-amber-200 rounded-xl p-2">
+                                  <span className="text-sm font-black text-amber-700 block">
+                                    {(t.participants || []).filter(p => p.dinner !== 'SI' && p.dinner !== 'NO').length}
+                                  </span>
+                                  <span className="text-[9px] uppercase font-bold text-amber-900">Pendientes</span>
+                                </div>
+                              </div>
+
+                              <div className="space-y-1.5 max-h-52 overflow-y-auto pr-1">
+                                {(t.participants || []).map(p => (
+                                  <div key={p.id} className="p-2 rounded-xl border border-slate-200 bg-white flex items-center justify-between text-xs">
+                                    <div className="flex items-center gap-2">
+                                      <UserAvatar name={p.name} photo={p.photo} size="xs" />
+                                      <div>
+                                        <span className="font-bold text-slate-800 text-[11px] block">{p.name}</span>
+                                        <span className="text-[9px] text-slate-400">
+                                          {p.dinner === 'SI' ? '🟢 Cena confirmada' : p.dinner === 'NO' ? '🔴 Se raja' : '🟡 Pendiente'}
+                                        </span>
+                                      </div>
+                                    </div>
+                                    <div className="flex gap-1">
+                                      <button
+                                        onClick={() => handleUpdateTournamentDinner(t.id, p.id, p.dinner === 'SI' ? 'PENDIENTE' : 'SI')}
+                                        className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                          p.dinner === 'SI' ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-600'
+                                        }`}
+                                      >
+                                        Cena 🍻
+                                      </button>
+                                      <button
+                                        onClick={() => handleUpdateTournamentDinner(t.id, p.id, p.dinner === 'NO' ? 'PENDIENTE' : 'NO')}
+                                        className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                          p.dinner === 'NO' ? 'bg-rose-600 text-white' : 'bg-slate-100 text-slate-600'
+                                        }`}
+                                      >
+                                        No 🏃‍♂️
+                                      </button>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+
+                              <button
+                                onClick={() => handleShareTournamentDinnerWhatsapp(t)}
+                                className="w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-xs transition"
+                              >
+                                📲 Avisar al Restaurante por WhatsApp ({totalDinners} comensales)
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })
+                  )}
                 </div>
               </div>
             )}
@@ -2094,7 +3841,7 @@ export default function App() {
         </div>
       )}
 
-      {/* MODAL AÑADIR PARTIDO */}
+      {/* MODAL AÑADIR PARTIDO REGULAR */}
       {showAddModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl max-w-sm w-full p-5 shadow-2xl">
@@ -2133,142 +3880,63 @@ export default function App() {
 
               <div className="flex gap-2 pt-1">
                 <button type="button" onClick={() => setShowAddModal(false)} className="flex-1 py-2 bg-slate-100 text-slate-600 rounded-xl text-xs">Cancelar</button>
-                <button type="submit" disabled={syncing} className="flex-1 py-2 bg-blue-600 text-white rounded-xl text-xs font-bold">Crear</button>
+                <button type="submit" disabled={syncing} className="flex-1 py-2 bg-blue-600 text-white rounded-xl text-xs">Crear</button>
               </div>
             </form>
           </div>
         </div>
       )}
 
-      {/* MODAL MARCADOR INTERACTIVO POR SETS (SIN INCONSISTENCIAS DE NÚMEROS) */}
+      {/* MODAL MARCADOR MULTISET (JUEVES) */}
       {showScoreModal && currentMatch && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-sm w-full p-5 shadow-2xl">
-            <h3 className="text-base font-black text-slate-900 mb-1">Reportar Marcador Oficial</h3>
-            <p className="text-[11px] text-slate-500 mb-3">Introduce los juegos obtenidos por cada pareja en cada set:</p>
-            
-            <div className="space-y-4 text-xs">
-              {/* Selección de Pareja Ganadora */}
-              <div>
-                <label className="font-bold text-slate-700 block mb-1.5">Pareja Ganadora del Partido:</label>
-                <div className="flex gap-2">
-                  {[1, 2].map(num => (
-                    <button
-                      key={num}
-                      onClick={() => setWinnerTeam(num)}
-                      className={`flex-1 py-2.5 font-black rounded-xl border transition ${
-                        winnerTeam === num ? 'bg-blue-600 text-white border-blue-600 shadow-sm' : 'bg-slate-50 text-slate-700 border-slate-200'
-                      }`}
-                    >
-                      👑 Pareja {num}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Marcador estructurado con títulos claros para P1 y P2 */}
-              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3 space-y-2.5">
-                <div className="flex justify-between items-center text-[10px] font-black text-slate-600 uppercase pb-1 border-b border-slate-200">
-                  <span>Sets</span>
-                  <div className="flex items-center gap-5 mr-3">
-                    <span className="text-blue-600">Juegos P1</span>
-                    <span className="text-amber-600">Juegos P2</span>
-                  </div>
-                </div>
-
-                {/* Set 1 */}
-                <div className="flex justify-between items-center">
-                  <span className="font-bold text-slate-700">Set 1:</span>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="number"
-                      min="0"
-                      max="7"
-                      value={set1P1}
-                      onChange={e => setSet1P1(e.target.value)}
-                      className="w-12 bg-white border border-slate-300 rounded-lg p-1.5 text-center font-bold text-slate-900"
-                    />
-                    <span className="font-black text-slate-400">-</span>
-                    <input
-                      type="number"
-                      min="0"
-                      max="7"
-                      value={set1P2}
-                      onChange={e => setSet1P2(e.target.value)}
-                      className="w-12 bg-white border border-slate-300 rounded-lg p-1.5 text-center font-bold text-slate-900"
-                    />
-                  </div>
-                </div>
-
-                {/* Set 2 */}
-                <div className="flex justify-between items-center">
-                  <span className="font-bold text-slate-700">Set 2:</span>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="number"
-                      min="0"
-                      max="7"
-                      value={set2P1}
-                      onChange={e => setSet2P1(e.target.value)}
-                      className="w-12 bg-white border border-slate-300 rounded-lg p-1.5 text-center font-bold text-slate-900"
-                    />
-                    <span className="font-black text-slate-400">-</span>
-                    <input
-                      type="number"
-                      min="0"
-                      max="7"
-                      value={set2P2}
-                      onChange={e => setSet2P2(e.target.value)}
-                      className="w-12 bg-white border border-slate-300 rounded-lg p-1.5 text-center font-bold text-slate-900"
-                    />
-                  </div>
-                </div>
-
-                {/* Set 3 Opcional */}
-                {hasSet3 ? (
-                  <div className="flex justify-between items-center">
-                    <div className="flex items-center gap-1">
-                      <span className="font-bold text-slate-700">Set 3:</span>
-                      <button onClick={() => setHasSet3(false)} className="text-[10px] text-rose-500 font-bold ml-1 hover:underline">Quitar</button>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="number"
-                        min="0"
-                        max="7"
-                        value={set3P1}
-                        onChange={e => setSet3P1(e.target.value)}
-                        className="w-12 bg-white border border-slate-300 rounded-lg p-1.5 text-center font-bold text-slate-900"
-                      />
-                      <span className="font-black text-slate-400">-</span>
-                      <input
-                        type="number"
-                        min="0"
-                        max="7"
-                        value={set3P2}
-                        onChange={e => setSet3P2(e.target.value)}
-                        className="w-12 bg-white border border-slate-300 rounded-lg p-1.5 text-center font-bold text-slate-900"
-                      />
-                    </div>
-                  </div>
-                ) : (
-                  <button
-                    onClick={() => setHasSet3(true)}
-                    className="text-[11px] text-blue-600 font-bold hover:underline block pt-1"
-                  >
-                    + Añadir 3er Set (Desempate)
-                  </button>
-                )}
-              </div>
-
-              <div className="flex gap-2 pt-2">
-                <button onClick={() => setShowScoreModal(false)} className="flex-1 py-2.5 font-bold bg-slate-100 text-slate-600 rounded-xl">Cancelar</button>
-                <button onClick={() => handleSaveResult(currentMatch.id)} className="flex-1 py-2.5 font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-md transition">Guardar Marcador</button>
-              </div>
-            </div>
-          </div>
-        </div>
+        <MatchVisualScoreModal
+          isOpen={showScoreModal}
+          onClose={() => setShowScoreModal(false)}
+          title="Marcador Partido Regular"
+          subtitle={currentMatch.date}
+          team1Name="Pareja 1"
+          team2Name="Pareja 2"
+          p1Players={(currentMatch.players || []).filter(p => (p.team || 1) === 1)}
+          p2Players={(currentMatch.players || []).filter(p => (p.team || 1) === 2)}
+          onSaveScore={handleSaveRegularMatchScore}
+        />
       )}
+
+      {/* MODAL MARCADOR DE TORNEO MULTISET */}
+      {reportingTournamentMatch && (
+        <MatchVisualScoreModal
+          isOpen={Boolean(reportingTournamentMatch)}
+          onClose={() => setReportingTournamentMatch(null)}
+          title={reportingTournamentMatch.court}
+          subtitle={reportingTournamentMatch.phase || 'Marcador de Encuentro'}
+          team1Name={reportingTournamentMatch.team1}
+          team2Name={reportingTournamentMatch.team2}
+          onSaveScore={handleSaveTournamentScore}
+        />
+      )}
+
+      {/* MODAL VINCULACIÓN DIRECTA DE JUGADOR HUÉRFANO */}
+      {linkingSlot && (
+        <LinkPlayerSlotModal
+          isOpen={Boolean(linkingSlot)}
+          onClose={() => setLinkingSlot(null)}
+          slotName={linkingSlot.name}
+          matchId={linkingSlot.matchId}
+          allRegisteredPlayers={players}
+          onConfirmLink={handleConfirmLinkSlot}
+        />
+      )}
+
+      {/* MODAL WIZARD TORNEOS CON CAPITANES, DRAFT Y REGLAS GEMINI */}
+      <TournamentCreatorModal
+        isOpen={showTournamentWizard}
+        onClose={() => setShowTournamentWizard(false)}
+        allPlayers={players}
+        tournaments={activeTournaments}
+        onTournamentCreated={handleTournamentCreated}
+        currentUserId={currentUser?.id}
+        onSaveLevel={handleSaveLevel}
+      />
 
       {/* MODALES AUXILIARES */}
       <CriteriosModal isOpen={showRulesModal} onClose={() => setShowRulesModal(false)} />
@@ -2279,9 +3947,11 @@ export default function App() {
         onClose={() => setInspectedUser(null)}
         user={inspectedUser}
         matches={matches}
+        tournaments={activeTournaments}
         onPhotoUploaded={handlePhotoUploaded}
         onUpdateUserData={handleUpdateUserData}
         isCurrentUser={Boolean(inspectedUser && currentUser && inspectedUser.id === currentUser.id)}
+        isThursdayMember={isThursdayMember}
       />
     </div>
   );
