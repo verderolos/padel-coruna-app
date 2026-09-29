@@ -1910,11 +1910,29 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('partidos');
   const [rankingType, setRankingType] = useState('hibrido');
 
-  const [players, setPlayers] = useState(FALLBACK_USERS);
-  const [matches, setMatches] = useState(FALLBACK_MATCHES);
+  // CARGA INSTANTÁNEA DESDE CACHÉ LOCAL (0 ms de espera al abrir)
+  const [players, setPlayers] = useState(() => {
+    try {
+      const cached = localStorage.getItem('padel_cached_players');
+      return cached ? JSON.parse(cached) : FALLBACK_USERS;
+    } catch {
+      return FALLBACK_USERS;
+    }
+  });
+
+  const [matches, setMatches] = useState(() => {
+    try {
+      const cached = localStorage.getItem('padel_cached_matches');
+      return cached ? JSON.parse(cached) : FALLBACK_MATCHES;
+    } catch {
+      return FALLBACK_MATCHES;
+    }
+  });
+
   const [selectedMatchId, setSelectedMatchId] = useState(null);
 
   const [selectedDinnerDate, setSelectedDinnerDate] = useState('');
+  const [showDinnerHistory, setShowDinnerHistory] = useState(false);
   const [showRulesModal, setShowRulesModal] = useState(false);
   const [inspectedUser, setInspectedUser] = useState(null);
 
@@ -1985,14 +2003,16 @@ export default function App() {
     }
   }, []);
 
-  const fetchData = async () => {
+  // SINCRONIZACIÓN EN SEGUNDO PLANO SIN BLOQUEAR LA PANTALLA
+  const fetchData = async (silent = false) => {
     try {
-      setSyncing(true);
+      if (!silent) setSyncing(true);
       const res = await fetch(apiUrl, { method: 'GET', redirect: 'follow' });
       const json = await res.json();
       if (json.ok) {
         if (json.jugadores) {
           setPlayers(json.jugadores);
+          localStorage.setItem('padel_cached_players', JSON.stringify(json.jugadores));
           if (currentUser) {
             const fresh = json.jugadores.find(u => u.id === currentUser.id);
             if (fresh) {
@@ -2003,20 +2023,19 @@ export default function App() {
         }
         if (json.partidos) {
           setMatches(json.partidos);
-          if (json.partidos.length > 0 && !selectedDinnerDate) {
-            setSelectedDinnerDate(extractCleanDate(json.partidos[0].date));
-          }
+          localStorage.setItem('padel_cached_matches', JSON.stringify(json.partidos));
         }
       }
     } catch (e) {
       console.warn('Sync error:', e);
     } finally {
-      setSyncing(false);
+      if (!silent) setSyncing(false);
     }
   };
 
   useEffect(() => {
-    fetchData();
+    // Refresco en segundo plano silencioso al montar
+    fetchData(true);
   }, [apiUrl]);
 
   const handleUserClick = (user) => setTargetPinUser(user);
@@ -2041,7 +2060,7 @@ export default function App() {
     }
 
     try {
-      await fetch(apiUrl, {
+      fetch(apiUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify({ action: 'ACTUALIZAR_NIVEL_JUGADOR', idJugador, nivel: newLevel })
@@ -2085,7 +2104,7 @@ export default function App() {
           level: 3.5,
           pJ: 0, pG: 0, cSi: 0, cNo: 0,
           ptsDeportivo: 0, ptsBarandas: 0, hibrido: 0,
-          titulo: assignedGroup === 'torneo' ? 'Jugador de Torneo ⚔️' : "Fichaje Estrella ⭐",
+          titulo: assignedGroup === 'torneo' ? 'Jugador de Torneo ⚔️️' : "Fichaje Estrella ⭐",
           deuda: 0,
           pin: newUserPin.trim()
         };
@@ -2101,60 +2120,53 @@ export default function App() {
   };
 
   const handleUpdateUserData = async (idJugador, payload) => {
-    setSyncing(true);
+    // Optimistic UI en memoria inmediata
+    setCurrentUser(prev => ({ ...prev, ...payload }));
+    setPlayers(prev => prev.map(p => p.id === idJugador ? { ...p, ...payload } : p));
+    localStorage.setItem('padel_current_user', JSON.stringify({ ...currentUser, ...payload }));
+
     try {
-      const res = await fetch(apiUrl, {
+      fetch(apiUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify({ action: 'ACTUALIZAR_DATOS_PERFIL', idJugador, ...payload })
       });
-      const json = await res.json();
-      if (json.ok) {
-        setCurrentUser(prev => ({ ...prev, ...payload }));
-        localStorage.setItem('padel_current_user', JSON.stringify({ ...currentUser, ...payload }));
-        fetchData();
-      }
     } catch (err) {
       console.error(err);
-    } finally {
-      setSyncing(false);
     }
   };
 
   const handlePhotoUploaded = async (idJugador, photoBase64) => {
-    setSyncing(true);
+    // Inmediato en pantalla
     setCurrentUser(prev => ({ ...prev, photo: photoBase64 }));
     setPlayers(prev => prev.map(p => p.id === idJugador ? { ...p, photo: photoBase64 } : p));
     localStorage.setItem('padel_current_user', JSON.stringify({ ...currentUser, photo: photoBase64 }));
 
     try {
-      await fetch(apiUrl, {
+      fetch(apiUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify({ action: 'SUBIR_FOTO', idJugador, photoBase64 })
       });
-      fetchData();
     } catch (e) {
       console.error(e);
-    } finally {
-      setSyncing(false);
     }
   };
 
   const handleDeleteMatchComplete = async (matchId) => {
-    setSyncing(true);
+    // Inmediato en pantalla
+    setMatches(prev => prev.filter(m => m.id !== matchId));
+    setSelectedMatchId(null);
+
     try {
-      await fetch(apiUrl, {
+      fetch(apiUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify({ action: 'ELIMINAR_PARTIDO', idPartido: matchId })
       });
-      setSelectedMatchId(null);
-      fetchData();
     } catch (e) {
       console.error(e);
-    } finally {
-      setSyncing(false);
+      fetchData();
     }
   };
 
@@ -2225,9 +2237,22 @@ export default function App() {
 
   // Acción de vinculación explícita para resolver jugadores huérfanos sin puntos
   const handleConfirmLinkSlot = async (matchId, officialId, rawSlotName, officialName) => {
-    setSyncing(true);
+    // Inmediato en pantalla
+    setMatches(prev => prev.map(m => {
+      if (m.id !== matchId) return m;
+      return {
+        ...m,
+        players: (m.players || []).map(p => {
+          if (p.name === rawSlotName) {
+            return { ...p, id: officialId, name: officialName };
+          }
+          return p;
+        })
+      };
+    }));
+
     try {
-      await fetch(apiUrl, {
+      fetch(apiUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify({
@@ -2237,20 +2262,34 @@ export default function App() {
           nombreOriginal: rawSlotName
         })
       });
-      fetchData();
     } catch (e) {
       console.error(e);
-    } finally {
-      setSyncing(false);
     }
   };
 
+  // Apuntarse solo a cenar (Instantáneo en UI)
   const handleToggleSoloCena = async (dateStr, newState) => {
-    if (loadingDinnerId) return;
-    setLoadingDinnerId('solo_cena');
+    if (!currentUser) return;
+
+    setMatches(prev => prev.map(m => {
+      if (extractCleanDate(m.date) !== dateStr) return m;
+      const guests = [...(m.guests || [])];
+      const normMe = normalizeName(currentUser.name);
+      const filtered = guests.filter(g => normalizeName(g.name) !== normMe);
+
+      if (newState === 'SI') {
+        filtered.push({
+          id: 'inv_' + Date.now(),
+          name: currentUser.name,
+          photo: currentUser.photo || '',
+          phone: currentUser.phone || ''
+        });
+      }
+      return { ...m, guests: filtered };
+    }));
 
     try {
-      await fetch(apiUrl, {
+      fetch(apiUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify({ 
@@ -2261,18 +2300,13 @@ export default function App() {
           grupo: myGroup 
         })
       });
-      await fetchData();
     } catch (e) {
       console.error(e);
-    } finally {
-      setLoadingDinnerId(null);
     }
   };
 
+  // Actualizar asistencia a la cena en partido (Optimistic UI instantánea)
   const handleUpdateDinner = async (matchId, targetId, targetName, newStatus) => {
-    if (loadingDinnerId) return;
-    setLoadingDinnerId(targetId || targetName);
-
     setMatches(prevMatches => prevMatches.map(m => {
       if (m.id !== matchId) return m;
       return {
@@ -2287,16 +2321,19 @@ export default function App() {
     }));
 
     try {
-      await fetch(apiUrl, {
+      fetch(apiUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({ action: 'ACTUALIZAR_CENA', idPartido: matchId, idJugador: targetId, nombreJugador: targetName, estado: newStatus })
+        body: JSON.stringify({ 
+          action: 'ACTUALIZAR_CENA', 
+          idPartido: matchId, 
+          idJugador: targetId, 
+          nombreJugador: targetName, 
+          estado: newStatus 
+        })
       });
     } catch (e) {
       console.error(e);
-      fetchData();
-    } finally {
-      setLoadingDinnerId(null);
     }
   };
 
@@ -2346,9 +2383,23 @@ export default function App() {
       parejasMap[p.name] = p.team || 1;
     });
 
-    setSyncing(true);
+    // Actualización inmediata en UI
+    setMatches(prev => prev.map(m => {
+      if (m.id !== currentMatch.id) return m;
+      return {
+        ...m,
+        status: 'FINALIZADO',
+        score: composedScoreText,
+        players: m.players.map(p => ({
+          ...p,
+          won: Number(p.team || 1) === Number(winningTeamNum) ? 'SI' : 'NO'
+        }))
+      };
+    }));
+    setShowScoreModal(false);
+
     try {
-      const res = await fetch(apiUrl, {
+      fetch(apiUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify({
@@ -2361,15 +2412,9 @@ export default function App() {
           reiniciar: false
         })
       });
-      const data = await res.json();
-      if (data.ok) {
-        setShowScoreModal(false);
-        fetchData();
-      }
     } catch (e) {
       console.error(e);
-    } finally {
-      setSyncing(false);
+      fetchData();
     }
   };
 
@@ -2535,7 +2580,7 @@ export default function App() {
     return players.filter(p => (p.group || 'chicos').toLowerCase() === myGroup);
   }, [players, myGroup]);
 
-  // Privacidad de Torneos: solo visibles para los convocados o el creador (pueden ser mixtos)
+  // Privacidad de Torneos: solo visibles para los convocados o el creador
   const visibleTournaments = useMemo(() => {
     if (!currentUser) return [];
     return activeTournaments.filter(t => {
@@ -2556,21 +2601,66 @@ export default function App() {
     });
   }, [matches, myGroup]);
 
-  const availableDinnerDates = useMemo(() => {
+  // GESTIÓN INTELIGENTE DE FECHAS DE CENA (HOY > SIGUIENTE PENDIENTE + HISTÓRICO OCULTO)
+  const { availableDinnerDates, upcomingDinnerDates, pastDinnerDates, defaultSmartDinnerKey } = useMemo(() => {
     const datesMap = new Map();
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+    const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+
     groupMatches.forEach(m => {
       const cleanKey = extractCleanDate(m.date);
       if (cleanKey && cleanKey !== 'sin fecha') {
         if (!datesMap.has(cleanKey)) {
           const niceLabel = cleanKey.charAt(0).toUpperCase() + cleanKey.slice(1);
-          datesMap.set(cleanKey, niceLabel);
+          const dateObj = parseMatchDateObject(m.date) || new Date();
+          datesMap.set(cleanKey, { key: cleanKey, label: niceLabel, dateObj });
         }
       }
     });
-    return Array.from(datesMap.entries()).map(([key, label]) => ({ key, label }));
+
+    const allDates = Array.from(datesMap.values()).sort((a, b) => b.dateObj - a.dateObj);
+    const upcoming = [];
+    const past = [];
+    let todayKey = null;
+
+    allDates.forEach(d => {
+      if (d.dateObj >= startOfToday && d.dateObj <= endOfToday) {
+        todayKey = d.key;
+        upcoming.push(d);
+      } else if (d.dateObj > endOfToday) {
+        upcoming.push(d);
+      } else {
+        past.push(d);
+      }
+    });
+
+    // Ordenar próximas por cercanía en el tiempo (la más cercana primero)
+    upcoming.sort((a, b) => a.dateObj - b.dateObj);
+
+    // Selección inteligente:
+    // 1. Si hay cena HOY, esa es la prioridad absoluta.
+    // 2. Si no hay hoy, la cena futura más próxima.
+    // 3. Si no hay futuras, la última jugada en el pasado.
+    let bestDefaultKey = '';
+    if (todayKey) {
+      bestDefaultKey = todayKey;
+    } else if (upcoming.length > 0) {
+      bestDefaultKey = upcoming[0].key;
+    } else if (allDates.length > 0) {
+      bestDefaultKey = allDates[0].key;
+    }
+
+    return {
+      availableDinnerDates: allDates,
+      upcomingDinnerDates: upcoming,
+      pastDinnerDates: past,
+      defaultSmartDinnerKey: bestDefaultKey
+    };
   }, [groupMatches]);
 
-  const activeDinnerKey = selectedDinnerDate || (availableDinnerDates.length > 0 ? availableDinnerDates[0].key : '');
+  // Selección automática inicial o al cambiar de grupo
+  const activeDinnerKey = selectedDinnerDate || defaultSmartDinnerKey;
 
   const matchesForDinner = useMemo(() => {
     if (!activeDinnerKey) return [];
@@ -2836,9 +2926,10 @@ export default function App() {
               Salir
             </button>
             <button
-              onClick={fetchData}
+              onClick={() => fetchData(false)}
               disabled={syncing}
               className={`p-1.5 text-slate-500 hover:text-blue-600 transition ${syncing ? 'animate-spin' : ''}`}
+              title="Sincronizar ahora"
             >
               🔄
             </button>
@@ -2952,7 +3043,7 @@ export default function App() {
                   }}
                   className="py-2 px-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold rounded-xl border border-slate-200 transition flex items-center justify-center gap-1"
                 >
-                  ✏️️ Cambiar Suplentes
+                  ✏ Cambiar Suplentes
                 </button>
               </div>
 
@@ -3091,7 +3182,7 @@ export default function App() {
                   return (
                     <div className="mt-5 pt-3 border-t border-slate-100 text-center">
                       <span className="text-[11px] text-slate-500 font-semibold italic block">
-                        ℹ️ Este partido es amistoso. Las cenas y puntos oficiales se computan exclusivamente los {currentMatch.grupo === 'chicas' ? 'Martes (Chicas)' : 'Jueves (Chicos)'}.
+                        ℹ️️ Este partido es amistoso. Las cenas y puntos oficiales se computan exclusivamente los {currentMatch.grupo === 'chicas' ? 'Martes (Chicas)' : 'Jueves (Chicos)'}.
                       </span>
                     </div>
                   );
@@ -3123,7 +3214,7 @@ export default function App() {
                             : 'bg-white text-slate-700 border-slate-200 hover:bg-rose-50'
                         } ${isProcessing ? 'opacity-60 cursor-wait' : ''}`}
                       >
-                        ME RAJO 🏃‍♂️️
+                        ME RAJO 🏃‍♂
                       </button>
                     </div>
                   </div>
@@ -3326,21 +3417,53 @@ export default function App() {
               </div>
             )}
 
-            {/* TAB 2: CENA & CLUB UNIFICADA */}
+            {/* TAB 2: CENA & CLUB UNIFICADA (CON SELECTOR INTELIGENTE Y HISTÓRICO PLEGADO) */}
             {isThursdayMember && activeTab === 'cenas' && (
               <div className="space-y-4">
-                <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-xs">
-                  <label className="block text-xs font-bold text-slate-700 mb-2 uppercase tracking-wide">
-                    Jornada de Cena:
-                  </label>
+                <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-xs space-y-2">
+                  <div className="flex justify-between items-center">
+                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide">
+                      Jornada de Cena:
+                    </label>
+                    {pastDinnerDates.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setShowDinnerHistory(!showDinnerHistory)}
+                        className="text-[10px] font-bold text-blue-600 hover:text-blue-800 bg-blue-50 px-2 py-0.5 rounded-md transition"
+                      >
+                        {showDinnerHistory ? 'Ocultar pasadas' : `📁 Ver histórico (${pastDinnerDates.length})`}
+                      </button>
+                    )}
+                  </div>
+
                   <select
                     value={activeDinnerKey}
                     onChange={(e) => setSelectedDinnerDate(e.target.value)}
                     className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 text-xs font-bold text-slate-800"
                   >
-                    {availableDinnerDates.map(d => (
-                      <option key={d.key} value={d.key}>{d.label}</option>
-                    ))}
+                    {/* Grupo 1: Cenas Activas y Próximas */}
+                    {upcomingDinnerDates.length > 0 ? (
+                      <optgroup label="⚡ Cenas Activas / Próximas">
+                        {upcomingDinnerDates.map(d => (
+                          <option key={d.key} value={d.key}>
+                            {d.label} {d.key === defaultSmartDinnerKey ? '★ (Siguiente recomendada)' : ''}
+                          </option>
+                        ))}
+                      </optgroup>
+                    ) : (
+                      <optgroup label="⚡ Cenas Activas">
+                        <option value="">No hay cenas pendientes programadas</option>
+                      </optgroup>
+                    )}
+
+                    {/* Grupo 2: Histórico pasado (desplegado si el usuario lo solicita o si no hay futuras) */}
+                    {(showDinnerHistory || upcomingDinnerDates.length === 0) && pastDinnerDates.length > 0 && (
+                      <optgroup label="📁 Histórico de Cenas Pasadas">
+                        {pastDinnerDates.map(d => (
+                          <option key={d.key} value={d.key}>{d.label} (Pasada)</option>
+                        ))}
+                      </optgroup>
+                    )}
                   </select>
                 </div>
 
@@ -3349,13 +3472,12 @@ export default function App() {
                     ¿No juegas hoy pero te vienes a cenar? 🍻
                   </p>
                   <button
-                    disabled={loadingDinnerId === 'solo_cena'}
                     onClick={() => handleToggleSoloCena(activeDinnerKey, isUserInDinner ? 'NO' : 'SI')}
                     className={`py-2 px-4 rounded-xl text-xs font-bold transition shadow-xs ${
                       isUserInDinner
                         ? 'bg-rose-600 hover:bg-rose-700 text-white'
                         : 'bg-emerald-600 hover:bg-emerald-700 text-white'
-                    } ${loadingDinnerId === 'solo_cena' ? 'opacity-60 cursor-wait' : ''}`}
+                    }`}
                   >
                     {isUserInDinner ? '✓ Apuntado a la cena (Clic para borrarte)' : '+ ¡Me apunto a cenar sin jugar!'}
                   </button>
@@ -3617,7 +3739,7 @@ export default function App() {
 
                   {visibleTournaments.length === 0 ? (
                     <div className="bg-white rounded-2xl p-8 text-center border border-slate-200">
-                      <span className="text-3xl block mb-1">🛡️</span>
+                      <span className="text-3xl block mb-1">🛡️️</span>
                       <p className="text-sm font-bold text-slate-700">No tienes torneos activos</p>
                       <p className="text-xs text-slate-400 mt-1">
                         Solo verás los torneos a los que has sido convocado. Pulsa en "Crear Nuevo Torneo" para convocar uno nuevo.
