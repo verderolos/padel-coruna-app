@@ -75,10 +75,10 @@ function extractCleanDate(dateStr) {
   if (!dateStr) return 'Sin fecha';
   return String(dateStr)
     .toLowerCase()
+    .replace(/★.*$/g, '') // Elimina etiquetas como ★ (Siguiente recomendada)
+    .replace(/\(.*?\)/g, '') // Elimina cualquier texto entre paréntesis
     .replace(/\b\d{1,2}:\d{2}\b/g, '')
-    .replace(/\(\d+min\)/gi, '')
-    .replace(/,\s*$/, '')
-    .replace(/[📅🗓️📍]/g, '')
+    .replace(/[📅🗓️📍,]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -346,7 +346,7 @@ function CriteriosModal({ isOpen, onClose }) {
         <section className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 space-y-2">
           <h4 className="font-extrabold text-emerald-950 text-xs uppercase tracking-wide">🍻 2. Ranking Barandas (3º Tiempo)</h4>
           <ul className="text-xs text-emerald-900 space-y-1 list-disc list-inside">
-            <li><strong>Quedarse a la cena:</strong> +5 puntos.</li>
+            <li><strong>Quedarse a la cena:</strong> +5 puntos (computables tras las 09:00 AM del día siguiente).</li>
             <li><strong>Jugar el partido:</strong> +1 punto (por compromiso y asistencia).</li>
             <li><strong>Rajarse de la cena habiendo jugado:</strong> -1 punto de penalización.</li>
           </ul>
@@ -2193,10 +2193,12 @@ export default function App() {
     }
   }, [currentUser, isThursdayMember]);
 
+  // LECTURA DIRECTA SIN CACHÉ
   const fetchData = async (silent = false) => {
     try {
       if (!silent) setSyncing(true);
-      const res = await fetch(apiUrl, { method: 'GET', redirect: 'follow' });
+      const urlConBypass = `${apiUrl}${apiUrl.includes('?') ? '&' : '?'}nocache=${Date.now()}`;
+      const res = await fetch(urlConBypass, { method: 'GET', redirect: 'follow' });
       const json = await res.json();
       if (json.ok) {
         if (json.jugadores) {
@@ -2454,13 +2456,13 @@ export default function App() {
     }
   };
 
-  // 3. CORRECCIÓN ROBUSTA: 'ME APUNTO A CENAR SIN JUGAR'
+  // 3. APUNTARSE A CENAR SIN JUGAR CON PERSISTENCIA
   const handleToggleSoloCena = async (rawDateStr, newState) => {
     if (!currentUser || !rawDateStr) return;
     const cleanDate = extractCleanDate(rawDateStr);
     const normMe = normalizeName(currentUser.name);
 
-    // 1. Actualización visual instantánea en la lista de comensales
+    // 1. Actualización visual instantánea de la lista de comensales
     setAllDinnerGuests(prev => {
       const filtered = prev.filter(g => {
         const guestNameNorm = normalizeName(g.name);
@@ -2500,7 +2502,7 @@ export default function App() {
       });
       const data = await res.json();
       if (data.ok) {
-        await fetchData(true); // Recarga los datos oficiales de la hoja
+        await fetchData(true); // Recarga los datos oficiales
       }
     } catch (e) {
       console.error('Error al actualizar cena sin partido:', e);
@@ -2701,7 +2703,7 @@ export default function App() {
     }
   };
 
-// 3. Guardar marcador de un partido del torneo (Optimista + Nube)
+  // 3. Guardar marcador de un partido del torneo (Optimista + Nube)
   const handleSaveTournamentScore = async (winningTeamNum, composedScoreText) => {
     if (!activeTournamentId || !reportingTournamentMatch) return;
     const matchId = reportingTournamentMatch.id;
@@ -2972,12 +2974,16 @@ export default function App() {
     return groupMatches.filter(m => extractCleanDate(m.date) === activeDinnerKey);
   }, [groupMatches, activeDinnerKey]);
 
+  // CÓMPUTO COMPLETO DE MESA UNIFICADA (PARTIDOS + ASISTENCIA DIRECTA CENA)
   const { dinnerYes, dinnerNo, dinnerPending, dinnerGuests } = useMemo(() => {
     const yesMap = new Map();
     const noMap = new Map();
     const pendingMap = new Map();
     const guestMap = new Map();
 
+    const targetDateClean = extractCleanDate(activeDinnerKey);
+
+    // 1. Jugadores con partido en pista
     matchesForDinner.forEach(m => {
       (m.players || []).forEach(p => {
         const normKey = normalizeName(p.name);
@@ -3005,16 +3011,23 @@ export default function App() {
       });
     });
 
+    // 2. Comensales registrados para la cena sin partido (vía CENA_)
     (allDinnerGuests || []).forEach(g => {
-      const gCleanTarget = extractCleanDate(g.target || g.cleanTarget);
-      const isDateMatch = gCleanTarget === activeDinnerKey || 
-                          activeDinnerKey.includes(gCleanTarget) ||
-                          gCleanTarget.includes(activeDinnerKey);
+      const gTargetClean = extractCleanDate(g.target || g.cleanTarget);
+      const isDateMatch = (
+        gTargetClean === targetDateClean ||
+        gTargetClean.includes(targetDateClean) ||
+        targetDateClean.includes(gTargetClean)
+      );
+
       const isGroupMatch = (g.group || 'chicos').toLowerCase() === myGroup;
+
       if (isDateMatch && isGroupMatch) {
         const normG = normalizeName(g.name);
-        if (!guestMap.has(normG)) {
+        if (!guestMap.has(normG) && !yesMap.has(normG)) {
           guestMap.set(normG, g);
+          // Si estaba en pendientes por algún motivo, se retira
+          pendingMap.delete(normG);
         }
       }
     });
@@ -4158,7 +4171,7 @@ export default function App() {
                         Privados para convocados. Sin interferir en rankings ni bote regular.
                       </p>
                     </div>
-                    <span className="text-3xl">⚔️</span>
+                    <span className="text-3xl">⚔️️</span>
                   </div>
                   <button
                     onClick={() => setShowTournamentWizard(true)}
@@ -4377,7 +4390,7 @@ export default function App() {
                                           : 'bg-white text-slate-700 border border-slate-200'
                                       }`}
                                     >
-                                      Me rajo 🏃‍♂️
+                                      Me rajo 🏃‍♂️️
                                     </button>
                                   </div>
                                 </div>
