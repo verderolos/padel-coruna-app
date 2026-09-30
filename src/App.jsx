@@ -75,8 +75,8 @@ function extractCleanDate(dateStr) {
   if (!dateStr) return 'Sin fecha';
   return String(dateStr)
     .toLowerCase()
-    .replace(/★.*$/g, '') // Elimina etiquetas como ★ (Siguiente recomendada)
-    .replace(/\(.*?\)/g, '') // Elimina cualquier texto entre paréntesis
+    .replace(/★.*$/g, '')
+    .replace(/\(.*?\)/g, '')
     .replace(/\b\d{1,2}:\d{2}\b/g, '')
     .replace(/[📅🗓️📍,]/g, ' ')
     .replace(/\s+/g, ' ')
@@ -178,6 +178,17 @@ function parseMatchTiming(dateStr) {
     canReport: diffHours >= 0,
     shouldPrompt: diffHours >= 2.0
   };
+}
+
+function isTournamentStarted(tournament) {
+  if (!tournament) return true;
+  if (!tournament.startDate) return true; // Retrocompatibilidad con torneos antiguos sin fecha estricta
+
+  const timeStr = tournament.startTime || '09:00';
+  const startDateTime = new Date(`${tournament.startDate}T${timeStr}:00`);
+
+  if (isNaN(startDateTime.getTime())) return true;
+  return new Date() >= startDateTime;
 }
 
 function isCurrentWeek(dateStr) {
@@ -889,11 +900,16 @@ function PinModal({ isOpen, onClose, targetUser, onPinSuccess, apiUrl }) {
   );
 }
 
-// Modal Creador de Torneos con Cupo Objetivo de Jugadores y Contador en Vivo
+// Modal Creador de Torneos con Fecha y Hora de Inicio
 function TournamentCreatorModal({ isOpen, onClose, allPlayers, tournaments, onTournamentCreated, currentUserId, onSaveLevel }) {
   const [step, setStep] = useState(1);
   const [tName, setTName] = useState('Torneo CTC Fin de Semana');
   const [tournamentMode, setTournamentMode] = useState('pozo');
+
+  // FECHA Y HORA DE INICIO OBLIGATORIAS
+  const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
+  const [tDate, setTDate] = useState(todayStr);
+  const [tStartTime, setTStartTime] = useState('10:00');
 
   // Control de pistas
   const [tCourts, setTCourts] = useState(3);
@@ -915,7 +931,6 @@ function TournamentCreatorModal({ isOpen, onClose, allPlayers, tournaments, onTo
   const effectiveMatchTime = isCustomMatchTime ? (Number(customMatchTime) || 20) : Number(tMatchTime);
   const estimatedRounds = Math.max(1, Math.floor(effectiveDuration / effectiveMatchTime));
 
-  // Al cambiar las pistas, autocompletar jugadores si no se ha forzado manualmente
   const handleCourtsChange = (newCourts) => {
     const val = Math.min(12, Math.max(1, newCourts));
     setTCourts(val);
@@ -1205,7 +1220,9 @@ function TournamentCreatorModal({ isOpen, onClose, allPlayers, tournaments, onTo
       id: 'TORNEO_' + Date.now(),
       name: tName,
       mode: tournamentMode,
-      date: 'Fin de Semana CTC',
+      startDate: tDate,
+      startTime: tStartTime,
+      date: `${tDate} ${tStartTime}`,
       courts: Number(tCourts) || 1,
       targetPlayers: Number(targetPlayers) || ((Number(tCourts) || 1) * 4),
       duration: effectiveDuration,
@@ -1242,7 +1259,7 @@ function TournamentCreatorModal({ isOpen, onClose, allPlayers, tournaments, onTo
                   Aviso de Privacidad Absoluta
                 </span>
                 <p className="text-[11px] text-amber-900 mt-0.5 leading-relaxed">
-                  Este torneo será <strong>completamente privado</strong>. Los jugadores que <strong>no sean convocados</strong> a este evento <strong>NO verán el torneo</strong> en su aplicación para garantizar la máxima discreción.
+                  Este torneo será <strong>completamente privado</strong>. Los jugadores que <strong>no sean convocados</strong> a este evento <strong>NO verán el torneo</strong> en su aplicación.
                 </p>
               </div>
             </div>
@@ -1255,6 +1272,37 @@ function TournamentCreatorModal({ isOpen, onClose, allPlayers, tournaments, onTo
                 onChange={e => setTName(e.target.value)}
                 className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 font-bold text-slate-900"
               />
+            </div>
+
+            {/* CONTROL OBLIGATORIO DE FECHA Y HORA DE INICIO */}
+            <div className="grid grid-cols-2 gap-2 bg-purple-50/70 p-3 rounded-2xl border border-purple-200">
+              <div>
+                <label className="block text-[10px] font-black text-purple-950 uppercase tracking-wide mb-1">
+                  📅 Fecha de Inicio *
+                </label>
+                <input
+                  type="date"
+                  required
+                  value={tDate}
+                  onChange={e => setTDate(e.target.value)}
+                  className="w-full bg-white border border-purple-300 rounded-xl p-2 font-bold text-slate-800 text-xs"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-black text-purple-950 uppercase tracking-wide mb-1">
+                  ⏰ Hora de Inicio *
+                </label>
+                <input
+                  type="time"
+                  required
+                  value={tStartTime}
+                  onChange={e => setTStartTime(e.target.value)}
+                  className="w-full bg-white border border-purple-300 rounded-xl p-2 font-bold text-slate-800 text-xs"
+                />
+              </div>
+              <span className="text-[9px] text-purple-700 font-semibold col-span-2 mt-0.5 block">
+                🔒 Los marcadores no podrán reportarse hasta que comience el torneo a esta hora.
+              </span>
             </div>
 
             <div>
@@ -1469,15 +1517,6 @@ function TournamentCreatorModal({ isOpen, onClose, allPlayers, tournaments, onTo
               </div>
             </div>
 
-            <div className="bg-blue-50/70 border border-blue-200 p-2.5 rounded-xl text-center">
-              <span className="text-[11px] font-extrabold text-blue-950 block">
-                📊 Proyección: ~{estimatedRounds} rondas de juego
-              </span>
-              <span className="text-[10px] text-blue-800">
-                {effectiveDuration} min totales · {effectiveMatchTime} min/partido · {Number(tCourts) || 1} pistas disponibles
-              </span>
-            </div>
-
             <button
               onClick={() => setStep(2)}
               className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-xs transition mt-2"
@@ -1489,7 +1528,6 @@ function TournamentCreatorModal({ isOpen, onClose, allPlayers, tournaments, onTo
 
         {step === 2 && (
           <div className="space-y-3.5 text-xs">
-            {/* CONTADOR EN VIVO DE CONVOCADOS VS OBJETIVO */}
             <div className={`p-3 rounded-2xl border text-center transition flex justify-between items-center ${
               selectedCount < neededForCourts
                 ? 'bg-amber-50 border-amber-300 text-amber-950'
@@ -1535,66 +1573,6 @@ function TournamentCreatorModal({ isOpen, onClose, allPlayers, tournaments, onTo
               </div>
             </form>
 
-            {tournamentMode === 'equipos' && (
-              <div className="bg-slate-900 text-white p-3.5 rounded-2xl space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-black uppercase text-amber-400">
-                    👑 Selección de Capitanes & Balance
-                  </span>
-                  <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full ${
-                    parseFloat(teamStats.delta) <= 0.2 ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'
-                  }`}>
-                    Δ {teamStats.delta} {parseFloat(teamStats.delta) <= 0.2 ? '✓ Equilibrado' : '⚠️ Desnivelado'}
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2 text-slate-800">
-                  <div className="bg-blue-50 p-2.5 rounded-xl border border-blue-300 space-y-1">
-                    <span className="text-[10px] font-black text-blue-900 uppercase block">Capitán Azul 🔵</span>
-                    <select
-                      value={captain1Id}
-                      onChange={e => setCaptain1Id(e.target.value)}
-                      className="w-full bg-white border border-blue-300 rounded-lg p-1 text-[11px] font-bold"
-                    >
-                      {selectedPlayers.map(p => (
-                        <option key={p.id} value={p.id}>{p.name}</option>
-                      ))}
-                    </select>
-                    <div className="flex justify-between items-center text-[10px] font-bold text-blue-950 pt-1">
-                      <span>{teamStats.team1Players.length} jugadores</span>
-                      <span className="bg-blue-200 px-1.5 py-0.5 rounded text-blue-900">★ {teamStats.avgT1}</span>
-                    </div>
-                  </div>
-
-                  <div className="bg-red-50 p-2.5 rounded-xl border border-red-300 space-y-1">
-                    <span className="text-[10px] font-black text-red-900 uppercase block">Capitán Rojo 🔴</span>
-                    <select
-                      value={captain2Id}
-                      onChange={e => setCaptain2Id(e.target.value)}
-                      className="w-full bg-white border border-red-300 rounded-lg p-1 text-[11px] font-bold"
-                    >
-                      {selectedPlayers.map(p => (
-                        <option key={p.id} value={p.id}>{p.name}</option>
-                      ))}
-                    </select>
-                    <div className="flex justify-between items-center text-[10px] font-bold text-red-950 pt-1">
-                      <span>{teamStats.team2Players.length} jugadores</span>
-                      <span className="bg-red-200 px-1.5 py-0.5 rounded text-red-900">★ {teamStats.avgT2}</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            <div className="flex justify-between items-center pt-1">
-              <div>
-                <span className="font-black text-slate-800 uppercase text-[11px] block">
-                  Lista de Jugadores
-                </span>
-                <span className="text-[9px] text-slate-400">Nivel de torneos calibrado (oculto en perfil público)</span>
-              </div>
-            </div>
-
             <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
               {participants.map(p => (
                 <div
@@ -1626,30 +1604,6 @@ function TournamentCreatorModal({ isOpen, onClose, allPlayers, tournaments, onTo
                       <StarRating value={p.level} onChange={(lvl) => handleLevelChange(p.id, lvl)} />
                     )}
                   </div>
-
-                  {tournamentMode === 'equipos' && p.selected && (
-                    <div className="flex items-center justify-end gap-1.5 pt-1 border-t border-slate-100">
-                      <span className="text-[9px] font-bold text-slate-400">Escuadra:</span>
-                      <button
-                        type="button"
-                        onClick={() => handleTeamToggle(p.id, 1)}
-                        className={`px-2 py-0.5 rounded text-[10px] font-black transition ${
-                          p.assignedTeam === 1 ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600'
-                        }`}
-                      >
-                        🔵 Azul
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleTeamToggle(p.id, 2)}
-                        className={`px-2 py-0.5 rounded text-[10px] font-black transition ${
-                          p.assignedTeam === 2 ? 'bg-red-600 text-white' : 'bg-slate-100 text-slate-600'
-                        }`}
-                      >
-                        🔴 Rojo
-                      </button>
-                    </div>
-                  )}
                 </div>
               ))}
             </div>
@@ -1675,9 +1629,6 @@ function TournamentCreatorModal({ isOpen, onClose, allPlayers, tournaments, onTo
                 Gemini procesará las reglas oficiales del formato, el número de pistas y la nivelación por estrellas de los{' '}
                 <strong>{selectedPlayers.length} jugadores</strong> convocados.
               </p>
-              <div className="bg-white/80 p-2 rounded-xl text-[10px] font-mono text-purple-900 border border-purple-200">
-                Duración total: {effectiveDuration} min | Por partido: {effectiveMatchTime} min | Pistas: {Number(tCourts) || 1} | Rondas estimadas: ~{estimatedRounds}
-              </div>
             </div>
 
             <div>
@@ -1734,7 +1685,7 @@ function TournamentCreatorModal({ isOpen, onClose, allPlayers, tournaments, onTo
                   ✅ Cuadrante Listo ({tournamentMode.toUpperCase()})
                 </span>
                 <span className="text-[10px] text-emerald-700">
-                  {generatedFixture.length} rondas generadas en {Number(tCourts) || 1} pistas
+                  Inicio: {tDate} a las {tStartTime}
                 </span>
               </div>
               <button onClick={() => setStep(3)} className="text-[10px] bg-white border border-emerald-300 text-emerald-800 font-bold px-2 py-0.5 rounded-md">
@@ -1759,16 +1710,6 @@ function TournamentCreatorModal({ isOpen, onClose, allPlayers, tournaments, onTo
                   ))}
                 </div>
               ))}
-            </div>
-
-            <div className="bg-amber-50 p-2.5 rounded-xl border border-amber-200 flex justify-between items-center">
-              <div>
-                <span className="font-extrabold text-amber-950 text-xs block">🍻 3º Tiempo del Torneo</span>
-                <p className="text-[10px] text-amber-800">Mesa con confirmación individual.</p>
-              </div>
-              <span className="text-xs bg-amber-100 text-amber-900 font-black px-2 py-0.5 rounded-lg">
-                {selectedPlayers.length} a cenar
-              </span>
             </div>
 
             <div className="flex gap-2 pt-1">
@@ -2129,8 +2070,15 @@ export default function App() {
   const [newUserPlaytomic, setNewUserPlaytomic] = useState('');
   const [newUserPin, setNewUserPin] = useState('');
 
+  // CREACIÓN DE PARTIDO INTELIGENTE PLAYTOMIC
   const [showAddModal, setShowAddModal] = useState(false);
   const [playtomicText, setPlaytomicText] = useState('');
+  const [manualDate, setManualDate] = useState('');
+  const [manualLocation, setManualLocation] = useState('Real Club de Tenis de La Coruña');
+  const [manualP1, setManualP1] = useState('');
+  const [manualP2, setManualP2] = useState('');
+  const [manualP3, setManualP3] = useState('');
+  const [manualP4, setManualP4] = useState('');
 
   const [showReloadPlaytomicModal, setShowReloadPlaytomicModal] = useState(false);
   const [reloadPlaytomicText, setReloadPlaytomicText] = useState('');
@@ -2173,7 +2121,6 @@ export default function App() {
     }
   }, []);
 
-  // AISLAMIENTO ABSOLUTO PARA INVITADOS O ACCESOS POR ENLACE PERSONAL
   const isTournamentGuestSession = useMemo(() => {
     if (inviteTournamentId) return true;
     if (currentUser && (currentUser.group || '').toLowerCase() === 'torneo') return true;
@@ -2193,7 +2140,6 @@ export default function App() {
     }
   }, [currentUser, isThursdayMember]);
 
-  // LECTURA DIRECTA SIN CACHÉ
   const fetchData = async (silent = false) => {
     try {
       if (!silent) setSyncing(true);
@@ -2361,21 +2307,50 @@ export default function App() {
     }
   };
 
+  // DETECTOR DE SI SOLO SE HA PEGADO EL ENLACE DE PLAYTOMIC
+  const isOnlyPlaytomicLink = useMemo(() => {
+    const trimmed = playtomicText.trim();
+    if (!trimmed) return false;
+    const isUrl = trimmed.startsWith('http://') || trimmed.startsWith('https://');
+    const hasPlayerCheckmarks = trimmed.includes('✅');
+    const hasDateIcons = trimmed.includes('📅') || trimmed.includes('🗓️') || trimmed.toLowerCase().includes('jueves') || trimmed.toLowerCase().includes('martes');
+    return isUrl && !hasPlayerCheckmarks && !hasDateIcons;
+  }, [playtomicText]);
+
   const handleAddPlaytomicMatch = async (e) => {
     e.preventDefault();
     if (!playtomicText.trim()) return;
+
+    let payloadText = playtomicText.trim();
+
+    // Si pegó solo el link, construimos el mensaje simulado con los campos manuales
+    if (isOnlyPlaytomicLink) {
+      const d = manualDate.trim() || 'Jueves 21:00';
+      const loc = manualLocation.trim() || 'Real Club de Tenis de La Coruña';
+      const p1 = manualP1.trim() ? `✅ ${manualP1.trim()}` : '';
+      const p2 = manualP2.trim() ? `✅ ${manualP2.trim()}` : '';
+      const p3 = manualP3.trim() ? `✅ ${manualP3.trim()}` : '';
+      const p4 = manualP4.trim() ? `✅ ${manualP4.trim()}` : '';
+
+      payloadText = `📅 ${d}\n📍 ${loc}\n${playtomicText.trim()}\n${p1}\n${p2}\n${p3}\n${p4}`.trim();
+    }
 
     setSyncing(true);
     try {
       const res = await fetch(apiUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({ action: 'CREAR_PARTIDO_PLAYTOMIC', textoCrudo: playtomicText, grupo: myGroup })
+        body: JSON.stringify({ action: 'CREAR_PARTIDO_PLAYTOMIC', textoCrudo: payloadText, grupo: myGroup })
       });
       const data = await res.json();
       if (data.ok) {
         setShowAddModal(false);
         setPlaytomicText('');
+        setManualDate('');
+        setManualP1('');
+        setManualP2('');
+        setManualP3('');
+        setManualP4('');
         fetchData();
       }
     } catch (err) {
@@ -2456,13 +2431,12 @@ export default function App() {
     }
   };
 
-  // 3. APUNTARSE A CENAR SIN JUGAR CON PERSISTENCIA
+  // APUNTARSE A CENAR SIN JUGAR CON PERSISTENCIA
   const handleToggleSoloCena = async (rawDateStr, newState) => {
     if (!currentUser || !rawDateStr) return;
     const cleanDate = extractCleanDate(rawDateStr);
     const normMe = normalizeName(currentUser.name);
 
-    // 1. Actualización visual instantánea de la lista de comensales
     setAllDinnerGuests(prev => {
       const filtered = prev.filter(g => {
         const guestNameNorm = normalizeName(g.name);
@@ -2485,7 +2459,6 @@ export default function App() {
       return filtered;
     });
 
-    // 2. Persistencia en la tabla Asistencia del backend y refresco
     try {
       setSyncing(true);
       const res = await fetch(apiUrl, {
@@ -2502,7 +2475,7 @@ export default function App() {
       });
       const data = await res.json();
       if (data.ok) {
-        await fetchData(true); // Recarga los datos oficiales
+        await fetchData(true);
       }
     } catch (e) {
       console.error('Error al actualizar cena sin partido:', e);
@@ -2641,7 +2614,6 @@ export default function App() {
     window.open(`https://api.whatsapp.com/send?text=${encodeURI(msg)}`, '_blank');
   };
 
-  // 1. Crear nuevo torneo (Optimista + Nube)
   const handleTournamentCreated = async (newT) => {
     const updated = [newT, ...activeTournaments];
     setActiveTournaments(updated);
@@ -2660,7 +2632,6 @@ export default function App() {
     }
   };
 
-  // 2. Eliminar torneo (Optimista + Nube)
   const handleDeleteTournament = async (tId) => {
     const updated = activeTournaments.filter(t => t.id !== tId);
     setActiveTournaments(updated);
@@ -2678,7 +2649,6 @@ export default function App() {
     }
   };
 
-  // 1. GENERAR ENLACE PERSONAL PARA CADA JUGADOR DEL TORNEO (?torneo=ID&p=PLAYER_ID)
   const handleSharePlayerPersonalLink = (tournamentItem, playerItem) => {
     const link = `${window.location.origin}${window.location.pathname}?torneo=${tournamentItem.id}&p=${playerItem.id}`;
     const cleanPhone = (playerItem.phone || '').replace(/\D/g, '');
@@ -2703,7 +2673,6 @@ export default function App() {
     }
   };
 
-  // 3. Guardar marcador de un partido del torneo (Optimista + Nube)
   const handleSaveTournamentScore = async (winningTeamNum, composedScoreText) => {
     if (!activeTournamentId || !reportingTournamentMatch) return;
     const matchId = reportingTournamentMatch.id;
@@ -2794,7 +2763,6 @@ export default function App() {
     }
   };
 
-  // 4. Actualizar cena del torneo (Optimista + Nube)
   const handleUpdateTournamentDinner = async (tId, participantId, newDinnerStatus) => {
     let tournamentToSync = null;
 
@@ -2974,7 +2942,6 @@ export default function App() {
     return groupMatches.filter(m => extractCleanDate(m.date) === activeDinnerKey);
   }, [groupMatches, activeDinnerKey]);
 
-  // CÓMPUTO COMPLETO DE MESA UNIFICADA (PARTIDOS + ASISTENCIA DIRECTA CENA)
   const { dinnerYes, dinnerNo, dinnerPending, dinnerGuests } = useMemo(() => {
     const yesMap = new Map();
     const noMap = new Map();
@@ -2983,7 +2950,6 @@ export default function App() {
 
     const targetDateClean = extractCleanDate(activeDinnerKey);
 
-    // 1. Jugadores con partido en pista
     matchesForDinner.forEach(m => {
       (m.players || []).forEach(p => {
         const normKey = normalizeName(p.name);
@@ -3011,7 +2977,6 @@ export default function App() {
       });
     });
 
-    // 2. Comensales registrados para la cena sin partido (vía CENA_)
     (allDinnerGuests || []).forEach(g => {
       const gTargetClean = extractCleanDate(g.target || g.cleanTarget);
       const isDateMatch = (
@@ -3026,7 +2991,6 @@ export default function App() {
         const normG = normalizeName(g.name);
         if (!guestMap.has(normG) && !yesMap.has(normG)) {
           guestMap.set(normG, g);
-          // Si estaba en pendientes por algún motivo, se retira
           pendingMap.delete(normG);
         }
       }
@@ -3075,7 +3039,6 @@ export default function App() {
     return list;
   }, [players, activeTournaments]);
 
-  // ONBOARDING DE INVITADO DIRECTO (?torneo=ID&p=PLAYER_ID o ?torneo=ID)
   const invitedTournament = useMemo(() => {
     if (!inviteTournamentId) return null;
     return activeTournaments.find(t => t.id === inviteTournamentId) || null;
@@ -3087,7 +3050,6 @@ export default function App() {
   }, [invitedTournament, invitePlayerId]);
 
   if (!currentUser) {
-    // 1. Acceso con enlace personal individual (?torneo=ID&p=PLAYER_ID)
     if (invitedTournament && invitedPlayerSlot) {
       const clubUser = players.find(u => u.id === invitedPlayerSlot.id || normalizeName(u.name) === normalizeName(invitedPlayerSlot.name));
       const targetUser = clubUser || {
@@ -3096,7 +3058,7 @@ export default function App() {
         photo: invitedPlayerSlot.photo || '',
         pin: '',
         group: 'torneo',
-        titulo: 'Invitado al Torneo ⚔️',
+        titulo: 'Invitado al Torneo ⚔️️',
         level: invitedPlayerSlot.level || 3.0
       };
 
@@ -3137,7 +3099,6 @@ export default function App() {
       );
     }
 
-    // 2. Acceso con enlace de torneo general (?torneo=ID sin jugador específico)
     if (invitedTournament) {
       return (
         <div className="min-h-screen bg-slate-900 text-white flex flex-col justify-center items-center p-4 text-left">
@@ -3203,7 +3164,6 @@ export default function App() {
       );
     }
 
-    // 3. Login General del Club
     return (
       <div className="min-h-screen bg-slate-900 text-white flex flex-col justify-center items-center p-4">
         <div className="max-w-md w-full bg-slate-800 rounded-3xl p-6 border border-slate-700 shadow-2xl">
@@ -4171,7 +4131,7 @@ export default function App() {
                         Privados para convocados. Sin interferir en rankings ni bote regular.
                       </p>
                     </div>
-                    <span className="text-3xl">⚔️️</span>
+                    <span className="text-3xl">⚔️</span>
                   </div>
                   <button
                     onClick={() => setShowTournamentWizard(true)}
@@ -4204,14 +4164,22 @@ export default function App() {
                         p => p.id === currentUser?.id || normalizeName(p.name) === normalizeName(currentUser?.name)
                       );
                       const totalDinners = (t.participants || []).filter(p => p.dinner === 'SI').length;
+                      const isStarted = isTournamentStarted(t);
 
                       return (
                         <div key={t.id} className="bg-white rounded-3xl p-4 border border-slate-200 shadow-xs space-y-3">
                           <div className="flex justify-between items-start">
                             <div>
-                              <span className="text-[10px] font-black uppercase tracking-wider bg-purple-50 text-purple-700 px-2.5 py-0.5 rounded-lg border border-purple-200">
-                                {t.mode === 'pozo' ? 'Pozo Continuo' : t.mode === 'americano' ? 'Americano' : t.mode === 'eliminatorio' ? 'Fases Finales' : 'Por Equipos (Ryder)'} · {t.courts} pistas
-                              </span>
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="text-[10px] font-black uppercase tracking-wider bg-purple-50 text-purple-700 px-2.5 py-0.5 rounded-lg border border-purple-200">
+                                  {t.mode === 'pozo' ? 'Pozo Continuo' : t.mode === 'americano' ? 'Americano' : t.mode === 'eliminatorio' ? 'Fases Finales' : 'Por Equipos (Ryder)'} · {t.courts} pistas
+                                </span>
+                                {!isStarted && (
+                                  <span className="text-[9px] font-black uppercase bg-amber-100 text-amber-800 px-2 py-0.5 rounded-md border border-amber-300">
+                                    ⏳ Empieza {t.startDate || ''} {t.startTime ? `a las ${t.startTime}` : ''}
+                                  </span>
+                                )}
+                              </div>
                               <h3 className="text-base font-black text-slate-900 mt-1">{t.name}</h3>
                               <p className="text-xs text-slate-500 font-semibold">
                                 👥 {t.participants.length} participantes · ⏰ {t.duration} min · 🍻 {totalDinners} a cenar
@@ -4262,7 +4230,7 @@ export default function App() {
                             </button>
                           </div>
 
-                          {/* SUBTAB 1: PARTIDOS & MARCADORES */}
+                          {/* SUBTAB 1: PARTIDOS & MARCADORES CON BLOQUEO HORARIO */}
                           {curSubTab === 'partidos' && (
                             <div className="space-y-2.5">
                               {t.mode === 'equipos' && t.teams && t.teams.length === 2 && (
@@ -4293,10 +4261,15 @@ export default function App() {
                                       <div
                                         key={m.id || mIdx}
                                         onClick={() => {
+                                          if (!isStarted && m.status !== 'FINALIZADO') return;
                                           setActiveTournamentId(t.id);
                                           setReportingTournamentMatch(m);
                                         }}
-                                        className="bg-white p-2.5 rounded-xl border border-slate-200 hover:border-purple-300 cursor-pointer shadow-2xs transition flex flex-col gap-1"
+                                        className={`bg-white p-2.5 rounded-xl border shadow-2xs transition flex flex-col gap-1 ${
+                                          !isStarted && m.status !== 'FINALIZADO'
+                                            ? 'opacity-70 cursor-not-allowed border-slate-200'
+                                            : 'hover:border-purple-300 cursor-pointer border-slate-200'
+                                        }`}
                                       >
                                         <div className="flex items-center justify-between text-[11px] font-bold">
                                           <span className="text-[9px] bg-purple-50 text-purple-700 font-black px-1.5 py-0.5 rounded">
@@ -4316,9 +4289,15 @@ export default function App() {
                                           <span className={`text-[10px] px-2 py-0.5 rounded font-black ${
                                             m.status === 'FINALIZADO'
                                               ? 'bg-emerald-100 text-emerald-800'
+                                              : !isStarted
+                                              ? 'bg-slate-100 text-slate-400'
                                               : 'bg-slate-100 text-slate-500 hover:bg-purple-100 hover:text-purple-800'
                                           }`}>
-                                            {m.status === 'FINALIZADO' ? (m.score || '✓ Fin') : 'Poner resultado ✍️'}
+                                            {m.status === 'FINALIZADO' 
+                                              ? (m.score || '✓ Fin') 
+                                              : !isStarted 
+                                              ? `🔒 Bloqueado hasta las ${t.startTime || 'inicio'}` 
+                                              : 'Poner resultado ✍️'}
                                           </span>
                                         </div>
                                         {m.rule && <span className="text-[9px] text-slate-400 italic block">{m.rule}</span>}
@@ -4330,7 +4309,7 @@ export default function App() {
                             </div>
                           )}
 
-                          {/* SUBTAB 2: LISTA DE JUGADORES Y ENVÍO DE ENLACES INDIVIDUALES */}
+                          {/* SUBTAB 2: LISTA DE JUGADORES */}
                           {curSubTab === 'jugadores' && (
                             <div className="space-y-2 pt-1 text-xs">
                               <p className="text-[11px] text-slate-500 leading-tight">
@@ -4390,7 +4369,7 @@ export default function App() {
                                           : 'bg-white text-slate-700 border border-slate-200'
                                       }`}
                                     >
-                                      Me rajo 🏃‍♂️️
+                                      Me rajo 🏃‍♂️
                                     </button>
                                   </div>
                                 </div>
@@ -4526,16 +4505,17 @@ export default function App() {
         </div>
       )}
 
-      {/* MODAL AÑADIR PARTIDO REGULAR */}
+      {/* MODAL AÑADIR PARTIDO REGULAR (CON DETECCIÓN INTELIGENTE DE SOLO ENLACE) */}
       {showAddModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-sm w-full p-5 shadow-2xl">
+          <div className="bg-white rounded-3xl max-w-sm w-full p-5 shadow-2xl max-h-[92vh] overflow-y-auto">
             <div className="flex justify-between items-center mb-3">
               <h3 className="text-base font-black text-slate-900">Añadir Partido Playtomic</h3>
               <button onClick={() => setShowAddModal(false)} className="text-slate-400 hover:text-slate-600 text-xl font-bold">&times;</button>
             </div>
-            <form onSubmit={handleAddPlaytomicMatch} className="space-y-3">
-              <div className="bg-slate-50 border border-slate-200 rounded-xl p-2.5 flex items-center justify-between text-xs">
+
+            <form onSubmit={handleAddPlaytomicMatch} className="space-y-3 text-xs">
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-2.5 flex items-center justify-between">
                 <span className="font-bold text-slate-600">Grupo asignado:</span>
                 <span className="font-black text-blue-700 uppercase bg-blue-100 px-2 py-0.5 rounded-md">
                   {myGroup === 'chicas' ? 'Chicas (Martes)' : 'Chicos (Jueves)'}
@@ -4543,9 +4523,11 @@ export default function App() {
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Texto de Playtomic</label>
+                <label className="block font-bold text-slate-700 mb-1">
+                  Texto o Enlace de Playtomic
+                </label>
                 <textarea
-                  rows={6}
+                  rows={4}
                   required
                   value={playtomicText}
                   onChange={(e) => setPlaytomicText(e.target.value)}
@@ -4554,9 +4536,100 @@ export default function App() {
                 />
               </div>
 
+              {/* DETECCIÓN DE SI SOLO PEGÓ EL LINK */}
+              {isOnlyPlaytomicLink ? (
+                <div className="bg-amber-50 border border-amber-300 rounded-2xl p-3 space-y-2.5 animate-fadeIn">
+                  <div className="flex items-start gap-1.5 text-amber-900">
+                    <span className="text-base shrink-0">💡</span>
+                    <p className="text-[11px] leading-tight">
+                      <strong>Has pegado solo el enlace.</strong> Playtomic no incluye los jugadores en la opción "Copiar enlace". Para la próxima, usa la opción <strong>"Compartir"</strong> en Playtomic.
+                    </p>
+                  </div>
+                  <p className="text-[10px] font-bold text-amber-950 uppercase tracking-wide">
+                    Indica los datos para crearlo ahora mismo:
+                  </p>
+
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-600 mb-0.5">Fecha y Hora (ej: Jueves 21:00)</label>
+                    <input
+                      type="text"
+                      required
+                      value={manualDate}
+                      onChange={e => setManualDate(e.target.value)}
+                      placeholder="Ej: Jueves, 08 oct 21:00"
+                      className="w-full bg-white border border-slate-300 rounded-xl p-2 font-semibold text-xs"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-600 mb-0.5">Lugar / Club</label>
+                    <input
+                      type="text"
+                      value={manualLocation}
+                      onChange={e => setManualLocation(e.target.value)}
+                      placeholder="Real Club de Tenis de La Coruña"
+                      className="w-full bg-white border border-slate-300 rounded-xl p-2 font-semibold text-xs"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-1.5">
+                    <div>
+                      <label className="block text-[10px] font-bold text-blue-700">Jugador 1 (P1)</label>
+                      <input
+                        type="text"
+                        required
+                        value={manualP1}
+                        onChange={e => setManualP1(e.target.value)}
+                        placeholder="Nombre 1"
+                        className="w-full bg-white border border-slate-300 rounded-xl p-1.5 font-semibold text-xs"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-blue-700">Jugador 2 (P1)</label>
+                      <input
+                        type="text"
+                        required
+                        value={manualP2}
+                        onChange={e => setManualP2(e.target.value)}
+                        placeholder="Nombre 2"
+                        className="w-full bg-white border border-slate-300 rounded-xl p-1.5 font-semibold text-xs"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-amber-700">Jugador 3 (P2)</label>
+                      <input
+                        type="text"
+                        required
+                        value={manualP3}
+                        onChange={e => setManualP3(e.target.value)}
+                        placeholder="Nombre 3"
+                        className="w-full bg-white border border-slate-300 rounded-xl p-1.5 font-semibold text-xs"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-amber-700">Jugador 4 (P2)</label>
+                      <input
+                        type="text"
+                        required
+                        value={manualP4}
+                        onChange={e => setManualP4(e.target.value)}
+                        placeholder="Nombre 4"
+                        className="w-full bg-white border border-slate-300 rounded-xl p-1.5 font-semibold text-xs"
+                      />
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="bg-slate-50 border border-slate-200 rounded-xl p-2 text-[10px] text-slate-500">
+                  ℹ Recuerda usar el botón <strong>"Compartir"</strong> en Playtomic para importar automáticamente jugadores, fecha y ubicación.
+                </div>
+              )}
+
               <div className="flex gap-2 pt-1">
-                <button type="button" onClick={() => setShowAddModal(false)} className="flex-1 py-2 bg-slate-100 text-slate-600 rounded-xl text-xs">Cancelar</button>
-                <button type="submit" disabled={syncing} className="flex-1 py-2 bg-blue-600 text-white rounded-xl text-xs font-bold">Crear</button>
+                <button type="button" onClick={() => setShowAddModal(false)} className="flex-1 py-2 bg-slate-100 text-slate-600 rounded-xl text-xs font-bold">Cancelar</button>
+                <button type="submit" disabled={syncing} className="flex-1 py-2 bg-blue-600 text-white rounded-xl text-xs font-bold">
+                  {syncing ? 'Creando...' : 'Crear Partido'}
+                </button>
               </div>
             </form>
           </div>
