@@ -4312,35 +4312,72 @@ export default function App() {
                           {/* SUBTAB 2: LISTA DE JUGADORES */}
                           {curSubTab === 'jugadores' && (
                             <div className="space-y-2 pt-1 text-xs">
-                              <p className="text-[11px] text-slate-500 leading-tight">
-                                Envía a cada jugador su <strong>enlace personal intransferible</strong> para que acceda directamente, cree su PIN y quede enlazado a su rating y asistencia:
-                              </p>
+                                <p className="text-[11px] text-slate-500 leading-tight">
+                                    Envía a cada jugador su <strong>enlace personal intransferible</strong> para que acceda directamente, cree su PIN y quede enlazado a su rating y asistencia:
+                                </p>
 
-                              <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1">
-                                {(t.participants || []).map(p => (
-                                  <div key={p.id} className="p-2 rounded-xl border border-slate-200 bg-white flex items-center justify-between">
-                                    <div className="flex items-center gap-2">
-                                      <UserAvatar name={p.name} photo={p.photo} size="xs" />
-                                      <div>
-                                        <span className="font-bold text-slate-800 text-[11px] block">{p.name}</span>
-                                        <span className="text-[9px] text-slate-400">
-                                          Nivel: ★ {Number(p.level).toFixed(1)} · {p.isGuest ? 'Invitado' : 'Club'}
-                                        </span>
-                                      </div>
+                            <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1">
+                              {(t.participants || []).map(p => (
+                                <div key={p.id} className="p-2 rounded-xl border border-slate-200 bg-white flex items-center justify-between">
+                                  <div className="flex items-center gap-2">
+                                    <UserAvatar name={p.name} photo={p.photo} size="xs" />
+                                    <div>
+                                      <span className="font-bold text-slate-800 text-[11px] block">{p.name}</span>
+                                      <span className="text-[9px] text-slate-400">
+                                        Nivel: ★ {Number(p.level).toFixed(1)} · {p.isGuest ? 'Invitado' : 'Club'}
+                                      </span>
                                     </div>
-
-                                    <button
-                                      onClick={() => handleSharePlayerPersonalLink(t, p)}
-                                      className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-[10px] rounded-lg shadow-xs flex items-center gap-1 transition"
-                                      title="Enviar enlace por WhatsApp"
-                                    >
-                                      <span>📲</span> Enviar Link
-                                    </button>
                                   </div>
-                                ))}
-                              </div>
+
+                                  <button
+                                    onClick={() => handleSharePlayerPersonalLink(t, p)}
+                                    className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-[10px] rounded-lg shadow-xs flex items-center gap-1 transition"
+                                    title="Enviar enlace por WhatsApp"
+                                  >
+                                    <span>📲</span> Enviar Link
+                                  </button>
+                                </div>
+                              ))}
                             </div>
-                          )}
+                          </div>
+                        )}
+                        ```
+
+                        Por este otro, donde se retira cualquier referencia a la puntuación/estrellas:
+
+                        ```jsx
+                        {/* SUBTAB 2: LISTA DE JUGADORES */}
+                        {curSubTab === 'jugadores' && (
+                          <div className="space-y-2 pt-1 text-xs">
+                            <p className="text-[11px] text-slate-500 leading-tight">
+                              Envía a cada jugador su <strong>enlace personal intransferible</strong> para que acceda directamente, cree su PIN y quede enlazado a su rating y asistencia:
+                            </p>
+
+                            <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1">
+                              {(t.participants || []).map(p => (
+                                <div key={p.id} className="p-2 rounded-xl border border-slate-200 bg-white flex items-center justify-between">
+                                  <div className="flex items-center gap-2">
+                                    <UserAvatar name={p.name} photo={p.photo} size="xs" />
+                                    <div>
+                                      <span className="font-bold text-slate-800 text-[11px] block">{p.name}</span>
+                                      <span className="text-[9px] text-slate-400">
+                                        {p.isGuest ? 'Participante Invitado' : 'Jugador del Club'}
+                                      </span>
+                                    </div>
+                                  </div>
+
+                                  <button
+                                    onClick={() => handleSharePlayerPersonalLink(t, p)}
+                                    className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-[10px] rounded-lg shadow-xs flex items-center gap-1 transition"
+                                    title="Enviar enlace por WhatsApp"
+                                  >
+                                    <span>📲</span> Enviar Link
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
 
                           {/* SUBTAB 3: CENA DEL TORNEO */}
                           {curSubTab === 'cena' && (
