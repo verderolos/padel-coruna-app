@@ -8,33 +8,65 @@ const FALLBACK_MATCHES = [];
 
 // REGLAS OFICIALES DETALLADAS POR MODALIDAD PARA EL MOTOR DE GEMINI
 const OFFICIAL_TOURNAMENT_RULES = {
-  pozo: `REGLAS OFICIALES POZO CONTINUO (SUBE Y BAJA):
-- Pista 1 es la Pista Reina (Corona). Las demás pistas son secundarias descendentes (Pista 2, 3...).
-- Duración por partido prefijada con bocinazo de fin de turno.
-- Los ganadores de cada pista SUBEN una pista hacia la Pista 1 (los ganadores en Pista 1 defienden el trono y se quedan).
-- Los perdedores de cada pista BAJAN una pista hacia el pozo inferior (los de la última pista se quedan en ella).
-- En caso de empate al sonar el tiempo: punto de oro decisivo para determinar quién asciende.
-- Emparejamiento inicial: nivelación por estrellas para que la Pista Reina comience con las parejas de mayor handicap.`,
+  pozo: `REGLAS OFICIALES: POZO CONTINUO (SUBE Y BAJA)
+1. Estructura de Pistas:
+   - Pista 1 (Pista Reina/Corona): máxima categoría.
+   - Pistas descendentes (Pista 2, 3... N): donde N es la pista de fondo/pozo.
+2. Siembra Inicial:
+   - Ordenación por ranking/estrellas: las parejas con mayor valoración arrancan en Pista 1, descendiendo sucesivamente hasta la Pista N.
+3. Formato de Juego y Tiempo:
+   - Turnos de duración prefijada cronometrada.
+   - Fin de turno por bocina: si la bocina suena durante un punto en juego, este se finaliza.
+   - En caso de empate en juegos al sonar la bocina (o al terminar el punto en disputa), se juega un único 'Punto de Oro' con saque neutral/sorteado para definir al ganador de la pista.
+4. Mecánica de Ascensos y Descensos:
+   - Ganadores: suben una pista hacia Pista 1 (los ganadores de Pista 1 defienden posición y permanecen en ella).
+   - Perdedores: bajan una pista hacia Pista N (los perdedores de Pista N permanecen en ella).
+5. Determinación del Campeón:
+   - La pareja que finalice el último turno como ganadora en la Pista 1 (o la que acumule más minutos/turnos defendiendo la Pista Reina, según configuración del evento).`,
 
-  americano: `REGLAS OFICIALES TORNEO AMERICANO INDIVIDUAL:
-- Competición individual con rotación constante de parejas en cada turno.
-- En cada ronda, los 4 jugadores de una pista juegan juntos cambiando de compañero o rotando rivales.
-- Puntuación por juegos: cada juego ganado suma 1 punto individual en la tabla general al jugador.
-- Se compensan niveles: un jugador de mayor ranking hace dupla con uno en desarrollo frente a un dúo equilibrado similar.
-- El campeón es el jugador que más juegos individuales haya acumulado al término de todas las rondas.`,
+  americano: `REGLAS OFICIALES: TORNEO AMERICANO INDIVIDUAL
+1. Formato y Rotación:
+   - Inscripción individual con rotación automática de compañeros y rivales en cada ronda.
+   - En grupos fijos o dinámicos de 4 jugadores: cada jugador disputa 3 rondas enfrentándose a todos y jugando una ronda con cada uno.
+2. Sistema de Puntuación:
+   - Partidos disputados a un número fijo de juegos (ej. 24, 32 puntos totales) o por tiempo límite.
+   - Puntuación acumulativa individual: cada juego/punto que gana la pareja en pista suma íntegramente (+1) al casillero individual de ambos jugadores en la tabla general.
+3. Balanceo y Algoritmo de Emparejamiento:
+   - Generación de emparejamientos calculada para igualar el diferencial de ranking combinado (Jugador Top + Jugador en Desarrollo vs. Pareja de Nivel Medio).
+4. Criterios de Clasificación y Desempate:
+   - 1º: Mayor número total de puntos/juegos a favor.
+   - 2º: Mayor diferencia neta de puntos (+/-).
+   - 3º: Resultado directo en los enfrentamientos mutuos (Head-to-Head).
+   - 4º: Menor cantidad de puntos/juegos concedidos.`,
 
-  eliminatorio: `REGLAS OFICIALES CUADRO CON FASES FINALES:
-- Parejas fijas compensadas por promedio de estrellas combinadas.
-- Cabezas de serie distribuidos en Fase de Grupos para evitar cruces prematuros entre los favoritos.
-- Los 2 mejores de cada grupo clasifican a Semifinales del Cuadro Principal (Oro).
-- Los semifinalistas ganadores disputan la Gran Final por el Trofeo de Campeón 🏆.
-- Los semifinalistas perdedores disputan el partido por el 3º y 4º Puesto (Bronce 🥉).`,
+  eliminatorio: `REGLAS OFICIALES: FASE DE GRUPOS + CUADRO FINAL
+1. Configuración de Parejas y Siembra:
+   - Parejas fijas durante todo el torneo, clasificadas según el promedio ponderado de nivel de sus dos integrantes.
+   - Distribución de cabezas de serie protegidos en cada grupo para impedir cruces directos en fase regular.
+2. Fase Clasificatoria (Grupos):
+   - Sistema de liguilla (Round Robin) dentro de cada grupo.
+   - Criterios de desempate en fase de grupos: 1º Puntos obtenidos, 2º Diferencia de sets/juegos, 3º Duelo directo, 4º Mayor número de juegos ganados.
+3. Cuadros Finales:
+   - Cuadro Principal (Oro): acceden las dos mejores parejas de cada grupo (1º del Grupo A vs 2º del Grupo B, etc.).
+   - Cuadro de Consolación (Plata/Bronce, si aplica): asignación directa para 3º y 4º de grupo.
+4. Cruces y Podio:
+   - Semifinales a eliminación directa.
+   - Los ganadores avanzan a la Gran Final por el título de Campeón 🏆.
+   - Los perdedores de semifinales juegan la final de consolación por el 3º Puesto 🥉.`,
 
-  equipos: `REGLAS OFICIALES RYDER CUP POR EQUIPOS:
-- Dos escuadras enfrentadas: Equipo Azul 🔵 vs Equipo Rojo 🔴 dirigidos por sus respectivos Capitanes.
-- Cada capitán calibra y empareja a sus jugadores frente a la pareja equivalente en nivel del equipo rival.
-- Cada partido ganado en cualquier pista otorga 1 punto global al marcador de la escuadra.
-- El equipo que más victorias sume al término de todas las rondas se proclama Campeón de la Ryder CTC.`
+  equipos: `REGLAS OFICIALES: FORMATO RYDER CUP
+1. Estructura de Equipos:
+   - Enfrentamiento directo entre dos escuadras (Equipo Azul 🔵 vs. Equipo Rojo 🔴) lideradas por un Capitán.
+2. Líneas de Juego y Enfrentamientos:
+   - Cada ronda se compone de cruces simultáneos por pistas.
+   - Los capitanes presentan su alineación ordenada por nivel competitivo: Pareja 1 (Titulares/Top) vs. Pareja 1 rival, escalonando equitativamente hasta la última pista.
+3. Puntuación y Marcador Global:
+   - Victoria por pista: otorga 1 punto neto al marcador global del equipo.
+   - Empate por pista (si el formato de tiempo lo permite sin punto de oro): otorga 0.5 puntos a cada escuadra.
+   - Derrota: 0 puntos.
+4. Resolución del Torneo:
+   - Se proclama Campeón el equipo que alcance la mayoría absoluta de los puntos en juego (Umbral de Victoria = [Total Pistas × Rondas / 2] + 0.5).
+   - En caso de empate al finalizar todas las rondas: se disputa un super tie-break a 10 puntos en Pista Central con la pareja designada por cada capitán.`
 };
 
 function extractCleanDate(dateStr) {
