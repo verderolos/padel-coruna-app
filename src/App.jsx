@@ -37,16 +37,16 @@ const OFFICIAL_TOURNAMENT_RULES = {
 - El equipo que más victorias sume al término de todas las rondas se proclama Campeón de la Ryder CTC.`
 };
 
-// Limpiar y normalizar fecha
 function extractCleanDate(dateStr) {
   if (!dateStr) return 'Sin fecha';
-  return dateStr
+  return String(dateStr)
+    .toLowerCase()
     .replace(/\b\d{1,2}:\d{2}\b/g, '')
     .replace(/\(\d+min\)/gi, '')
     .replace(/,\s*$/, '')
+    .replace(/[📅🗓️📍]/g, '')
     .replace(/\s+/g, ' ')
-    .trim()
-    .toLowerCase();
+    .trim();
 }
 
 function normalizeName(str) {
@@ -78,7 +78,6 @@ function isMatchOfficial(m) {
   return false;
 }
 
-// Extraer duración del partido en minutos (ej: "(90min)") o 90 min por defecto
 function extractMatchDurationMinutes(dateStr, rawText) {
   const combined = `${dateStr || ''} ${rawText || ''}`;
   const durMatch = combined.match(/\((\d+)\s*min\)/i) || combined.match(/(\d+)\s*min/i);
@@ -88,7 +87,6 @@ function extractMatchDurationMinutes(dateStr, rawText) {
   return 90;
 }
 
-// Convertir fecha del partido en objeto Date para horario y calendario
 function parseMatchDateObject(dateStr) {
   if (!dateStr) return null;
   const timeMatch = dateStr.match(/(\d{1,2}):(\d{2})/);
@@ -115,7 +113,6 @@ function parseMatchDateObject(dateStr) {
   return matchDate;
 }
 
-// CÁLCULO DINÁMICO DE ESTADOS (PROGRAMADO, EN JUEGO, SIN RESULTADO, FINALIZADO, CANCELADO)
 function computeMatchStatus(m) {
   const baseStatus = String(m.status || '').toUpperCase();
   if (baseStatus === 'FINALIZADO' || baseStatus === 'CANCELADO') {
@@ -150,7 +147,6 @@ function parseMatchTiming(dateStr) {
   };
 }
 
-// Comprobar si un partido pertenece estrictamente a la semana actual (Lunes a Domingo)
 function isCurrentWeek(dateStr) {
   const matchDate = parseMatchDateObject(dateStr);
   if (!matchDate) return true;
@@ -178,7 +174,6 @@ function isUpcoming(dateStr) {
   return matchDate >= startOfToday;
 }
 
-// Componente Avatar
 function UserAvatar({ name, photo, size = 'md', className = '' }) {
   const sizeClasses = {
     xs: 'w-6 h-6 text-[9px]',
@@ -214,7 +209,6 @@ function UserAvatar({ name, photo, size = 'md', className = '' }) {
   );
 }
 
-// Selector visual de estrellas interactivo para los organizadores en torneos
 function StarRating({ value, onChange }) {
   const stars = [1, 2, 3, 4, 5];
   return (
@@ -242,7 +236,6 @@ function StarRating({ value, onChange }) {
   );
 }
 
-// MOTOR DE NIVEL SUGERIDO: BASADO EXCLUSIVAMENTE EN HISTORIAL DE TORNEOS
 function calculateTournamentSuggestedLevel(user, tournaments) {
   let baseLevel = Number(user.level) || 3.5;
   const normUserName = normalizeName(user.name);
@@ -302,7 +295,6 @@ function calculateTournamentSuggestedLevel(user, tournaments) {
   };
 }
 
-// Modal Criterios y Reglas
 function CriteriosModal({ isOpen, onClose }) {
   if (!isOpen) return null;
   return (
@@ -357,8 +349,6 @@ function CriteriosModal({ isOpen, onClose }) {
   );
 }
 
-// Modal Perfil de Usuario con Estadísticas Individuales y de Torneos
-// IMPORTANTE: NO se muestra nivel de estrellas al usuario para evitar susceptibilidades
 function UserProfileModal({ isOpen, onClose, user, matches, tournaments, onPhotoUploaded, onUpdateUserData, isCurrentUser, isThursdayMember }) {
   const fileInputRef = useRef(null);
   const [uploading, setUploading] = useState(false);
@@ -436,7 +426,6 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, onPhoto
 
     matches.forEach(m => {
       if (m.status !== 'FINALIZADO') return;
-      // Solo computan para las estadísticas de liga regular los partidos oficiales (Chicos: Jueves, Chicas: Martes)
       if (!isMatchOfficial(m)) return;
 
       const mySlot = (m.players || []).find(p => p.id === user.id || normalizeName(p.name) === normUserName);
@@ -568,7 +557,6 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, onPhoto
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-3xl max-w-sm w-full max-h-[90vh] overflow-y-auto p-5 shadow-2xl text-left space-y-4">
-        {/* Cabecera */}
         <div className="flex items-center justify-between border-b pb-4">
           <div className="flex items-center gap-3">
             <div className={`relative ${isCurrentUser ? 'group cursor-pointer' : ''}`} onClick={() => isCurrentUser && fileInputRef.current && fileInputRef.current.click()}>
@@ -605,7 +593,6 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, onPhoto
           <button onClick={onClose} className="text-slate-400 hover:text-slate-700 text-2xl font-bold">&times;</button>
         </div>
 
-        {/* FORMULARIO EDITAR DATOS */}
         {isCurrentUser && editing && (
           <form onSubmit={handleSaveProfileData} className="bg-slate-50 p-3 rounded-2xl border border-slate-200 space-y-2 text-xs">
             <div>
@@ -665,7 +652,6 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, onPhoto
           </form>
         )}
 
-        {/* SECCIÓN 1: LIGA REGULAR (JUEVES) */}
         {isThursdayMember && (
           <div className="space-y-2">
             <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">
@@ -697,13 +683,12 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, onPhoto
               </div>
               <div className="bg-purple-50 border border-purple-200 rounded-xl p-2.5">
                 <span className="text-base font-black text-purple-800 block">{stats.dinnerNo}</span>
-                <span className="text-[10px] font-bold text-purple-900 uppercase">Rajadas 🏃‍♂️️</span>
+                <span className="text-[10px] font-bold text-purple-900 uppercase">Rajadas 🏃‍♂</span>
               </div>
             </div>
           </div>
         )}
 
-        {/* SECCIÓN 2: ANALÍTICA DE TORNEOS */}
         <div className="space-y-2 pt-1 border-t border-slate-100">
           <div className="flex justify-between items-center">
             <span className="text-[10px] font-black text-purple-900 uppercase tracking-wider block">
@@ -772,7 +757,6 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, onPhoto
           )}
         </div>
 
-        {/* Compañeros y Rivales de Liga Regular */}
         {isThursdayMember && (
           <div className="space-y-2 pt-1 border-t border-slate-100">
             <h4 className="text-xs font-black text-slate-800 uppercase tracking-wide">Compañeros y Rivales (Liga)</h4>
@@ -810,7 +794,6 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, onPhoto
   );
 }
 
-// Modal PIN
 function PinModal({ isOpen, onClose, targetUser, onPinSuccess, apiUrl }) {
   const [pinInput, setPinInput] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
@@ -881,17 +864,28 @@ function PinModal({ isOpen, onClose, targetUser, onPinSuccess, apiUrl }) {
   );
 }
 
-// Modal Creador de Torneos con Advertencia de Privacidad, Selección de Capitanes y Nivelación Interna
 function TournamentCreatorModal({ isOpen, onClose, allPlayers, tournaments, onTournamentCreated, currentUserId, onSaveLevel }) {
   const [step, setStep] = useState(1);
   const [tName, setTName] = useState('Torneo CTC Fin de Semana');
   const [tournamentMode, setTournamentMode] = useState('pozo');
 
+  // SELECTOR MEJORADO DE PISTAS: Botones [+] y [-] y edición libre
   const [tCourts, setTCourts] = useState(3);
-  const [tDuration, setTDuration] = useState(120);
-  const [tMatchTime, setTMatchTime] = useState(20);
 
-  // Inicializar nivelación de jugadores usando rating de torneos previo y tendencia exclusiva
+  // SELECTOR MEJORADO DE DURACIÓN CON OPCIÓN "OTRO..."
+  const [tDuration, setTDuration] = useState(120);
+  const [isCustomDuration, setIsCustomDuration] = useState(false);
+  const [customDuration, setCustomDuration] = useState('');
+
+  // SELECTOR MEJORADO DE MINUTOS POR PARTIDO CON OPCIÓN "OTRO..."
+  const [tMatchTime, setTMatchTime] = useState(20);
+  const [isCustomMatchTime, setIsCustomMatchTime] = useState(false);
+  const [customMatchTime, setCustomMatchTime] = useState('');
+
+  const effectiveDuration = isCustomDuration ? (Number(customDuration) || 120) : Number(tDuration);
+  const effectiveMatchTime = isCustomMatchTime ? (Number(customMatchTime) || 20) : Number(tMatchTime);
+  const estimatedRounds = Math.max(1, Math.floor(effectiveDuration / effectiveMatchTime));
+
   const [participants, setParticipants] = useState(() => {
     return allPlayers.map(p => {
       const calc = calculateTournamentSuggestedLevel(p, tournaments);
@@ -943,7 +937,6 @@ function TournamentCreatorModal({ isOpen, onClose, allPlayers, tournaments, onTo
   const handleLevelChange = (id, newLvl) => {
     const parsed = parseFloat(newLvl);
     setParticipants(prev => prev.map(p => p.id === id ? { ...p, level: parsed } : p));
-    // Guardar para futuros torneos sin exponerlo en perfil
     onSaveLevel(id, parsed);
   };
 
@@ -992,14 +985,12 @@ function TournamentCreatorModal({ isOpen, onClose, allPlayers, tournaments, onTo
   })();
 
   const handleGenerateWithGemini = () => {
-    if (selectedPlayers.length < 4) {
-      return;
-    }
+    if (selectedPlayers.length < 4) return;
     setIsGenerating(true);
 
     setTimeout(() => {
       const sorted = [...selectedPlayers].sort((a, b) => b.level - a.level);
-      const totalRounds = Math.max(2, Math.floor(tDuration / tMatchTime));
+      const totalRounds = Math.max(1, Math.floor(effectiveDuration / effectiveMatchTime));
       const rounds = [];
 
       if (tournamentMode === 'pozo') {
@@ -1007,7 +998,7 @@ function TournamentCreatorModal({ isOpen, onClose, allPlayers, tournaments, onTo
           const matchesList = [];
           const roundPool = [...sorted];
 
-          for (let c = 1; c <= tCourts; c++) {
+          for (let c = 1; c <= (Number(tCourts) || 1); c++) {
             if (roundPool.length >= 4) {
               const p1 = roundPool.shift();
               const p2 = roundPool.shift();
@@ -1020,7 +1011,7 @@ function TournamentCreatorModal({ isOpen, onClose, allPlayers, tournaments, onTo
                 team1: `${p1.name.split(' ')[0]} & ${p4.name.split(' ')[0]}`,
                 team2: `${p2.name.split(' ')[0]} & ${p3.name.split(' ')[0]}`,
                 courtNum: c,
-                rule: c === 1 ? 'Ganadores defienden trono · Perdedores bajan a P2' : `Ganadores suben a Pista ${c - 1} · Perdedores bajan a Pista ${Math.min(c + 1, tCourts)}`,
+                rule: c === 1 ? 'Ganadores defienden trono · Perdedores bajan a P2' : `Ganadores suben a Pista ${c - 1} · Perdedores bajan a Pista ${Math.min(c + 1, Number(tCourts) || 1)}`,
                 score: '',
                 winner: null,
                 status: 'PENDIENTE'
@@ -1028,8 +1019,8 @@ function TournamentCreatorModal({ isOpen, onClose, allPlayers, tournaments, onTo
             }
           }
 
-          const startMin = (r - 1) * tMatchTime;
-          const endMin = r * tMatchTime;
+          const startMin = (r - 1) * effectiveMatchTime;
+          const endMin = r * effectiveMatchTime;
           rounds.push({
             round: r,
             timeLabel: `${Math.floor(startMin / 60)}h${String(startMin % 60).padStart(2, '0')} - ${Math.floor(endMin / 60)}h${String(endMin % 60).padStart(2, '0')}`,
@@ -1041,7 +1032,7 @@ function TournamentCreatorModal({ isOpen, onClose, allPlayers, tournaments, onTo
           const matchesList = [];
           const activePool = [...sorted].sort(() => Math.random() - 0.5);
 
-          for (let c = 1; c <= tCourts; c++) {
+          for (let c = 1; c <= (Number(tCourts) || 1); c++) {
             if (activePool.length >= 4) {
               const p1 = activePool.pop();
               const p2 = activePool.pop();
@@ -1061,8 +1052,8 @@ function TournamentCreatorModal({ isOpen, onClose, allPlayers, tournaments, onTo
             }
           }
 
-          const startMin = (r - 1) * tMatchTime;
-          const endMin = r * tMatchTime;
+          const startMin = (r - 1) * effectiveMatchTime;
+          const endMin = r * effectiveMatchTime;
           rounds.push({
             round: r,
             timeLabel: `${Math.floor(startMin / 60)}h${String(startMin % 60).padStart(2, '0')} - ${Math.floor(endMin / 60)}h${String(endMin % 60).padStart(2, '0')}`,
@@ -1084,7 +1075,7 @@ function TournamentCreatorModal({ isOpen, onClose, allPlayers, tournaments, onTo
         for (let i = 0; i < couples.length - 1; i += 2) {
           groupMatches.push({
             id: `ELIM_G_${i}_${Date.now()}`,
-            court: `Pista ${(Math.floor(i / 2) % tCourts) + 1}`,
+            court: `Pista ${(Math.floor(i / 2) % (Number(tCourts) || 1)) + 1}`,
             team1: `${couples[i].name}`,
             team2: `${couples[i + 1].name}`,
             phase: 'Fase de Grupos',
@@ -1134,7 +1125,7 @@ function TournamentCreatorModal({ isOpen, onClose, allPlayers, tournaments, onTo
           const poolA = [...teamA].sort(() => Math.random() - 0.5);
           const poolB = [...teamB].sort(() => Math.random() - 0.5);
 
-          for (let c = 1; c <= tCourts; c++) {
+          for (let c = 1; c <= (Number(tCourts) || 1); c++) {
             if (poolA.length >= 2 && poolB.length >= 2) {
               const a1 = poolA.pop();
               const a2 = poolA.pop();
@@ -1153,8 +1144,8 @@ function TournamentCreatorModal({ isOpen, onClose, allPlayers, tournaments, onTo
             }
           }
 
-          const startMin = (r - 1) * tMatchTime;
-          const endMin = r * tMatchTime;
+          const startMin = (r - 1) * effectiveMatchTime;
+          const endMin = r * effectiveMatchTime;
           rounds.push({
             round: r,
             timeLabel: `Cruce Ryder - Ronda ${r}`,
@@ -1175,8 +1166,8 @@ function TournamentCreatorModal({ isOpen, onClose, allPlayers, tournaments, onTo
       name: tName,
       mode: tournamentMode,
       date: 'Fin de Semana CTC',
-      courts: tCourts,
-      duration: tDuration,
+      courts: Number(tCourts) || 1,
+      duration: effectiveDuration,
       creatorId: currentUserId,
       participants: selectedPlayers,
       rounds: generatedFixture,
@@ -1203,7 +1194,6 @@ function TournamentCreatorModal({ isOpen, onClose, allPlayers, tournaments, onTo
 
         {step === 1 && (
           <div className="space-y-3.5 text-xs">
-            {/* AVISO EXPLÍCITO DE PRIVACIDAD ANTES DE CREAR */}
             <div className="bg-amber-50 border border-amber-300 rounded-2xl p-3.5 flex items-start gap-2.5">
               <span className="text-xl shrink-0">🔒</span>
               <div>
@@ -1279,44 +1269,130 @@ function TournamentCreatorModal({ isOpen, onClose, allPlayers, tournaments, onTo
               </div>
             </div>
 
+            {/* PARÁMETROS FLEXIBLES DE PISTAS Y TIEMPO */}
             <div className="grid grid-cols-3 gap-2">
+              {/* SELECTOR DE PISTAS CON BOTONES [-] Y [+] */}
               <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200">
                 <label className="block text-[10px] font-bold text-slate-500 mb-1">Pistas CTC</label>
-                <input
-                  type="number"
-                  min="1"
-                  max="6"
-                  value={tCourts}
-                  onChange={e => setTCourts(parseInt(e.target.value) || 1)}
-                  className="w-full bg-white border border-slate-300 rounded-lg p-1.5 font-bold text-center"
-                />
+                <div className="flex items-center justify-center gap-1.5 mt-0.5">
+                  <button
+                    type="button"
+                    onClick={() => setTCourts(prev => Math.max(1, (Number(prev) || 1) - 1))}
+                    className="w-7 h-7 bg-white border border-slate-300 hover:bg-slate-100 rounded-lg font-black text-slate-700 text-sm flex items-center justify-center shadow-xs transition active:scale-95"
+                  >
+                    -
+                  </button>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={tCourts}
+                    onChange={e => {
+                      const val = e.target.value.replace(/\D/g, '');
+                      setTCourts(val === '' ? '' : Math.min(12, Math.max(1, parseInt(val, 10))));
+                    }}
+                    onBlur={() => {
+                      if (!tCourts || Number(tCourts) < 1) setTCourts(1);
+                    }}
+                    className="w-12 bg-white border border-slate-300 rounded-lg p-1 font-black text-center text-sm"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setTCourts(prev => Math.min(12, (Number(prev) || 1) + 1))}
+                    className="w-7 h-7 bg-white border border-slate-300 hover:bg-slate-100 rounded-lg font-black text-slate-700 text-sm flex items-center justify-center shadow-xs transition active:scale-95"
+                  >
+                    +
+                  </button>
+                </div>
               </div>
+
+              {/* SELECTOR FLEXIBLE DE TIEMPO TOTAL CON OPCIÓN OTRO */}
               <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200">
                 <label className="block text-[10px] font-bold text-slate-500 mb-1">Tiempo Total</label>
                 <select
-                  value={tDuration}
-                  onChange={e => setTDuration(parseInt(e.target.value))}
+                  value={isCustomDuration ? 'custom' : tDuration}
+                  onChange={e => {
+                    if (e.target.value === 'custom') {
+                      setIsCustomDuration(true);
+                    } else {
+                      setIsCustomDuration(false);
+                      setTDuration(parseInt(e.target.value, 10));
+                    }
+                  }}
                   className="w-full bg-white border border-slate-300 rounded-lg p-1.5 font-bold text-center"
                 >
+                  <option value={45}>45 min</option>
                   <option value={60}>1 hora</option>
+                  <option value={75}>1h 15m</option>
                   <option value={90}>1h 30m</option>
+                  <option value={105}>1h 45m</option>
                   <option value={120}>2 horas</option>
+                  <option value={150}>2h 30m</option>
                   <option value={180}>3 horas</option>
+                  <option value={210}>3h 30m</option>
+                  <option value={240}>4 horas</option>
+                  <option value="custom">✏ Otro...</option>
                 </select>
+                {isCustomDuration && (
+                  <input
+                    type="number"
+                    min="20"
+                    max="480"
+                    placeholder="Minutos"
+                    value={customDuration}
+                    onChange={e => setCustomDuration(e.target.value)}
+                    className="w-full mt-1.5 bg-white border border-blue-400 rounded-lg p-1 font-bold text-center text-[11px]"
+                  />
+                )}
               </div>
+
+              {/* SELECTOR FLEXIBLE DE MINUTOS / PARTIDO CON OPCIÓN OTRO */}
               <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200">
                 <label className="block text-[10px] font-bold text-slate-500 mb-1">Min / Partido</label>
                 <select
-                  value={tMatchTime}
-                  onChange={e => setTMatchTime(parseInt(e.target.value))}
+                  value={isCustomMatchTime ? 'custom' : tMatchTime}
+                  onChange={e => {
+                    if (e.target.value === 'custom') {
+                      setIsCustomMatchTime(true);
+                    } else {
+                      setIsCustomMatchTime(false);
+                      setTMatchTime(parseInt(e.target.value, 10));
+                    }
+                  }}
                   className="w-full bg-white border border-slate-300 rounded-lg p-1.5 font-bold text-center"
                 >
+                  <option value={10}>10 min</option>
+                  <option value={12}>12 min</option>
                   <option value={15}>15 min</option>
                   <option value={20}>20 min</option>
                   <option value={25}>25 min</option>
                   <option value={30}>30 min</option>
+                  <option value={35}>35 min</option>
+                  <option value={40}>40 min</option>
+                  <option value={45}>45 min</option>
+                  <option value="custom">✏️ Otro...</option>
                 </select>
+                {isCustomMatchTime && (
+                  <input
+                    type="number"
+                    min="5"
+                    max="90"
+                    placeholder="Minutos"
+                    value={customMatchTime}
+                    onChange={e => setCustomMatchTime(e.target.value)}
+                    className="w-full mt-1.5 bg-white border border-blue-400 rounded-lg p-1 font-bold text-center text-[11px]"
+                  />
+                )}
               </div>
+            </div>
+
+            {/* CÁLCULO ESTIMADO DE RONDAS EN TIEMPO REAL */}
+            <div className="bg-blue-50/70 border border-blue-200 p-2.5 rounded-xl text-center">
+              <span className="text-[11px] font-extrabold text-blue-950 block">
+                📊 Proyección: ~{estimatedRounds} rondas de juego
+              </span>
+              <span className="text-[10px] text-blue-800">
+                {effectiveDuration} min totales · {effectiveMatchTime} min/partido · {Number(tCourts) || 1} pistas disponibles
+              </span>
             </div>
 
             <button
@@ -1330,7 +1406,6 @@ function TournamentCreatorModal({ isOpen, onClose, allPlayers, tournaments, onTo
 
         {step === 2 && (
           <div className="space-y-3.5 text-xs">
-            {/* Formulario Invitado Externo */}
             <form onSubmit={handleAddGuest} className="bg-blue-50/80 p-3 rounded-2xl border border-blue-200 space-y-2">
               <label className="font-extrabold text-blue-950 block text-[11px]">
                 ➕ Añadir Participante Invitado (Externo)
@@ -1490,6 +1565,9 @@ function TournamentCreatorModal({ isOpen, onClose, allPlayers, tournaments, onTo
                 Gemini procesará las reglas oficiales del formato, el número de pistas y la nivelación por estrellas de los{' '}
                 <strong>{selectedPlayers.length} jugadores</strong> convocados.
               </p>
+              <div className="bg-white/80 p-2 rounded-xl text-[10px] font-mono text-purple-900 border border-purple-200">
+                Duración total: {effectiveDuration} min | Por partido: {effectiveMatchTime} min | Pistas: {Number(tCourts) || 1} | Rondas estimadas: ~{estimatedRounds}
+              </div>
             </div>
 
             <div>
@@ -1546,7 +1624,7 @@ function TournamentCreatorModal({ isOpen, onClose, allPlayers, tournaments, onTo
                   ✅ Cuadrante Listo ({tournamentMode.toUpperCase()})
                 </span>
                 <span className="text-[10px] text-emerald-700">
-                  {generatedFixture.length} rondas generadas en {tCourts} pistas
+                  {generatedFixture.length} rondas generadas en {Number(tCourts) || 1} pistas
                 </span>
               </div>
               <button onClick={() => setStep(3)} className="text-[10px] bg-white border border-emerald-300 text-emerald-800 font-bold px-2 py-0.5 rounded-md">
@@ -1601,11 +1679,9 @@ function TournamentCreatorModal({ isOpen, onClose, allPlayers, tournaments, onTo
   );
 }
 
-// Modal Marcador Visual Multiset (Mínimo 2 sets, 3º de desempate y ampliable hasta 5 sets)
 function MatchVisualScoreModal({ isOpen, onClose, title, subtitle, team1Name, team2Name, p1Players = [], p2Players = [], onSaveScore }) {
   const [winnerTeam, setWinnerTeam] = useState(1);
 
-  // Mínimo 2 sets y un 3º de desempate por defecto
   const [sets, setSets] = useState([
     { t1: 0, t2: 0 },
     { t1: 0, t2: 0 },
@@ -1675,7 +1751,6 @@ function MatchVisualScoreModal({ isOpen, onClose, title, subtitle, team1Name, te
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4 text-xs">
-          {/* SELECCIÓN OBLIGATORIA DE GANADOR */}
           <div>
             <label className="font-black text-slate-800 block mb-1.5 text-[11px] uppercase tracking-wide">
               1. Pareja Ganadora (Obligatorio) *
@@ -1747,7 +1822,6 @@ function MatchVisualScoreModal({ isOpen, onClose, title, subtitle, team1Name, te
             </div>
           </div>
 
-          {/* PARTE MULTISET (MÍNIMO 2, 3º DESEMPATE Y HASTA 5 SETS) */}
           <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200 space-y-2.5">
             <div className="flex justify-between items-center">
               <div>
@@ -1786,7 +1860,6 @@ function MatchVisualScoreModal({ isOpen, onClose, title, subtitle, team1Name, te
                     {idx === 2 ? 'Set 3 (Tie)' : `Set ${idx + 1}`}
                   </span>
 
-                  {/* Puntuación Equipo 1 */}
                   <div className="flex items-center gap-1.5">
                     <button
                       type="button"
@@ -1807,7 +1880,6 @@ function MatchVisualScoreModal({ isOpen, onClose, title, subtitle, team1Name, te
 
                   <span className="font-black text-slate-300 text-xs">/</span>
 
-                  {/* Puntuación Equipo 2 */}
                   <div className="flex items-center gap-1.5">
                     <button
                       type="button"
@@ -1844,7 +1916,6 @@ function MatchVisualScoreModal({ isOpen, onClose, title, subtitle, team1Name, te
   );
 }
 
-// Modal de Vinculación Rápida de Jugadores Huérfanos a Perfiles Registrados
 function LinkPlayerSlotModal({ isOpen, onClose, slotName, allRegisteredPlayers, onConfirmLink, matchId }) {
   const [selectedUserId, setSelectedUserId] = useState('');
 
@@ -1901,16 +1972,12 @@ function LinkPlayerSlotModal({ isOpen, onClose, slotName, allRegisteredPlayers, 
   );
 }
 
-// ==========================================
-// APLICACIÓN PRINCIPAL
-// ==========================================
 export default function App() {
   const [apiUrl] = useState(() => localStorage.getItem('padel_api_url') || DEFAULT_API_URL);
   const [syncing, setSyncing] = useState(false);
   const [activeTab, setActiveTab] = useState('partidos');
   const [rankingType, setRankingType] = useState('hibrido');
 
-  // CARGA INSTANTÁNEA DESDE CACHÉ LOCAL (0 ms de espera al abrir)
   const [players, setPlayers] = useState(() => {
     try {
       const cached = localStorage.getItem('padel_cached_players');
@@ -1930,7 +1997,6 @@ export default function App() {
   });
 
   const [selectedMatchId, setSelectedMatchId] = useState(null);
-
   const [selectedDinnerDate, setSelectedDinnerDate] = useState('');
   const [showDinnerHistory, setShowDinnerHistory] = useState(false);
   const [showRulesModal, setShowRulesModal] = useState(false);
@@ -1944,7 +2010,6 @@ export default function App() {
   const [filterTime, setFilterTime] = useState('semana');
   const [targetPinUser, setTargetPinUser] = useState(null);
 
-  // Registro de nuevo usuario
   const [showRegisterForm, setShowRegisterForm] = useState(false);
   const [newUserName, setNewUserName] = useState('');
   const [newUserPhone, setNewUserPhone] = useState('');
@@ -1952,7 +2017,6 @@ export default function App() {
   const [newUserPlaytomic, setNewUserPlaytomic] = useState('');
   const [newUserPin, setNewUserPin] = useState('');
 
-  // Modales Partidos
   const [showAddModal, setShowAddModal] = useState(false);
   const [playtomicText, setPlaytomicText] = useState('');
 
@@ -1962,15 +2026,12 @@ export default function App() {
   const [showEditPlayersModal, setShowEditPlayersModal] = useState(false);
   const [editPlayerSlots, setEditPlayerSlots] = useState(['', '', '', '']);
 
-  // Marcador Multiset Unificado
   const [showScoreModal, setShowScoreModal] = useState(false);
-
-  // Modal para vincular slot huérfano
   const [linkingSlot, setLinkingSlot] = useState(null);
+  const [allDinnerGuests, setAllDinnerGuests] = useState([]);
 
   const [loadingDinnerId, setLoadingDinnerId] = useState(null);
 
-  // ESTADO TORNEOS CTC
   const [showTournamentWizard, setShowTournamentWizard] = useState(false);
   const [activeTournaments, setActiveTournaments] = useState(() => {
     const saved = localStorage.getItem('padel_ctc_tournaments');
@@ -1981,7 +2042,6 @@ export default function App() {
   const [activeTournamentId, setActiveTournamentId] = useState(null);
   const [tournamentSubTab, setTournamentSubTab] = useState({});
 
-  // Miembro de los jueves
   const isThursdayMember = useMemo(() => {
     if (!currentUser) return false;
     const g = (currentUser.group || '').toLowerCase();
@@ -2003,7 +2063,6 @@ export default function App() {
     }
   }, []);
 
-  // SINCRONIZACIÓN EN SEGUNDO PLANO SIN BLOQUEAR LA PANTALLA
   const fetchData = async (silent = false) => {
     try {
       if (!silent) setSyncing(true);
@@ -2025,6 +2084,9 @@ export default function App() {
           setMatches(json.partidos);
           localStorage.setItem('padel_cached_matches', JSON.stringify(json.partidos));
         }
+        if (json.invitadosCena) {
+          setAllDinnerGuests(json.invitadosCena);
+        }
       }
     } catch (e) {
       console.warn('Sync error:', e);
@@ -2034,7 +2096,6 @@ export default function App() {
   };
 
   useEffect(() => {
-    // Refresco en segundo plano silencioso al montar
     fetchData(true);
   }, [apiUrl]);
 
@@ -2052,7 +2113,6 @@ export default function App() {
     setSelectedMatchId(null);
   };
 
-  // Guardar nivel de torneo de forma persistente en backend para futuros torneos
   const handleSaveLevel = async (idJugador, newLevel) => {
     setPlayers(prev => prev.map(p => p.id === idJugador ? { ...p, level: newLevel } : p));
     if (currentUser && currentUser.id === idJugador) {
@@ -2073,9 +2133,7 @@ export default function App() {
   const handleRegisterUser = async (e) => {
     e.preventDefault();
     if (!newUserName.trim()) return;
-    if (newUserPin.trim().length !== 4) {
-      return;
-    }
+    if (newUserPin.trim().length !== 4) return;
 
     setSyncing(true);
     const assignedGroup = newUserGroup === 'Solo Torneo' ? 'torneo' : newUserGroup;
@@ -2104,7 +2162,7 @@ export default function App() {
           level: 3.5,
           pJ: 0, pG: 0, cSi: 0, cNo: 0,
           ptsDeportivo: 0, ptsBarandas: 0, hibrido: 0,
-          titulo: assignedGroup === 'torneo' ? 'Jugador de Torneo ⚔️️' : "Fichaje Estrella ⭐",
+          titulo: assignedGroup === 'torneo' ? 'Jugador de Torneo ⚔️' : "Fichaje Estrella ⭐",
           deuda: 0,
           pin: newUserPin.trim()
         };
@@ -2120,7 +2178,6 @@ export default function App() {
   };
 
   const handleUpdateUserData = async (idJugador, payload) => {
-    // Optimistic UI en memoria inmediata
     setCurrentUser(prev => ({ ...prev, ...payload }));
     setPlayers(prev => prev.map(p => p.id === idJugador ? { ...p, ...payload } : p));
     localStorage.setItem('padel_current_user', JSON.stringify({ ...currentUser, ...payload }));
@@ -2137,7 +2194,6 @@ export default function App() {
   };
 
   const handlePhotoUploaded = async (idJugador, photoBase64) => {
-    // Inmediato en pantalla
     setCurrentUser(prev => ({ ...prev, photo: photoBase64 }));
     setPlayers(prev => prev.map(p => p.id === idJugador ? { ...p, photo: photoBase64 } : p));
     localStorage.setItem('padel_current_user', JSON.stringify({ ...currentUser, photo: photoBase64 }));
@@ -2154,7 +2210,6 @@ export default function App() {
   };
 
   const handleDeleteMatchComplete = async (matchId) => {
-    // Inmediato en pantalla
     setMatches(prev => prev.filter(m => m.id !== matchId));
     setSelectedMatchId(null);
 
@@ -2235,9 +2290,7 @@ export default function App() {
     }
   };
 
-  // Acción de vinculación explícita para resolver jugadores huérfanos sin puntos
   const handleConfirmLinkSlot = async (matchId, officialId, rawSlotName, officialName) => {
-    // Inmediato en pantalla
     setMatches(prev => prev.map(m => {
       if (m.id !== matchId) return m;
       return {
@@ -2267,25 +2320,42 @@ export default function App() {
     }
   };
 
-  // Apuntarse solo a cenar (Instantáneo en UI)
   const handleToggleSoloCena = async (dateStr, newState) => {
     if (!currentUser) return;
+    const normMe = normalizeName(currentUser.name);
 
-    setMatches(prev => prev.map(m => {
-      if (extractCleanDate(m.date) !== dateStr) return m;
-      const guests = [...(m.guests || [])];
-      const normMe = normalizeName(currentUser.name);
-      const filtered = guests.filter(g => normalizeName(g.name) !== normMe);
-
+    // 1. Actualización optimista de la lista global de invitados
+    setAllDinnerGuests(prev => {
+      const filtered = prev.filter(g => !(normalizeName(g.name) === normMe && (extractCleanDate(g.target) === dateStr || extractCleanDate(dateStr).includes(extractCleanDate(g.target)))));
       if (newState === 'SI') {
         filtered.push({
-          id: 'inv_' + Date.now(),
+          id: currentUser.id || ('INV-' + Date.now()),
           name: currentUser.name,
+          target: dateStr,
+          cleanTarget: extractCleanDate(dateStr),
+          group: myGroup,
           photo: currentUser.photo || '',
-          phone: currentUser.phone || ''
+          phone: currentUser.phone || '',
+          isClubPlayer: true
         });
       }
-      return { ...m, guests: filtered };
+      return filtered;
+    });
+
+    // 2. Actualización de partidos asociados a la fecha
+    setMatches(prev => prev.map(m => {
+      if (extractCleanDate(m.date) !== dateStr) return m;
+      const guests = [...(m.guests || [])].filter(g => normalizeName(g.name) !== normMe);
+      if (newState === 'SI') {
+        guests.push({
+          id: currentUser.id || ('INV-' + Date.now()),
+          name: currentUser.name,
+          photo: currentUser.photo || '',
+          phone: currentUser.phone || '',
+          isClubPlayer: true
+        });
+      }
+      return { ...m, guests: guests };
     }));
 
     try {
@@ -2297,6 +2367,7 @@ export default function App() {
           fecha: dateStr, 
           nombreJugador: currentUser.name, 
           estado: newState,
+          idJugador: currentUser.id,
           grupo: myGroup 
         })
       });
@@ -2305,7 +2376,6 @@ export default function App() {
     }
   };
 
-  // Actualizar asistencia a la cena en partido (Optimistic UI instantánea)
   const handleUpdateDinner = async (matchId, targetId, targetName, newStatus) => {
     setMatches(prevMatches => prevMatches.map(m => {
       if (m.id !== matchId) return m;
@@ -2369,7 +2439,6 @@ export default function App() {
     }
   };
 
-  // Guardar Marcador Multiset Regular con asignación exacta de ganadores
   const handleSaveRegularMatchScore = async (winningTeamNum, composedScoreText) => {
     if (!currentMatch) return;
 
@@ -2383,7 +2452,6 @@ export default function App() {
       parejasMap[p.name] = p.team || 1;
     });
 
-    // Actualización inmediata en UI
     setMatches(prev => prev.map(m => {
       if (m.id !== currentMatch.id) return m;
       return {
@@ -2438,7 +2506,6 @@ export default function App() {
     window.open(`https://api.whatsapp.com/send?text=${encodeURI(msg)}`, '_blank');
   };
 
-  // FUNCIONES DE TORNEO
   const handleTournamentCreated = (newT) => {
     const updated = [newT, ...activeTournaments];
     setActiveTournaments(updated);
@@ -2580,7 +2647,50 @@ export default function App() {
     return players.filter(p => (p.group || 'chicos').toLowerCase() === myGroup);
   }, [players, myGroup]);
 
-  // Privacidad de Torneos: solo visibles para los convocados o el creador
+  const sortedGroupPlayers = useMemo(() => {
+    return [...groupPlayers].sort((a, b) => {
+      const aHibrido = Number(a.hibrido) || 0;
+      const bHibrido = Number(b.hibrido) || 0;
+      const aDep = Number(a.ptsDeportivo) || 0;
+      const bDep = Number(b.ptsDeportivo) || 0;
+      const aBar = Number(a.ptsBarandas) || 0;
+      const bBar = Number(b.ptsBarandas) || 0;
+      const aPG = Number(a.pG) || 0;
+      const bPG = Number(b.pG) || 0;
+      const aPJ = Number(a.pJ) || 0;
+      const bPJ = Number(b.pJ) || 0;
+      const aCSi = Number(a.cSi) || 0;
+      const bCSi = Number(b.cSi) || 0;
+      const aCNo = Number(a.cNo) || 0;
+      const bCNo = Number(b.cNo) || 0;
+      const aDeuda = Number(a.deuda) || 0;
+      const bDeuda = Number(b.deuda) || 0;
+      const aWinRate = aPJ > 0 ? (aPG / aPJ) : 0;
+      const bWinRate = bPJ > 0 ? (bPG / bPJ) : 0;
+
+      if (rankingType === 'deportivo') {
+        if (bDep !== aDep) return bDep - aDep;
+        if (bPG !== aPG) return bPG - aPG;
+        if (bWinRate !== aWinRate) return bWinRate - aWinRate;
+        if (bPJ !== aPJ) return bPJ - aPJ;
+        return a.name.localeCompare(b.name);
+      } else if (rankingType === 'barandas') {
+        if (bBar !== aBar) return bBar - aBar;
+        if (bCSi !== aCSi) return bCSi - aCSi;
+        if (aCNo !== bCNo) return aCNo - bCNo;
+        if (bPJ !== aPJ) return bPJ - aPJ;
+        return a.name.localeCompare(b.name);
+      } else {
+        if (bHibrido !== aHibrido) return bHibrido - aHibrido;
+        if (bDep !== aDep) return bDep - aDep;
+        if (bPG !== aPG) return bPG - aPG;
+        if (bCSi !== aCSi) return bCSi - aCSi;
+        if (aDeuda !== bDeuda) return aDeuda - bDeuda;
+        return a.name.localeCompare(b.name);
+      }
+    });
+  }, [groupPlayers, rankingType]);
+
   const visibleTournaments = useMemo(() => {
     if (!currentUser) return [];
     return activeTournaments.filter(t => {
@@ -2592,7 +2702,6 @@ export default function App() {
     });
   }, [activeTournaments, currentUser]);
 
-  // Solo los partidos del día oficial del grupo (Chicos: Jueves, Chicas: Martes) computan para generar cena
   const groupMatches = useMemo(() => {
     return matches.filter(m => {
       const g = (m.grupo || 'chicos').toLowerCase();
@@ -2601,7 +2710,6 @@ export default function App() {
     });
   }, [matches, myGroup]);
 
-  // GESTIÓN INTELIGENTE DE FECHAS DE CENA (HOY > SIGUIENTE PENDIENTE + HISTÓRICO OCULTO)
   const { availableDinnerDates, upcomingDinnerDates, pastDinnerDates, defaultSmartDinnerKey } = useMemo(() => {
     const datesMap = new Map();
     const now = new Date();
@@ -2635,13 +2743,8 @@ export default function App() {
       }
     });
 
-    // Ordenar próximas por cercanía en el tiempo (la más cercana primero)
     upcoming.sort((a, b) => a.dateObj - b.dateObj);
 
-    // Selección inteligente:
-    // 1. Si hay cena HOY, esa es la prioridad absoluta.
-    // 2. Si no hay hoy, la cena futura más próxima.
-    // 3. Si no hay futuras, la última jugada en el pasado.
     let bestDefaultKey = '';
     if (todayKey) {
       bestDefaultKey = todayKey;
@@ -2659,7 +2762,6 @@ export default function App() {
     };
   }, [groupMatches]);
 
-  // Selección automática inicial o al cambiar de grupo
   const activeDinnerKey = selectedDinnerDate || defaultSmartDinnerKey;
 
   const matchesForDinner = useMemo(() => {
@@ -2700,15 +2802,34 @@ export default function App() {
       });
     });
 
+    // Incorporar invitados del endpoint global para esta fecha
+    (allDinnerGuests || []).forEach(g => {
+      const isDateMatch = extractCleanDate(g.target) === activeDinnerKey || 
+                          extractCleanDate(g.cleanTarget) === activeDinnerKey ||
+                          activeDinnerKey.includes(extractCleanDate(g.target));
+      const isGroupMatch = (g.group || 'chicos').toLowerCase() === myGroup;
+      if (isDateMatch && isGroupMatch) {
+        const normG = normalizeName(g.name);
+        if (!guestMap.has(normG)) {
+          guestMap.set(normG, g);
+        }
+      }
+    });
+
     return {
       dinnerYes: Array.from(yesMap.values()),
       dinnerNo: Array.from(noMap.values()),
       dinnerPending: Array.from(pendingMap.values()),
       dinnerGuests: Array.from(guestMap.values())
     };
-  }, [matchesForDinner]);
+  }, [matchesForDinner, allDinnerGuests, activeDinnerKey, myGroup]);
 
-  const isUserInDinner = dinnerYes.some(item => normalizeName(item.name) === normalizeName(currentUser?.name));
+  const isUserInDinner = useMemo(() => {
+    if (!currentUser) return false;
+    const normMe = normalizeName(currentUser.name);
+    return dinnerYes.some(item => normalizeName(item.name) === normMe) ||
+           dinnerGuests.some(item => normalizeName(item.name) === normMe);
+  }, [dinnerYes, dinnerGuests, currentUser]);
 
   const currentVisualDinnerLabel = useMemo(() => {
     const found = availableDinnerDates.find(d => d.key === activeDinnerKey);
@@ -2892,7 +3013,6 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-100 text-slate-900 pb-16">
-      {/* CABECERA */}
       <header className="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm">
         <div className="max-w-xl mx-auto px-4 py-3 flex items-center justify-between">
           <div
@@ -2937,7 +3057,6 @@ export default function App() {
         </div>
       </header>
 
-      {/* CONTENIDO PRINCIPAL */}
       <main className="max-w-xl mx-auto px-4 py-4">
         {selectedMatchId && currentMatch && isThursdayMember ? (
           /* DETALLE DEL PARTIDO REGULAR (JUEVES) */
@@ -2951,7 +3070,6 @@ export default function App() {
 
             <div className="bg-white rounded-3xl p-5 shadow-sm border border-slate-200">
               <div className="flex justify-between items-center mb-2">
-                {/* ESTADO DINÁMICO DE PARTIDO */}
                 {(() => {
                   const dynamicStatus = computeMatchStatus(currentMatch);
                   const badgeColors = {
@@ -2982,7 +3100,6 @@ export default function App() {
                 })()}
 
                 <div className="flex items-center gap-2">
-                  {/* SOLO SE PUEDE BORRAR SI ESTÁ ESTRICTAMENTE EN ESTADO PROGRAMADO */}
                   {computeMatchStatus(currentMatch) === 'PROGRAMADO' && (
                     <button
                       onClick={() => handleDeleteMatchComplete(currentMatch.id)}
@@ -3016,7 +3133,6 @@ export default function App() {
                 📍 {currentMatch.location}
               </p>
 
-              {/* TARJETA DE RESULTADO OFICIAL EN DETALLE */}
               {currentMatch.status === 'FINALIZADO' && (
                 <div className="bg-purple-50/80 border border-purple-200 rounded-2xl p-3.5 text-center my-3.5 space-y-1.5">
                   <span className="text-[10px] font-black uppercase tracking-wider text-purple-600 block">
@@ -3043,11 +3159,11 @@ export default function App() {
                   }}
                   className="py-2 px-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold rounded-xl border border-slate-200 transition flex items-center justify-center gap-1"
                 >
-                  ✏ Cambiar Suplentes
+                  ✏️ Cambiar Suplentes
                 </button>
               </div>
 
-              {/* CONVOCATORIA DE PAREJAS DESTACANDO A LA GANADORA */}
+              {/* CONVOCATORIA DE PAREJAS */}
               <div className="mt-5 space-y-4">
                 <div className="flex justify-between items-center border-b pb-2">
                   <h3 className="text-xs font-black text-slate-800 uppercase tracking-wider">
@@ -3171,7 +3287,7 @@ export default function App() {
                 })}
               </div>
 
-              {/* PREGUNTA RÁPIDA DE CENA AL USUARIO ACTIVO */}
+              {/* PREGUNTA RÁPIDA DE CENA */}
               {(() => {
                 const isOfficial = isMatchOfficial(currentMatch);
                 const mySlot = (currentMatch.players || []).find(p => p.id === currentUser.id || normalizeName(p.name) === normalizeName(currentUser.name));
@@ -3182,7 +3298,7 @@ export default function App() {
                   return (
                     <div className="mt-5 pt-3 border-t border-slate-100 text-center">
                       <span className="text-[11px] text-slate-500 font-semibold italic block">
-                        ℹ️️ Este partido es amistoso. Las cenas y puntos oficiales se computan exclusivamente los {currentMatch.grupo === 'chicas' ? 'Martes (Chicas)' : 'Jueves (Chicos)'}.
+                        ℹ️ Este partido es amistoso. Las cenas y puntos oficiales se computan exclusivamente los {currentMatch.grupo === 'chicas' ? 'Martes (Chicas)' : 'Jueves (Chicos)'}.
                       </span>
                     </div>
                   );
@@ -3355,10 +3471,8 @@ export default function App() {
                           </span>
                         </div>
 
-                        {/* VISTA PREVIA LIMPIA DE EQUIPOS P1 VS P2 */}
                         <div className="mt-3 pt-3 border-t border-slate-100">
                           <div className="flex items-center justify-between gap-2 text-[11px]">
-                            {/* Pareja 1 */}
                             <div className={`flex items-center gap-1.5 flex-1 min-w-0 p-1.5 rounded-xl transition ${
                               p1Won
                                 ? 'bg-emerald-50 border border-emerald-300 text-emerald-950 font-black'
@@ -3382,10 +3496,8 @@ export default function App() {
                               </div>
                             </div>
 
-                            {/* Separador limpio VS */}
                             <span className="font-black text-slate-300 text-[10px] px-1 shrink-0">VS</span>
 
-                            {/* Pareja 2 */}
                             <div className={`flex items-center justify-end gap-1.5 flex-1 min-w-0 p-1.5 rounded-xl transition ${
                               p2Won
                                 ? 'bg-emerald-50 border border-emerald-300 text-emerald-950 font-black'
@@ -3417,7 +3529,7 @@ export default function App() {
               </div>
             )}
 
-            {/* TAB 2: CENA & CLUB UNIFICADA (CON SELECTOR INTELIGENTE Y HISTÓRICO PLEGADO) */}
+            {/* TAB 2: CENA & CLUB UNIFICADA */}
             {isThursdayMember && activeTab === 'cenas' && (
               <div className="space-y-4">
                 <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-xs space-y-2">
@@ -3441,7 +3553,6 @@ export default function App() {
                     onChange={(e) => setSelectedDinnerDate(e.target.value)}
                     className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 text-xs font-bold text-slate-800"
                   >
-                    {/* Grupo 1: Cenas Activas y Próximas */}
                     {upcomingDinnerDates.length > 0 ? (
                       <optgroup label="⚡ Cenas Activas / Próximas">
                         {upcomingDinnerDates.map(d => (
@@ -3456,7 +3567,6 @@ export default function App() {
                       </optgroup>
                     )}
 
-                    {/* Grupo 2: Histórico pasado (desplegado si el usuario lo solicita o si no hay futuras) */}
                     {(showDinnerHistory || upcomingDinnerDates.length === 0) && pastDinnerDates.length > 0 && (
                       <optgroup label="📁 Histórico de Cenas Pasadas">
                         {pastDinnerDates.map(d => (
@@ -3631,35 +3741,33 @@ export default function App() {
                 </div>
 
                 <div className="space-y-2">
-                  {[...groupPlayers]
-                    .sort((a, b) => {
-                      if (rankingType === 'deportivo') return b.ptsDeportivo - a.ptsDeportivo;
-                      if (rankingType === 'barandas') return b.ptsBarandas - a.ptsBarandas;
-                      return b.hibrido - a.hibrido;
-                    })
-                    .map((p, idx) => (
-                      <div
-                        key={p.id}
-                        onClick={() => setInspectedUser(p)}
-                        className="flex items-center justify-between p-2 rounded-2xl bg-slate-50 text-xs hover:bg-blue-50/60 cursor-pointer transition"
-                        title="Toca para ver estadísticas"
-                      >
-                        <div className="flex items-center gap-2.5">
-                          <span className="font-black text-slate-400 w-4 text-center">{idx + 1}</span>
-                          <UserAvatar name={p.name} photo={p.photo} size="md" />
-                          <div>
-                            <p className="font-bold text-slate-900">{p.name}</p>
-                            <p className="text-[10px] text-slate-500">{p.titulo}</p>
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <span className="font-black text-blue-600 text-sm">
-                            {rankingType === 'deportivo' ? p.ptsDeportivo : rankingType === 'barandas' ? p.ptsBarandas : p.hibrido}
-                          </span>
-                          <span className="text-[10px] text-slate-400 block">pts</span>
+                  {sortedGroupPlayers.map((p, idx) => (
+                    <div
+                      key={p.id}
+                      onClick={() => setInspectedUser(p)}
+                      className="flex items-center justify-between p-2 rounded-2xl bg-slate-50 text-xs hover:bg-blue-50/60 cursor-pointer transition"
+                      title="Toca para ver estadísticas"
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <span className={`font-black w-6 text-center text-sm ${
+                          idx === 0 ? 'text-amber-500' : idx === 1 ? 'text-slate-400' : idx === 2 ? 'text-amber-700' : 'text-slate-400 text-xs'
+                        }`}>
+                          {idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : idx + 1}
+                        </span>
+                        <UserAvatar name={p.name} photo={p.photo} size="md" />
+                        <div>
+                          <p className="font-bold text-slate-900">{p.name}</p>
+                          <p className="text-[10px] text-slate-500">{p.titulo}</p>
                         </div>
                       </div>
-                    ))}
+                      <div className="text-right">
+                        <span className="font-black text-blue-600 text-sm">
+                          {rankingType === 'deportivo' ? p.ptsDeportivo : rankingType === 'barandas' ? p.ptsBarandas : p.hibrido}
+                        </span>
+                        <span className="text-[10px] text-slate-400 block">pts</span>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
             )}
@@ -3739,7 +3847,7 @@ export default function App() {
 
                   {visibleTournaments.length === 0 ? (
                     <div className="bg-white rounded-2xl p-8 text-center border border-slate-200">
-                      <span className="text-3xl block mb-1">🛡️️</span>
+                      <span className="text-3xl block mb-1">🛡️</span>
                       <p className="text-sm font-bold text-slate-700">No tienes torneos activos</p>
                       <p className="text-xs text-slate-400 mt-1">
                         Solo verás los torneos a los que has sido convocado. Pulsa en "Crear Nuevo Torneo" para convocar uno nuevo.
@@ -3947,7 +4055,7 @@ export default function App() {
                                           p.dinner === 'NO' ? 'bg-rose-600 text-white' : 'bg-slate-100 text-slate-600'
                                         }`}
                                       >
-                                        No 🏃‍♂️
+                                        No 🏃‍♂️️
                                       </button>
                                     </div>
                                   </div>
@@ -4040,7 +4148,6 @@ export default function App() {
               <button onClick={() => setShowAddModal(false)} className="text-slate-400 hover:text-slate-600 text-xl font-bold">&times;</button>
             </div>
             <form onSubmit={handleAddPlaytomicMatch} className="space-y-3">
-              {/* Asignación automática por el grupo del usuario creador */}
               <div className="bg-slate-50 border border-slate-200 rounded-xl p-2.5 flex items-center justify-between text-xs">
                 <span className="font-bold text-slate-600">Grupo asignado:</span>
                 <span className="font-black text-blue-700 uppercase bg-blue-100 px-2 py-0.5 rounded-md">
