@@ -2214,6 +2214,10 @@ export default function App() {
           setMatches(json.partidos);
           localStorage.setItem('padel_cached_matches', JSON.stringify(json.partidos));
         }
+        if (json.torneos) {
+          setActiveTournaments(json.torneos);
+          localStorage.setItem('padel_ctc_tournaments', JSON.stringify(json.torneos));
+        }
         if (json.invitadosCena) {
           setAllDinnerGuests(json.invitadosCena);
         }
@@ -2635,17 +2639,41 @@ export default function App() {
     window.open(`https://api.whatsapp.com/send?text=${encodeURI(msg)}`, '_blank');
   };
 
-  const handleTournamentCreated = (newT) => {
+  // 1. Crear nuevo torneo (Optimista + Nube)
+  const handleTournamentCreated = async (newT) => {
     const updated = [newT, ...activeTournaments];
     setActiveTournaments(updated);
     localStorage.setItem('padel_ctc_tournaments', JSON.stringify(updated));
     setActiveTab('torneos');
+
+    try {
+      await fetch(apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ action: 'GUARDAR_TORNEO', torneo: newT })
+      });
+      fetchData(true);
+    } catch (e) {
+      console.error('Error al persistir torneo en la nube:', e);
+    }
   };
 
-  const handleDeleteTournament = (tId) => {
+  // 2. Eliminar torneo (Optimista + Nube)
+  const handleDeleteTournament = async (tId) => {
     const updated = activeTournaments.filter(t => t.id !== tId);
     setActiveTournaments(updated);
     localStorage.setItem('padel_ctc_tournaments', JSON.stringify(updated));
+
+    try {
+      await fetch(apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ action: 'ELIMINAR_TORNEO', idTorneo: tId })
+      });
+      fetchData(true);
+    } catch (e) {
+      console.error('Error al borrar torneo en la nube:', e);
+    }
   };
 
   // 1. GENERAR ENLACE PERSONAL PARA CADA JUGADOR DEL TORNEO (?torneo=ID&p=PLAYER_ID)
@@ -2673,99 +2701,130 @@ export default function App() {
     }
   };
 
-  const handleSaveTournamentScore = (winningTeamNum, composedScoreText) => {
+// 3. Guardar marcador de un partido del torneo (Optimista + Nube)
+  const handleSaveTournamentScore = async (winningTeamNum, composedScoreText) => {
     if (!activeTournamentId || !reportingTournamentMatch) return;
     const matchId = reportingTournamentMatch.id;
 
-    setActiveTournaments(prevTournaments => {
-      const updated = prevTournaments.map(t => {
-        if (t.id !== activeTournamentId) return t;
+    let tournamentToSync = null;
 
-        let winningTeamName = '';
-        let losingTeamName = '';
+    const updatedTournaments = activeTournaments.map(t => {
+      if (t.id !== activeTournamentId) return t;
 
-        const updatedRounds = t.rounds.map(r => ({
-          ...r,
-          matches: r.matches.map(m => {
-            if (m.id === matchId) {
-              winningTeamName = winningTeamNum === 1 ? m.team1 : m.team2;
-              losingTeamName = winningTeamNum === 1 ? m.team2 : m.team1;
-              return {
-                ...m,
-                score: composedScoreText,
-                winner: winningTeamNum,
-                status: 'FINALIZADO'
-              };
-            }
-            return m;
-          })
-        }));
+      let winningTeamName = '';
+      let losingTeamName = '';
 
-        if (t.mode === 'eliminatorio' && winningTeamName) {
-          if (matchId === 'SEMIS_1') {
-            updatedRounds.forEach(r => {
-              r.matches.forEach(m => {
-                if (m.id === 'FINAL_ORO') m.team1 = winningTeamName;
-                if (m.id === 'FINAL_CONSOL') m.team1 = losingTeamName;
-              });
-            });
-          } else if (matchId === 'SEMIS_2') {
-            updatedRounds.forEach(r => {
-              r.matches.forEach(m => {
-                if (m.id === 'FINAL_ORO') m.team2 = winningTeamName;
-                if (m.id === 'FINAL_CONSOL') m.team2 = losingTeamName;
-              });
-            });
+      const updatedRounds = t.rounds.map(r => ({
+        ...r,
+        matches: r.matches.map(m => {
+          if (m.id === matchId) {
+            winningTeamName = winningTeamNum === 1 ? m.team1 : m.team2;
+            losingTeamName = winningTeamNum === 1 ? m.team2 : m.team1;
+            return {
+              ...m,
+              score: composedScoreText,
+              winner: winningTeamNum,
+              status: 'FINALIZADO'
+            };
           }
-        }
+          return m;
+        })
+      }));
 
-        let updatedTeams = t.teams || [];
-        if (t.mode === 'equipos' && updatedTeams.length === 2) {
-          let scoreA = 0;
-          let scoreB = 0;
+      if (t.mode === 'eliminatorio' && winningTeamName) {
+        if (matchId === 'SEMIS_1') {
           updatedRounds.forEach(r => {
             r.matches.forEach(m => {
-              if (m.winner === 1) scoreA++;
-              if (m.winner === 2) scoreB++;
+              if (m.id === 'FINAL_ORO') m.team1 = winningTeamName;
+              if (m.id === 'FINAL_CONSOL') m.team1 = losingTeamName;
             });
           });
-          updatedTeams = [
-            { ...updatedTeams[0], score: scoreA },
-            { ...updatedTeams[1], score: scoreB }
-          ];
+        } else if (matchId === 'SEMIS_2') {
+          updatedRounds.forEach(r => {
+            r.matches.forEach(m => {
+              if (m.id === 'FINAL_ORO') m.team2 = winningTeamName;
+              if (m.id === 'FINAL_CONSOL') m.team2 = losingTeamName;
+            });
+          });
         }
+      }
 
-        return {
-          ...t,
-          rounds: updatedRounds,
-          teams: updatedTeams
-        };
-      });
+      let updatedTeams = t.teams || [];
+      if (t.mode === 'equipos' && updatedTeams.length === 2) {
+        let scoreA = 0;
+        let scoreB = 0;
+        updatedRounds.forEach(r => {
+          r.matches.forEach(m => {
+            if (m.winner === 1) scoreA++;
+            if (m.winner === 2) scoreB++;
+          });
+        });
+        updatedTeams = [
+          { ...updatedTeams[0], score: scoreA },
+          { ...updatedTeams[1], score: scoreB }
+        ];
+      }
 
-      localStorage.setItem('padel_ctc_tournaments', JSON.stringify(updated));
-      return updated;
+      tournamentToSync = {
+        ...t,
+        rounds: updatedRounds,
+        teams: updatedTeams
+      };
+
+      return tournamentToSync;
     });
 
+    setActiveTournaments(updatedTournaments);
+    localStorage.setItem('padel_ctc_tournaments', JSON.stringify(updatedTournaments));
     setReportingTournamentMatch(null);
+
+    if (tournamentToSync) {
+      try {
+        await fetch(apiUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({ action: 'GUARDAR_TORNEO', torneo: tournamentToSync })
+        });
+        fetchData(true);
+      } catch (e) {
+        console.error('Error al guardar marcador en la nube:', e);
+      }
+    }
   };
 
-  const handleUpdateTournamentDinner = (tId, participantId, newDinnerStatus) => {
-    setActiveTournaments(prev => {
-      const updated = prev.map(t => {
-        if (t.id !== tId) return t;
-        return {
-          ...t,
-          participants: (t.participants || []).map(p => {
-            if (p.id === participantId) {
-              return { ...p, dinner: newDinnerStatus };
-            }
-            return p;
-          })
-        };
-      });
-      localStorage.setItem('padel_ctc_tournaments', JSON.stringify(updated));
-      return updated;
+  // 4. Actualizar cena del torneo (Optimista + Nube)
+  const handleUpdateTournamentDinner = async (tId, participantId, newDinnerStatus) => {
+    let tournamentToSync = null;
+
+    const updatedTournaments = activeTournaments.map(t => {
+      if (t.id !== tId) return t;
+      tournamentToSync = {
+        ...t,
+        participants: (t.participants || []).map(p => {
+          if (p.id === participantId) {
+            return { ...p, dinner: newDinnerStatus };
+          }
+          return p;
+        })
+      };
+      return tournamentToSync;
     });
+
+    setActiveTournaments(updatedTournaments);
+    localStorage.setItem('padel_ctc_tournaments', JSON.stringify(updatedTournaments));
+
+    if (tournamentToSync) {
+      try {
+        await fetch(apiUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({ action: 'GUARDAR_TORNEO', torneo: tournamentToSync })
+        });
+        fetchData(true);
+      } catch (e) {
+        console.error('Error al actualizar cena en la nube:', e);
+      }
+    }
   };
 
   const handleShareTournamentDinnerWhatsapp = (tournamentItem) => {
