@@ -2456,17 +2456,17 @@ export default function App() {
     const cleanDate = extractCleanDate(rawDateStr);
     const normMe = normalizeName(currentUser.name);
 
-    // Actualización optimista inmediata en el estado de comensales
+    // 1. Actualización visual instantánea en la lista de comensales
     setAllDinnerGuests(prev => {
       const filtered = prev.filter(g => {
         const guestNameNorm = normalizeName(g.name);
-        const guestDateClean = extractCleanDate(g.target || g.cleanTarget);
-        return !(guestNameNorm === normMe && guestDateClean === cleanDate);
+        const guestDate = extractCleanDate(g.target || g.cleanTarget);
+        return !(guestNameNorm === normMe && guestDate === cleanDate);
       });
 
       if (newState === 'SI') {
         filtered.push({
-          id: currentUser.id || ('INV-' + Date.now()),
+          id: currentUser.id,
           name: currentUser.name,
           target: cleanDate,
           cleanTarget: cleanDate,
@@ -2479,8 +2479,10 @@ export default function App() {
       return filtered;
     });
 
+    // 2. Persistencia en la tabla Asistencia del backend y refresco
     try {
-      await fetch(apiUrl, {
+      setSyncing(true);
+      const res = await fetch(apiUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify({ 
@@ -2492,10 +2494,14 @@ export default function App() {
           grupo: myGroup 
         })
       });
-      // Sincronizar silenciosamente para asegurar persistencia
-      fetchData(true);
+      const data = await res.json();
+      if (data.ok) {
+        await fetchData(true); // Recarga los datos oficiales de la hoja
+      }
     } catch (e) {
-      console.error(e);
+      console.error('Error al actualizar cena sin partido:', e);
+    } finally {
+      setSyncing(false);
     }
   };
 
