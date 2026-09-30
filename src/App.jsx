@@ -22,7 +22,9 @@ const OFFICIAL_TOURNAMENT_RULES = {
    - Ganadores: suben una pista hacia Pista 1 (los ganadores de Pista 1 defienden posición y permanecen en ella).
    - Perdedores: bajan una pista hacia Pista N (los perdedores de Pista N permanecen en ella).
 5. Determinación del Campeón:
-   - La pareja que finalice el último turno como ganadora en la Pista 1 (o la que acumule más minutos/turnos defendiendo la Pista Reina, según configuración del evento).`,
+   - La pareja que finalice el último turno como ganadora en la Pista 1 (o la que acumule más minutos/turnos defendiendo la Pista Reina, según configuración del evento).
+6. Cuadro de partidos a generar:
+   - Solo debes generar el cuadro de la primera ronda y que el resto de rondas se vayan completando al alimentar los resultados de la ronda anterior.`,
 
   americano: `REGLAS OFICIALES: TORNEO AMERICANO INDIVIDUAL
 1. Formato y Rotación:
@@ -233,7 +235,7 @@ function UserAvatar({ name, photo, size = 'md', className = '' }) {
 
   return (
     <div
-      className={`${sizeClasses[size]} rounded-full bg-linear-to-br from-blue-600 to-indigo-700 text-white font-black flex items-center justify-center border border-white/50 shadow-xs shrink-0 ${className}`}
+      className={`${sizeClasses[size]} rounded-full bg-gradient-to-br from-blue-600 to-indigo-700 text-white font-black flex items-center justify-center border border-white/50 shadow-xs shrink-0 ${className}`}
     >
       {initials}
     </div>
@@ -1345,7 +1347,7 @@ function TournamentCreatorModal({ isOpen, onClose, allPlayers, tournaments, onTo
 
               <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200">
                 <div className="flex justify-between items-center mb-1">
-                  <label className="block text-[10px] font-bold text-slate-500">Jugadores Objetivo</label>
+                  <label className="block text-[10px] font-bold text-slate-500">Jugadores Esperados</label>
                   <span className="text-[9px] text-blue-600 font-bold">({(Number(tCourts) || 1) * 4} llenan pistas)</span>
                 </div>
                 <div className="flex items-center justify-center gap-1.5 mt-0.5">
@@ -1497,7 +1499,7 @@ function TournamentCreatorModal({ isOpen, onClose, allPlayers, tournaments, onTo
             }`}>
               <div className="text-left">
                 <span className="font-black text-sm block">
-                  {selectedCount} / {targetPlayers} seleccionados
+                  {selectedCount} / {targetPlayers} convocados
                 </span>
                 <span className="text-[10px] font-semibold opacity-85">
                   {selectedCount < neededForCourts
@@ -1706,7 +1708,7 @@ function TournamentCreatorModal({ isOpen, onClose, allPlayers, tournaments, onTo
               <button
                 onClick={handleGenerateWithGemini}
                 disabled={isGenerating}
-                className="flex-1 py-2 bg-linear-to-r from-purple-600 to-blue-600 text-white font-bold rounded-xl shadow-xs flex items-center justify-center gap-1.5"
+                className="flex-1 py-2 bg-gradient-to-r from-purple-600 to-blue-600 text-white font-bold rounded-xl shadow-xs flex items-center justify-center gap-1.5"
               >
                 {isGenerating ? (
                   <>
@@ -2171,11 +2173,19 @@ export default function App() {
     }
   }, []);
 
+  // AISLAMIENTO ABSOLUTO PARA INVITADOS O ACCESOS POR ENLACE PERSONAL
+  const isTournamentGuestSession = useMemo(() => {
+    if (inviteTournamentId) return true;
+    if (currentUser && (currentUser.group || '').toLowerCase() === 'torneo') return true;
+    return false;
+  }, [inviteTournamentId, currentUser]);
+
   const isThursdayMember = useMemo(() => {
+    if (isTournamentGuestSession) return false;
     if (!currentUser) return false;
     const g = (currentUser.group || '').toLowerCase();
     return g === 'chicos';
-  }, [currentUser]);
+  }, [currentUser, isTournamentGuestSession]);
 
   useEffect(() => {
     if (currentUser && !isThursdayMember) {
@@ -2440,18 +2450,26 @@ export default function App() {
     }
   };
 
-  const handleToggleSoloCena = async (dateStr, newState) => {
-    if (!currentUser) return;
+  // 3. CORRECCIÓN ROBUSTA: 'ME APUNTO A CENAR SIN JUGAR'
+  const handleToggleSoloCena = async (rawDateStr, newState) => {
+    if (!currentUser || !rawDateStr) return;
+    const cleanDate = extractCleanDate(rawDateStr);
     const normMe = normalizeName(currentUser.name);
 
+    // Actualización optimista inmediata en el estado de comensales
     setAllDinnerGuests(prev => {
-      const filtered = prev.filter(g => !(normalizeName(g.name) === normMe && (extractCleanDate(g.target) === dateStr || extractCleanDate(dateStr).includes(extractCleanDate(g.target)))));
+      const filtered = prev.filter(g => {
+        const guestNameNorm = normalizeName(g.name);
+        const guestDateClean = extractCleanDate(g.target || g.cleanTarget);
+        return !(guestNameNorm === normMe && guestDateClean === cleanDate);
+      });
+
       if (newState === 'SI') {
         filtered.push({
           id: currentUser.id || ('INV-' + Date.now()),
           name: currentUser.name,
-          target: dateStr,
-          cleanTarget: extractCleanDate(dateStr),
+          target: cleanDate,
+          cleanTarget: cleanDate,
           group: myGroup,
           photo: currentUser.photo || '',
           phone: currentUser.phone || '',
@@ -2461,34 +2479,21 @@ export default function App() {
       return filtered;
     });
 
-    setMatches(prev => prev.map(m => {
-      if (extractCleanDate(m.date) !== dateStr) return m;
-      const guests = [...(m.guests || [])].filter(g => normalizeName(g.name) !== normMe);
-      if (newState === 'SI') {
-        guests.push({
-          id: currentUser.id || ('INV-' + Date.now()),
-          name: currentUser.name,
-          photo: currentUser.photo || '',
-          phone: currentUser.phone || '',
-          isClubPlayer: true
-        });
-      }
-      return { ...m, guests: guests };
-    }));
-
     try {
-      fetch(apiUrl, {
+      await fetch(apiUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify({ 
           action: 'APUNTARSE_SOLO_CENA', 
-          fecha: dateStr, 
+          fecha: cleanDate, 
           nombreJugador: currentUser.name, 
           estado: newState,
           idJugador: currentUser.id,
           grupo: myGroup 
         })
       });
+      // Sincronizar silenciosamente para asegurar persistencia
+      fetchData(true);
     } catch (e) {
       console.error(e);
     }
@@ -2637,7 +2642,7 @@ export default function App() {
     localStorage.setItem('padel_ctc_tournaments', JSON.stringify(updated));
   };
 
-  // GENERAR ENLACE PERSONAL PARA CADA JUGADOR DEL TORNEO (?torneo=ID&p=PLAYER_ID)
+  // 1. GENERAR ENLACE PERSONAL PARA CADA JUGADOR DEL TORNEO (?torneo=ID&p=PLAYER_ID)
   const handleSharePlayerPersonalLink = (tournamentItem, playerItem) => {
     const link = `${window.location.origin}${window.location.pathname}?torneo=${tournamentItem.id}&p=${playerItem.id}`;
     const cleanPhone = (playerItem.phone || '').replace(/\D/g, '');
@@ -2936,9 +2941,10 @@ export default function App() {
     });
 
     (allDinnerGuests || []).forEach(g => {
-      const isDateMatch = extractCleanDate(g.target) === activeDinnerKey || 
-                          extractCleanDate(g.cleanTarget) === activeDinnerKey ||
-                          activeDinnerKey.includes(extractCleanDate(g.target));
+      const gCleanTarget = extractCleanDate(g.target || g.cleanTarget);
+      const isDateMatch = gCleanTarget === activeDinnerKey || 
+                          activeDinnerKey.includes(gCleanTarget) ||
+                          gCleanTarget.includes(activeDinnerKey);
       const isGroupMatch = (g.group || 'chicos').toLowerCase() === myGroup;
       if (isDateMatch && isGroupMatch) {
         const normG = normalizeName(g.name);
@@ -3558,7 +3564,7 @@ export default function App() {
                   return (
                     <div className="mt-5 pt-3 border-t border-slate-100 text-center">
                       <span className="text-[11px] text-slate-500 font-semibold italic block">
-                        ℹ️️ Este partido es amistoso. Las cenas y puntos oficiales se computan exclusivamente los {currentMatch.grupo === 'chicas' ? 'Martes (Chicas)' : 'Jueves (Chicos)'}.
+                        ℹ Este partido es amistoso. Las cenas y puntos oficiales se computan exclusivamente los {currentMatch.grupo === 'chicas' ? 'Martes (Chicas)' : 'Jueves (Chicos)'}.
                       </span>
                     </div>
                   );
@@ -4076,7 +4082,7 @@ export default function App() {
             {/* TAB 5: MÓDULO TORNEOS CTC */}
             {activeTab === 'torneos' && (
               <div className="space-y-3">
-                <div className="bg-linear-to-r from-purple-700 to-indigo-800 rounded-3xl p-5 text-white shadow-md">
+                <div className="bg-gradient-to-r from-purple-700 to-indigo-800 rounded-3xl p-5 text-white shadow-md">
                   <div className="flex justify-between items-start mb-2">
                     <div>
                       <span className="text-[10px] uppercase font-black bg-white/20 px-2 py-0.5 rounded-md tracking-wider">
