@@ -2214,14 +2214,26 @@ export default function App() {
 
   const handleRegisterUser = async (e) => {
     e.preventDefault();
-    if (!newUserName.trim()) return;
-    if (newUserPin.trim().length !== 4) return;
+    if (!newUserName.trim()) {
+      alert('Por favor, introduce tu nombre y apellido.');
+      return;
+    }
+    if (newUserPin.trim().length !== 4) {
+      alert('El PIN debe tener exactamente 4 dígitos.');
+      return;
+    }
 
     setSyncing(true);
-    const assignedGroup = newUserGroup === 'Solo Torneo' ? 'torneo' : newUserGroup;
+    
+    // Normalizamos el grupo a minúsculas ("chicos" o "torneo")
+    const assignedGroup = (newUserGroup === 'Solo Torneo' || newUserGroup === 'torneo') ? 'torneo' : 'chicos';
 
     try {
-      const res = await fetch(apiUrl, {
+      // AbortController para cancelar si Apps Script no responde en 12 segundos
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 12000);
+
+      const response = await fetch(apiUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify({
@@ -2231,29 +2243,44 @@ export default function App() {
           grupo: assignedGroup,
           playtomic: newUserPlaytomic.trim(),
           pin: newUserPin.trim()
-        })
+        }),
+        signal: controller.signal
       });
-      const json = await res.json();
-      if (json.ok) {
+
+      clearTimeout(timeoutId);
+
+      const json = await response.json();
+
+      if (json && json.ok) {
+        const newUserId = json.id || 'u_' + Date.now();
         const createdUser = {
-          id: json.id || 'u' + (players.length + 1),
+          id: newUserId,
           name: newUserName.trim(),
           phone: newUserPhone.trim(),
-          group: assignedGroup.toLowerCase(),
+          group: assignedGroup,
           photo: '',
           level: 3.5,
           pJ: 0, pG: 0, cSi: 0, cNo: 0,
           ptsDeportivo: 0, ptsBarandas: 0, hibrido: 0,
-          titulo: assignedGroup === 'torneo' ? 'Jugador de Torneo ⚔️' : "Fichaje Estrella ⭐",
+          titulo: assignedGroup === 'torneo' ? 'Jugador de Torneo ⚔️' : 'Fichaje Estrella ⭐',
           deuda: 0,
           pin: newUserPin.trim()
         };
+        // Guardar localmente y dar entrada automática al usuario
         handlePinSuccess(createdUser);
         setShowRegisterForm(false);
-        fetchData();
+        fetchData(true);
+        alert('¡Registro completado con éxito!');
+      } else {
+        alert('No se pudo registrar: ' + (json.error || 'Error en el servidor de Google Sheets.'));
       }
     } catch (err) {
-      console.error(err);
+      console.error('Error en registro:', err);
+      if (err.name === 'AbortError') {
+        alert('La conexión con el servidor ha tardado demasiado. Comprueba tu conexión e inténtalo de nuevo.');
+      } else {
+        alert('Ocurrió un error al enviar el registro. Por favor, vuelve a intentarlo.');
+      }
     } finally {
       setSyncing(false);
     }
