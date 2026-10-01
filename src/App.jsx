@@ -182,7 +182,7 @@ function parseMatchTiming(dateStr) {
 
 function isTournamentStarted(tournament) {
   if (!tournament) return true;
-  if (!tournament.startDate) return true; // Retrocompatibilidad con torneos antiguos sin fecha estricta
+  if (!tournament.startDate) return true;
 
   const timeStr = tournament.startTime || '09:00';
   const startDateTime = new Date(`${tournament.startDate}T${timeStr}:00`);
@@ -513,7 +513,7 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, onPhoto
         easiestWinPct = winPct;
         easiestRival = { name, ...data, pct: winPct.toFixed(0) };
       }
-      if (data.lostAgainst > 0 && lossPct >= hardestLossPct) {
+      if (data.lost > 0 && lossPct >= hardestLossPct) {
         hardestLossPct = lossPct;
         hardestRival = { name, ...data, pct: lossPct.toFixed(0) };
       }
@@ -719,7 +719,7 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, onPhoto
               </div>
               <div className="bg-purple-50 border border-purple-200 rounded-xl p-2.5">
                 <span className="text-base font-black text-purple-800 block">{stats.dinnerNo}</span>
-                <span className="text-[10px] font-bold text-purple-900 uppercase">Rajadas 🏃‍♂</span>
+                <span className="text-[10px] font-bold text-purple-900 uppercase">Rajadas 🏃‍♂️</span>
               </div>
             </div>
           </div>
@@ -900,21 +900,19 @@ function PinModal({ isOpen, onClose, targetUser, onPinSuccess, apiUrl }) {
   );
 }
 
-// Modal Creador de Torneos con Fecha y Hora de Inicio
+// Modal Creador de Torneos con Selección por Capitanes, Auto-Equilibrado y Draft Ryder Cup
 function TournamentCreatorModal({ isOpen, onClose, allPlayers, tournaments, onTournamentCreated, currentUserId, onSaveLevel }) {
   const [step, setStep] = useState(1);
   const [tName, setTName] = useState('Torneo CTC Fin de Semana');
-  const [tournamentMode, setTournamentMode] = useState('pozo');
+  const [tournamentMode, setTournamentMode] = useState('equipos');
 
   // FECHA Y HORA DE INICIO OBLIGATORIAS
   const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
   const [tDate, setTDate] = useState(todayStr);
   const [tStartTime, setTStartTime] = useState('10:00');
 
-  // Control de pistas
+  // Control de pistas y cupos
   const [tCourts, setTCourts] = useState(3);
-
-  // Cupo objetivo de jugadores (autocompletado por defecto a Pistas * 4)
   const [targetPlayers, setTargetPlayers] = useState(12);
   const [hasManuallyEditedTarget, setHasManuallyEditedTarget] = useState(false);
 
@@ -929,7 +927,6 @@ function TournamentCreatorModal({ isOpen, onClose, allPlayers, tournaments, onTo
 
   const effectiveDuration = isCustomDuration ? (Number(customDuration) || 120) : Number(tDuration);
   const effectiveMatchTime = isCustomMatchTime ? (Number(customMatchTime) || 20) : Number(tMatchTime);
-  const estimatedRounds = Math.max(1, Math.floor(effectiveDuration / effectiveMatchTime));
 
   const handleCourtsChange = (newCourts) => {
     const val = Math.min(12, Math.max(1, newCourts));
@@ -940,8 +937,10 @@ function TournamentCreatorModal({ isOpen, onClose, allPlayers, tournaments, onTo
   };
 
   const [participants, setParticipants] = useState(() => {
-    return allPlayers.map(p => {
-      const calc = calculateTournamentSuggestedLevel(p, tournaments);
+    return (allPlayers || []).map(p => {
+      const calc = typeof calculateTournamentSuggestedLevel === 'function' 
+        ? calculateTournamentSuggestedLevel(p, tournaments)
+        : { suggestedLevel: p.level || 3.5, diff: 0, trend: 'ESTABLE' };
       return {
         id: p.id,
         name: p.name,
@@ -953,13 +952,14 @@ function TournamentCreatorModal({ isOpen, onClose, allPlayers, tournaments, onTo
         selected: true,
         isGuest: false,
         dinner: 'SI',
-        assignedTeam: 1
+        assignedTeam: 1 // 1: Azul 🔵, 2: Rojo 🔴
       };
     });
   });
 
   const [captain1Id, setCaptain1Id] = useState('');
   const [captain2Id, setCaptain2Id] = useState('');
+  const [draftTurn, setDraftTurn] = useState(1); // 1: Azul 🔵, 2: Rojo 🔴
 
   const [guestName, setGuestName] = useState('');
   const [guestLevel, setGuestLevel] = useState(3.0);
@@ -969,16 +969,32 @@ function TournamentCreatorModal({ isOpen, onClose, allPlayers, tournaments, onTo
   const [generatedFixture, setGeneratedFixture] = useState([]);
   const [generatedTeams, setGeneratedTeams] = useState([]);
 
+  // Auto-selección inicial de capitanes al cambiar convocados
   useEffect(() => {
     const selected = participants.filter(p => p.selected);
     if (selected.length >= 2) {
       if (!captain1Id || !selected.some(s => s.id === captain1Id)) setCaptain1Id(selected[0].id);
-      if (!captain2Id || !selected.some(s => s.id === captain2Id)) setCaptain2Id(selected[1].id);
+      if (!captain2Id || !selected.some(s => s.id === captain2Id)) {
+        const other = selected.find(s => s.id !== selected[0].id);
+        if (other) setCaptain2Id(other.id);
+      }
     }
-  }, [participants, tournamentMode]);
+  }, [participants]);
+
+  // Asegurar capitanes fijados en sus respectivas escuadras
+  useEffect(() => {
+    if (captain1Id) {
+      setParticipants(prev => prev.map(p => p.id === captain1Id ? { ...p, assignedTeam: 1 } : p));
+    }
+    if (captain2Id) {
+      setParticipants(prev => prev.map(p => p.id === captain2Id ? { ...p, assignedTeam: 2 } : p));
+    }
+  }, [captain1Id, captain2Id]);
 
   useEffect(() => {
-    setCustomGeminiRules(OFFICIAL_TOURNAMENT_RULES[tournamentMode] || '');
+    if (typeof OFFICIAL_TOURNAMENT_RULES !== 'undefined') {
+      setCustomGeminiRules(OFFICIAL_TOURNAMENT_RULES[tournamentMode] || '');
+    }
   }, [tournamentMode]);
 
   if (!isOpen) return null;
@@ -990,11 +1006,51 @@ function TournamentCreatorModal({ isOpen, onClose, allPlayers, tournaments, onTo
   const handleLevelChange = (id, newLvl) => {
     const parsed = parseFloat(newLvl);
     setParticipants(prev => prev.map(p => p.id === id ? { ...p, level: parsed } : p));
-    onSaveLevel(id, parsed);
+    if (typeof onSaveLevel === 'function') {
+      onSaveLevel(id, parsed);
+    }
   };
 
   const handleTeamToggle = (id, teamNum) => {
+    if (id === captain1Id || id === captain2Id) return; // Capitanes fijados
     setParticipants(prev => prev.map(p => p.id === id ? { ...p, assignedTeam: teamNum } : p));
+    setDraftTurn(teamNum === 1 ? 2 : 1);
+  };
+
+  const handleAutoBalanceTeams = () => {
+    const selected = participants.filter(p => p.selected);
+    if (selected.length < 2) return;
+
+    const cap1 = selected.find(p => p.id === captain1Id);
+    const cap2 = selected.find(p => p.id === captain2Id);
+    
+    const rest = selected
+      .filter(p => p.id !== captain1Id && p.id !== captain2Id)
+      .sort((a, b) => b.level - a.level);
+
+    let team1 = cap1 ? [cap1] : [];
+    let team2 = cap2 ? [cap2] : [];
+
+    rest.forEach(p => {
+      const sum1 = team1.reduce((acc, item) => acc + item.level, 0);
+      const sum2 = team2.reduce((acc, item) => acc + item.level, 0);
+
+      if (sum1 <= sum2) {
+        team1.push(p);
+      } else {
+        team2.push(p);
+      }
+    });
+
+    const team1Ids = new Set(team1.map(p => p.id));
+
+    setParticipants(prev => prev.map(p => {
+      if (!p.selected) return p;
+      return {
+        ...p,
+        assignedTeam: team1Ids.has(p.id) ? 1 : 2
+      };
+    }));
   };
 
   const handleAddGuest = (e) => {
@@ -1035,8 +1091,9 @@ function TournamentCreatorModal({ isOpen, onClose, allPlayers, tournaments, onTo
       : '0.00';
 
     const delta = Math.abs(parseFloat(avgT1) - parseFloat(avgT2)).toFixed(2);
+    const isBalanced = parseFloat(delta) <= 0.2;
 
-    return { team1Players, team2Players, avgT1, avgT2, delta };
+    return { team1Players, team2Players, avgT1, avgT2, delta, isBalanced };
   })();
 
   const handleGenerateWithGemini = () => {
@@ -1274,7 +1331,6 @@ function TournamentCreatorModal({ isOpen, onClose, allPlayers, tournaments, onTo
               />
             </div>
 
-            {/* CONTROL OBLIGATORIO DE FECHA Y HORA DE INICIO */}
             <div className="grid grid-cols-2 gap-2 bg-purple-50/70 p-3 rounded-2xl border border-purple-200">
               <div>
                 <label className="block text-[10px] font-black text-purple-950 uppercase tracking-wide mb-1">
@@ -1336,7 +1392,7 @@ function TournamentCreatorModal({ isOpen, onClose, allPlayers, tournaments, onTo
                   type="button"
                   onClick={() => setTournamentMode('eliminatorio')}
                   className={`p-3 rounded-2xl border text-left transition ${
-                    tournamentMode === 'eliminatorio' ? 'bg-blue-600 text-white border-blue-600 ring-2 ring-blue-500' : 'bg-slate-50 border-slate-200 text-slate-600'
+                    tournamentMode === 'eliminatorio' ? 'bg-blue-50 border-blue-600 text-blue-950 ring-2 ring-blue-500' : 'bg-slate-50 border-slate-200 text-slate-600'
                   }`}
                 >
                   <span className="text-base block mb-0.5">🥇</span>
@@ -1348,7 +1404,7 @@ function TournamentCreatorModal({ isOpen, onClose, allPlayers, tournaments, onTo
                   type="button"
                   onClick={() => setTournamentMode('equipos')}
                   className={`p-3 rounded-2xl border text-left transition ${
-                    tournamentMode === 'equipos' ? 'bg-blue-50 border-blue-600 text-blue-950 ring-2 ring-blue-500' : 'bg-slate-50 border-slate-200 text-slate-600'
+                    tournamentMode === 'equipos' ? 'bg-blue-600 text-white border-blue-600 ring-2 ring-blue-500' : 'bg-slate-50 border-slate-200 text-slate-600'
                   }`}
                 >
                   <span className="text-base block mb-0.5">🛡️</span>
@@ -1358,7 +1414,6 @@ function TournamentCreatorModal({ isOpen, onClose, allPlayers, tournaments, onTo
               </div>
             </div>
 
-            {/* SELECCIÓN DE PISTAS Y CUPO OBJETIVO DE JUGADORES */}
             <div className="grid grid-cols-2 gap-2">
               <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200">
                 <label className="block text-[10px] font-bold text-slate-500 mb-1">Pistas CTC</label>
@@ -1437,7 +1492,6 @@ function TournamentCreatorModal({ isOpen, onClose, allPlayers, tournaments, onTo
               </div>
             </div>
 
-            {/* PARÁMETROS FLEXIBLES DE TIEMPO */}
             <div className="grid grid-cols-2 gap-2">
               <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200">
                 <label className="block text-[10px] font-bold text-slate-500 mb-1">Tiempo Total</label>
@@ -1554,6 +1608,94 @@ function TournamentCreatorModal({ isOpen, onClose, allPlayers, tournaments, onTo
               </span>
             </div>
 
+            {/* SECCIÓN ESPECÍFICA MODO RYDER CUP (EQUIPOS) */}
+            {tournamentMode === 'equipos' && (
+              <div className="bg-slate-900 text-white rounded-2xl p-3.5 space-y-3 border border-slate-700 shadow-sm">
+                <div className="flex justify-between items-center border-b border-slate-800 pb-2">
+                  <span className="font-black text-xs text-blue-300 uppercase tracking-wide flex items-center gap-1">
+                    <span>🛡️</span> Configuración de Escuadras Ryder
+                  </span>
+                  <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
+                    teamStats.isBalanced ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40' : 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                  }`}>
+                    {teamStats.isBalanced ? '✓ Equilibrado' : '⚠️ Desnivelado'} (Δ {teamStats.delta})
+                  </span>
+                </div>
+
+                {/* SELECTOR DE CAPITANES */}
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="bg-slate-800/80 p-2 rounded-xl border border-blue-500/40">
+                    <label className="block text-[10px] font-black text-blue-400 uppercase tracking-wider mb-1">
+                      Capitán Azul 🔵
+                    </label>
+                    <select
+                      value={captain1Id}
+                      onChange={e => setCaptain1Id(e.target.value)}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg p-1.5 font-bold text-white text-xs"
+                    >
+                      {selectedPlayers.map(p => (
+                        <option key={p.id} value={p.id} disabled={p.id === captain2Id}>
+                          {p.name} (★ {p.level.toFixed(1)})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="bg-slate-800/80 p-2 rounded-xl border border-rose-500/40">
+                    <label className="block text-[10px] font-black text-rose-400 uppercase tracking-wider mb-1">
+                      Capitán Rojo 🔴
+                    </label>
+                    <select
+                      value={captain2Id}
+                      onChange={e => setCaptain2Id(e.target.value)}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg p-1.5 font-bold text-white text-xs"
+                    >
+                      {selectedPlayers.map(p => (
+                        <option key={p.id} value={p.id} disabled={p.id === captain1Id}>
+                          {p.name} (★ {p.level.toFixed(1)})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* VISUALIZADOR DE NIVELES Y EQUIDAD */}
+                <div className="grid grid-cols-2 gap-2 text-center text-xs">
+                  <div className="bg-blue-950/60 border border-blue-800/60 rounded-xl p-2">
+                    <span className="text-[10px] text-blue-300 font-bold block uppercase">
+                      Media Azul ({teamStats.team1Players.length})
+                    </span>
+                    <span className="text-base font-black text-blue-400">★ {teamStats.avgT1}</span>
+                  </div>
+                  <div className="bg-rose-950/60 border border-rose-800/60 rounded-xl p-2">
+                    <span className="text-[10px] text-rose-300 font-bold block uppercase">
+                      Media Rojo ({teamStats.team2Players.length})
+                    </span>
+                    <span className="text-base font-black text-rose-400">★ {teamStats.avgT2}</span>
+                  </div>
+                </div>
+
+                {/* BOTÓN AUTO-EQUILIBRAR */}
+                <button
+                  type="button"
+                  onClick={handleAutoBalanceTeams}
+                  className="w-full py-2 bg-gradient-to-r from-blue-600 to-rose-600 hover:from-blue-500 hover:to-rose-500 text-white font-black rounded-xl text-xs shadow-md transition flex items-center justify-center gap-1.5"
+                >
+                  <span>⚡</span> Auto-Equilibrar Escuadras por Rating
+                </button>
+
+                {/* INDICADOR TURNO DRAFT */}
+                <div className="bg-slate-800 p-2 rounded-xl border border-slate-700 flex justify-between items-center text-[11px]">
+                  <span className="text-slate-400 font-bold">Turno Draft:</span>
+                  <span className={`font-black px-2 py-0.5 rounded-md ${
+                    draftTurn === 1 ? 'bg-blue-600 text-white' : 'bg-rose-600 text-white'
+                  }`}>
+                    {draftTurn === 1 ? 'Elige Capitán Azul 🔵' : 'Elige Capitán Rojo 🔴'}
+                  </span>
+                </div>
+              </div>
+            )}
+
             <form onSubmit={handleAddGuest} className="bg-blue-50/80 p-3 rounded-2xl border border-blue-200 space-y-2">
               <label className="font-extrabold text-blue-950 block text-[11px]">
                 ➕ Añadir Participante Invitado (Externo)
@@ -1574,38 +1716,77 @@ function TournamentCreatorModal({ isOpen, onClose, allPlayers, tournaments, onTo
             </form>
 
             <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
-              {participants.map(p => (
-                <div
-                  key={p.id}
-                  className={`p-2 rounded-xl border flex flex-col gap-1.5 transition ${
-                    p.selected ? 'bg-white border-slate-200' : 'bg-slate-50 border-slate-100 opacity-50'
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        checked={p.selected}
-                        onChange={() => handleTogglePlayer(p.id)}
-                        className="w-4 h-4 rounded text-blue-600 accent-blue-600 cursor-pointer"
-                      />
-                      <UserAvatar name={p.name} photo={p.photo} size="xs" />
-                      <div>
-                        <span className="font-bold text-slate-800 text-[11px] truncate max-w-[130px] block">{p.name}</span>
-                        {p.diff !== 0 && (
-                          <span className={`text-[9px] font-bold ${p.diff > 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                            {p.diff > 0 ? `▲ +${p.diff} sugerido torneo` : `▼ ${p.diff} sugerido torneo`}
-                          </span>
-                        )}
-                      </div>
-                    </div>
+              {participants.map(p => {
+                const isCaptain1 = p.id === captain1Id;
+                const isCaptain2 = p.id === captain2Id;
 
-                    {p.selected && (
-                      <StarRating value={p.level} onChange={(lvl) => handleLevelChange(p.id, lvl)} />
-                    )}
+                return (
+                  <div
+                    key={p.id}
+                    className={`p-2 rounded-xl border flex flex-col gap-1.5 transition ${
+                      p.selected ? 'bg-white border-slate-200' : 'bg-slate-50 border-slate-100 opacity-50'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={p.selected}
+                          onChange={() => handleTogglePlayer(p.id)}
+                          className="w-4 h-4 rounded text-blue-600 accent-blue-600 cursor-pointer"
+                        />
+                        <UserAvatar name={p.name} photo={p.photo} size="xs" />
+                        <div>
+                          <span className="font-bold text-slate-800 text-[11px] truncate max-w-[130px] block">
+                            {p.name}
+                          </span>
+                          {p.diff !== 0 && (
+                            <span className={`text-[9px] font-bold ${p.diff > 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                              {p.diff > 0 ? `▲ +${p.diff} sugerido` : `▼ ${p.diff} sugerido`}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {p.selected && (
+                        <div className="flex items-center gap-2">
+                          {/* TOGGLE ASIGNACIÓN RYDER CUP */}
+                          {tournamentMode === 'equipos' && (
+                            <div className="flex bg-slate-100 p-0.5 rounded-lg border border-slate-200">
+                              <button
+                                type="button"
+                                disabled={isCaptain1 || isCaptain2}
+                                onClick={() => handleTeamToggle(p.id, 1)}
+                                className={`px-2 py-0.5 rounded-md text-[10px] font-black transition ${
+                                  p.assignedTeam === 1
+                                    ? 'bg-blue-600 text-white shadow-xs'
+                                    : 'text-slate-400 hover:text-slate-700'
+                                }`}
+                              >
+                                {isCaptain1 ? '👑 Azul' : '🔵 Azul'}
+                              </button>
+                              <button
+                                type="button"
+                                disabled={isCaptain1 || isCaptain2}
+                                onClick={() => handleTeamToggle(p.id, 2)}
+                                className={`px-2 py-0.5 rounded-md text-[10px] font-black transition ${
+                                  p.assignedTeam === 2
+                                    ? 'bg-rose-600 text-white shadow-xs'
+                                    : 'text-slate-400 hover:text-slate-700'
+                                }`}
+                              >
+                                {isCaptain2 ? '👑 Rojo' : '🔴 Rojo'}
+                              </button>
+                            </div>
+                          )}
+
+                          <StarRating value={p.level} onChange={(lvl) => handleLevelChange(p.id, lvl)} />
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
 
             <div className="flex gap-2 pt-1">
@@ -2212,7 +2393,7 @@ export default function App() {
     }
   };
 
-const handleRegisterUser = async (e) => {
+  const handleRegisterUser = async (e) => {
     e.preventDefault();
     if (!newUserName.trim()) {
       alert('Por favor, introduce tu nombre y apellido.');
@@ -2224,12 +2405,9 @@ const handleRegisterUser = async (e) => {
     }
 
     setSyncing(true);
-    
-    // Normalizamos el grupo a formato de tu hoja de cálculo
     const assignedGroup = (newUserGroup === 'Solo Torneo' || newUserGroup === 'torneo') ? 'torneo' : 'chicos';
 
     try {
-      // AbortController para evitar que el navegador se quede colgado indefinidamente
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 12000);
 
@@ -2240,7 +2418,7 @@ const handleRegisterUser = async (e) => {
           action: 'REGISTRAR_JUGADOR',
           nombre: newUserName.trim(),
           telefono: newUserPhone.trim(),
-          grupo: assignedGroup === 'torneo' ? 'Solo Torneo' : 'Chicos',
+          grupo: assignedGroup,
           playtomic: newUserPlaytomic.trim(),
           pin: newUserPin.trim()
         }),
@@ -2248,11 +2426,10 @@ const handleRegisterUser = async (e) => {
       });
 
       clearTimeout(timeoutId);
-
       const json = await response.json();
 
       if (json && json.ok) {
-        const newUserId = json.id || ('u_' + Date.now());
+        const newUserId = json.id || 'u_' + Date.now();
         const createdUser = {
           id: newUserId,
           name: newUserName.trim(),
@@ -2264,11 +2441,9 @@ const handleRegisterUser = async (e) => {
           ptsDeportivo: 0, ptsBarandas: 0, hibrido: 0,
           titulo: assignedGroup === 'torneo' ? 'Jugador de Torneo ⚔️' : 'Fichaje Estrella ⭐',
           deuda: 0,
-          pin: newUserPin.trim(),
-          playtomic: newUserPlaytomic.trim()
+          pin: newUserPin.trim()
         };
 
-        // Guardar localmente y dar entrada automática al usuario
         handlePinSuccess(createdUser);
         setShowRegisterForm(false);
         fetchData(true);
@@ -2279,7 +2454,7 @@ const handleRegisterUser = async (e) => {
     } catch (err) {
       console.error('Error en registro:', err);
       if (err.name === 'AbortError') {
-        alert('La conexión con el servidor ha tardado demasiado. Se intentará actualizar en segundo plano.');
+        alert('La conexión con el servidor ha tardado demasiado. Comprueba tu conexión e inténtalo de nuevo.');
       } else {
         alert('Ocurrió un error al enviar el registro. Por favor, vuelve a intentarlo.');
       }
@@ -2294,17 +2469,13 @@ const handleRegisterUser = async (e) => {
     localStorage.setItem('padel_current_user', JSON.stringify({ ...currentUser, ...payload }));
 
     try {
-      const res = await fetch(apiUrl, {
+      fetch(apiUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify({ action: 'ACTUALIZAR_DATOS_PERFIL', idJugador, ...payload })
       });
-      const json = await res.json();
-      if (json && json.ok) {
-        fetchData(true);
-      }
     } catch (err) {
-      console.error('Error al actualizar datos de perfil:', err);
+      console.error(err);
     }
   };
 
@@ -2340,7 +2511,6 @@ const handleRegisterUser = async (e) => {
     }
   };
 
-  // DETECTOR DE SI SOLO SE HA PEGADO EL ENLACE DE PLAYTOMIC
   const isOnlyPlaytomicLink = useMemo(() => {
     const trimmed = playtomicText.trim();
     if (!trimmed) return false;
@@ -2356,7 +2526,6 @@ const handleRegisterUser = async (e) => {
 
     let payloadText = playtomicText.trim();
 
-    // Si pegó solo el link, construimos el mensaje simulado con los campos manuales
     if (isOnlyPlaytomicLink) {
       const d = manualDate.trim() || 'Jueves 21:00';
       const loc = manualLocation.trim() || 'Real Club de Tenis de La Coruña';
@@ -2464,7 +2633,6 @@ const handleRegisterUser = async (e) => {
     }
   };
 
-  // APUNTARSE A CENAR SIN JUGAR CON PERSISTENCIA
   const handleToggleSoloCena = async (rawDateStr, newState) => {
     if (!currentUser || !rawDateStr) return;
     const cleanDate = extractCleanDate(rawDateStr);
@@ -3091,7 +3259,7 @@ const handleRegisterUser = async (e) => {
         photo: invitedPlayerSlot.photo || '',
         pin: '',
         group: 'torneo',
-        titulo: 'Invitado al Torneo ⚔️️',
+        titulo: 'Invitado al Torneo ⚔️',
         level: invitedPlayerSlot.level || 3.0
       };
 
@@ -3667,7 +3835,7 @@ const handleRegisterUser = async (e) => {
                             : 'bg-white text-slate-700 border-slate-200 hover:bg-rose-50'
                         } ${isProcessing ? 'opacity-60 cursor-wait' : ''}`}
                       >
-                        ME RAJO 🏃‍♂
+                        ME RAJO 🏃‍♂️
                       </button>
                     </div>
                   </div>
@@ -4341,39 +4509,39 @@ const handleRegisterUser = async (e) => {
                               </div>
                             </div>
                           )}
-                          
-                        {/* SUBTAB 2: LISTA DE JUGADORES */}
-                        {curSubTab === 'jugadores' && (
-                          <div className="space-y-2 pt-1 text-xs">
-                            <p className="text-[11px] text-slate-500 leading-tight">
-                              Envía a cada jugador su <strong>enlace personal intransferible</strong> para que acceda directamente, cree su PIN y quede enlazado a su rating y asistencia:
-                            </p>
 
-                            <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1">
-                              {(t.participants || []).map(p => (
-                                <div key={p.id} className="p-2 rounded-xl border border-slate-200 bg-white flex items-center justify-between">
-                                  <div className="flex items-center gap-2">
-                                    <UserAvatar name={p.name} photo={p.photo} size="xs" />
-                                    <div>
-                                      <span className="font-bold text-slate-800 text-[11px] block">{p.name}</span>
-                                      <span className="text-[9px] text-slate-400">
-                                        {p.isGuest ? 'Participante Invitado' : 'Jugador del Club'}
-                                      </span>
+                          {/* SUBTAB 2: LISTA DE JUGADORES */}
+                          {curSubTab === 'jugadores' && (
+                            <div className="space-y-2 pt-1 text-xs">
+                              <p className="text-[11px] text-slate-500 leading-tight">
+                                Envía a cada jugador su <strong>enlace personal intransferible</strong> para que acceda directamente, cree su PIN y quede enlazado a su rating y asistencia:
+                              </p>
+
+                              <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1">
+                                {(t.participants || []).map(p => (
+                                  <div key={p.id} className="p-2 rounded-xl border border-slate-200 bg-white flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                      <UserAvatar name={p.name} photo={p.photo} size="xs" />
+                                      <div>
+                                        <span className="font-bold text-slate-800 text-[11px] block">{p.name}</span>
+                                        <span className="text-[9px] text-slate-400">
+                                          {p.isGuest ? 'Participante Invitado' : 'Jugador del Club'}
+                                        </span>
+                                      </div>
                                     </div>
-                                  </div>
 
-                                  <button
-                                    onClick={() => handleSharePlayerPersonalLink(t, p)}
-                                    className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-[10px] rounded-lg shadow-xs flex items-center gap-1 transition"
-                                    title="Enviar enlace por WhatsApp"
-                                  >
-                                    <span>📲</span> Enviar Link
-                                  </button>
-                                </div>
-                              ))}
+                                    <button
+                                      onClick={() => handleSharePlayerPersonalLink(t, p)}
+                                      className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-[10px] rounded-lg shadow-xs flex items-center gap-1 transition"
+                                      title="Enviar enlace por WhatsApp"
+                                    >
+                                      <span>📲</span> Enviar Link
+                                    </button>
+                                  </div>
+                                ))}
+                              </div>
                             </div>
-                          </div>
-                        )}
+                          )}
 
                           {/* SUBTAB 3: CENA DEL TORNEO */}
                           {curSubTab === 'cena' && (
@@ -4538,7 +4706,7 @@ const handleRegisterUser = async (e) => {
         </div>
       )}
 
-      {/* MODAL AÑADIR PARTIDO REGULAR (CON DETECCIÓN INTELIGENTE DE SOLO ENLACE) */}
+      {/* MODAL AÑADIR PARTIDO REGULAR */}
       {showAddModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl max-w-sm w-full p-5 shadow-2xl max-h-[92vh] overflow-y-auto">
@@ -4569,7 +4737,6 @@ const handleRegisterUser = async (e) => {
                 />
               </div>
 
-              {/* DETECCIÓN DE SI SOLO PEGÓ EL LINK */}
               {isOnlyPlaytomicLink ? (
                 <div className="bg-amber-50 border border-amber-300 rounded-2xl p-3 space-y-2.5 animate-fadeIn">
                   <div className="flex items-start gap-1.5 text-amber-900">
