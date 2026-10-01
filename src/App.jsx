@@ -2212,7 +2212,7 @@ export default function App() {
     }
   };
 
-  const handleRegisterUser = async (e) => {
+const handleRegisterUser = async (e) => {
     e.preventDefault();
     if (!newUserName.trim()) {
       alert('Por favor, introduce tu nombre y apellido.');
@@ -2225,11 +2225,11 @@ export default function App() {
 
     setSyncing(true);
     
-    // Normalizamos el grupo a minúsculas ("chicos" o "torneo")
+    // Normalizamos el grupo a formato de tu hoja de cálculo
     const assignedGroup = (newUserGroup === 'Solo Torneo' || newUserGroup === 'torneo') ? 'torneo' : 'chicos';
 
     try {
-      // AbortController para cancelar si Apps Script no responde en 12 segundos
+      // AbortController para evitar que el navegador se quede colgado indefinidamente
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 12000);
 
@@ -2240,7 +2240,7 @@ export default function App() {
           action: 'REGISTRAR_JUGADOR',
           nombre: newUserName.trim(),
           telefono: newUserPhone.trim(),
-          grupo: assignedGroup,
+          grupo: assignedGroup === 'torneo' ? 'Solo Torneo' : 'Chicos',
           playtomic: newUserPlaytomic.trim(),
           pin: newUserPin.trim()
         }),
@@ -2252,7 +2252,7 @@ export default function App() {
       const json = await response.json();
 
       if (json && json.ok) {
-        const newUserId = json.id || 'u_' + Date.now();
+        const newUserId = json.id || ('u_' + Date.now());
         const createdUser = {
           id: newUserId,
           name: newUserName.trim(),
@@ -2264,8 +2264,10 @@ export default function App() {
           ptsDeportivo: 0, ptsBarandas: 0, hibrido: 0,
           titulo: assignedGroup === 'torneo' ? 'Jugador de Torneo ⚔️' : 'Fichaje Estrella ⭐',
           deuda: 0,
-          pin: newUserPin.trim()
+          pin: newUserPin.trim(),
+          playtomic: newUserPlaytomic.trim()
         };
+
         // Guardar localmente y dar entrada automática al usuario
         handlePinSuccess(createdUser);
         setShowRegisterForm(false);
@@ -2277,7 +2279,7 @@ export default function App() {
     } catch (err) {
       console.error('Error en registro:', err);
       if (err.name === 'AbortError') {
-        alert('La conexión con el servidor ha tardado demasiado. Comprueba tu conexión e inténtalo de nuevo.');
+        alert('La conexión con el servidor ha tardado demasiado. Se intentará actualizar en segundo plano.');
       } else {
         alert('Ocurrió un error al enviar el registro. Por favor, vuelve a intentarlo.');
       }
@@ -2292,13 +2294,17 @@ export default function App() {
     localStorage.setItem('padel_current_user', JSON.stringify({ ...currentUser, ...payload }));
 
     try {
-      fetch(apiUrl, {
+      const res = await fetch(apiUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify({ action: 'ACTUALIZAR_DATOS_PERFIL', idJugador, ...payload })
       });
+      const json = await res.json();
+      if (json && json.ok) {
+        fetchData(true);
+      }
     } catch (err) {
-      console.error(err);
+      console.error('Error al actualizar datos de perfil:', err);
     }
   };
 
