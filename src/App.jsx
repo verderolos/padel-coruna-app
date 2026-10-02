@@ -2764,19 +2764,24 @@ export default function App() {
     }
   };
 
+ // LÓGICA DE GUARDADO DE RESULTADO REGULAR CON LIMPIEZA DE GANADORES PREVIOS
   const handleSaveRegularMatchScore = async (winningTeamNum, composedScoreText) => {
     if (!currentMatch) return;
 
+    // 1. Identificamos a la pareja seleccionada como ganadora
     const winningPlayers = currentMatch.players.filter(p => Number(p.team || 1) === Number(winningTeamNum));
     const ganadorIds = winningPlayers.map(p => p.id);
     const ganadorNombres = winningPlayers.map(p => p.name);
 
+    // 2. Mapeamos los equipos para registrarlos limpiamente
     const parejasMap = {};
     (currentMatch.players || []).forEach(p => {
       parejasMap[p.id] = p.team || 1;
       parejasMap[p.name] = p.team || 1;
     });
 
+    // 3. Actualizamos el estado local (React) inmediatamente:
+    // Solo la pareja con winningTeamNum recibe 'SI', la otra pareja recibe 'NO' limpiando marcadores anteriores.
     setMatches(prev => prev.map(m => {
       if (m.id !== currentMatch.id) return m;
       return {
@@ -2791,6 +2796,7 @@ export default function App() {
     }));
     setShowScoreModal(false);
 
+    // 4. Enviamos los datos al backend (Apps Script)
     try {
       fetch(apiUrl, {
         method: 'POST',
@@ -2810,7 +2816,6 @@ export default function App() {
       fetchData();
     }
   };
-
   const handleNotifyPendingWhatsApp = (playerItem, dateLabel) => {
     const appUrl = window.location.origin;
     const phoneClean = (playerItem.phone || '').replace(/\D/g, '');
