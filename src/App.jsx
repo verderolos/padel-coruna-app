@@ -385,7 +385,7 @@ function CriteriosModal({ isOpen, onClose }) {
   );
 }
 
-// MODAL DE PERFIL DE JUGADOR CON SUBPANEL INTERACTIVO DE ESTADÍSTICAS
+// MODAL DE PERFIL DE JUGADOR CON RESTAURACIÓN DE ESTADÍSTICAS CLAVE Y SUBPANEL
 function UserProfileModal({ isOpen, onClose, user, matches, tournaments, onPhotoUploaded, onUpdateUserData, isCurrentUser, isThursdayMember }) {
   const fileInputRef = useRef(null);
   const [uploading, setUploading] = useState(false);
@@ -507,7 +507,7 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, onPhoto
     });
 
     let bestPartner = null, bestPartnerWinPct = -1;
-    let worstPartner = null, worstPartnerLossPct = 0;
+    let worstPartner = null, worstPartnerLossPct = -1;
     Object.entries(partnerStats).forEach(([name, data]) => {
       const winPct = (data.won / data.played) * 100;
       const lossPct = (data.lost / data.played) * 100;
@@ -515,14 +515,14 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, onPhoto
         bestPartnerWinPct = winPct;
         bestPartner = { name, ...data, pct: winPct.toFixed(0) };
       }
-      if (data.lost > 0 && lossPct >= worstPartnerLossPct) {
+      if (data.lost > 0 && lossPct > worstPartnerLossPct) {
         worstPartnerLossPct = lossPct;
         worstPartner = { name, ...data, pct: lossPct.toFixed(0) };
       }
     });
 
     let easiestRival = null, easiestWinPct = -1;
-    let hardestRival = null, hardestLossPct = 0;
+    let hardestRival = null, hardestLossPct = -1;
     Object.entries(rivalStats).forEach(([name, data]) => {
       const winPct = (data.wonAgainst / data.played) * 100;
       const lossPct = (data.lostAgainst / data.played) * 100;
@@ -530,7 +530,7 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, onPhoto
         easiestWinPct = winPct;
         easiestRival = { name, ...data, pct: winPct.toFixed(0) };
       }
-      if (data.lost > 0 && lossPct >= hardestLossPct) {
+      if (data.lostAgainst > 0 && lossPct > hardestLossPct) {
         hardestLossPct = lossPct;
         hardestRival = { name, ...data, pct: lossPct.toFixed(0) };
       }
@@ -589,7 +589,7 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, onPhoto
       case 'victorias': return 'Victorias (Liga)';
       case 'derrotas': return 'Derrotas (Liga)';
       case 'cenas': return 'Cenas Asistidas 🍻';
-      case 'rajadas': return 'Rajadas de Cena 🏃‍♂️';
+      case 'rajadas': return 'Rajadas de Cena 🏃‍♂️️';
       case 'torneos': return 'Partidos en Torneos ⚔️';
       default: return '';
     }
@@ -785,7 +785,73 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, onPhoto
           </div>
         )}
 
-        {/* SUBPANEL DE DETALLE DE ESTADÍSTICAS */}
+        {/* ANÁLISIS DE PAREJAS Y RIVALES (SECCIONES CLAVE RECUPERADAS) */}
+        {isThursdayMember && (
+          <div className="space-y-2 pt-2 border-t border-slate-100 text-xs">
+            <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">
+              🤝 Química de Parejas & Rivales
+            </span>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="bg-emerald-50/80 border border-emerald-200 p-2.5 rounded-2xl">
+                <span className="text-[9px] font-black text-emerald-800 uppercase block mb-1">👑 Mejor Compañero</span>
+                {statsCalculated.bestPartner ? (
+                  <div>
+                    <span className="font-extrabold text-slate-900 block truncate">{statsCalculated.bestPartner.name}</span>
+                    <span className="text-[10px] font-bold text-emerald-700">
+                      {statsCalculated.bestPartner.pct}% Victorias ({statsCalculated.bestPartner.won}/{statsCalculated.bestPartner.played})
+                    </span>
+                  </div>
+                ) : (
+                  <span className="text-[10px] text-slate-400 italic">Sin registros</span>
+                )}
+              </div>
+
+              <div className="bg-rose-50/80 border border-rose-200 p-2.5 rounded-2xl">
+                <span className="text-[9px] font-black text-rose-800 uppercase block mb-1">💀 Rival Más Duro</span>
+                {statsCalculated.hardestRival ? (
+                  <div>
+                    <span className="font-extrabold text-slate-900 block truncate">{statsCalculated.hardestRival.name}</span>
+                    <span className="text-[10px] font-bold text-rose-700">
+                      {statsCalculated.hardestRival.pct}% Derrotas ({statsCalculated.hardestRival.lostAgainst}/{statsCalculated.hardestRival.played})
+                    </span>
+                  </div>
+                ) : (
+                  <span className="text-[10px] text-slate-400 italic">Sin registros</span>
+                )}
+              </div>
+
+              <div className="bg-blue-50/80 border border-blue-200 p-2.5 rounded-2xl">
+                <span className="text-[9px] font-black text-blue-800 uppercase block mb-1">🎯 Rival Fetiche</span>
+                {statsCalculated.easiestRival ? (
+                  <div>
+                    <span className="font-extrabold text-slate-900 block truncate">{statsCalculated.easiestRival.name}</span>
+                    <span className="text-[10px] font-bold text-blue-700">
+                      {statsCalculated.easiestRival.pct}% Ganados ({statsCalculated.easiestRival.wonAgainst}/{statsCalculated.easiestRival.played})
+                    </span>
+                  </div>
+                ) : (
+                  <span className="text-[10px] text-slate-400 italic">Sin registros</span>
+                )}
+              </div>
+
+              <div className="bg-amber-50/80 border border-amber-200 p-2.5 rounded-2xl">
+                <span className="text-[9px] font-black text-amber-800 uppercase block mb-1">⚠️ Pareja Complicada</span>
+                {statsCalculated.worstPartner ? (
+                  <div>
+                    <span className="font-extrabold text-slate-900 block truncate">{statsCalculated.worstPartner.name}</span>
+                    <span className="text-[10px] font-bold text-amber-700">
+                      {statsCalculated.worstPartner.pct}% Derrotas ({statsCalculated.worstPartner.lost}/{statsCalculated.worstPartner.played})
+                    </span>
+                  </div>
+                ) : (
+                  <span className="text-[10px] text-slate-400 italic">Sin registros</span>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* SUBPANEL DE DETALLE DE ESTADÍSTICAS CUANDO SE HACE CLIC EN PJ, VICTORIAS, ETC. */}
         {selectedStatCategory && (
           <div className="bg-slate-900 text-white rounded-2xl p-3 space-y-2 border border-slate-700 animate-fadeIn text-xs">
             <div className="flex justify-between items-center border-b border-slate-800 pb-1.5">
@@ -862,77 +928,6 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, onPhoto
     </div>
   );
 }
-
-function PinModal({ isOpen, onClose, targetUser, onPinSuccess, apiUrl }) {
-  const [pinInput, setPinInput] = useState('');
-  const [errorMsg, setErrorMsg] = useState('');
-  const [saving, setSaving] = useState(false);
-
-  if (!isOpen || !targetUser) return null;
-  const hasPinAlready = Boolean(targetUser.pin && targetUser.pin.trim() !== '');
-
-  const handleNumClick = (num) => {
-    if (pinInput.length < 4) { setPinInput(prev => prev + num); setErrorMsg(''); }
-  };
-  const handleDelete = () => { setPinInput(prev => prev.slice(0, -1)); setErrorMsg(''); };
-
-  const handleSubmit = async () => {
-    if (pinInput.length !== 4) { setErrorMsg('El PIN debe tener 4 números'); return; }
-
-    if (hasPinAlready) {
-      if (pinInput === targetUser.pin.trim()) { onPinSuccess(targetUser); }
-      else { setErrorMsg('PIN incorrecto.'); setPinInput(''); }
-    } else {
-      setSaving(true);
-      try {
-        await fetch(apiUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-          body: JSON.stringify({ action: 'ESTABLECER_PIN', idJugador: targetUser.id, pin: pinInput })
-        });
-        onPinSuccess({ ...targetUser, pin: pinInput });
-      } catch (e) {
-        setErrorMsg('Error: ' + e.message);
-      } finally {
-        setSaving(false);
-      }
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-slate-900 border border-slate-700 text-white rounded-3xl max-w-xs w-full p-6 text-center shadow-2xl">
-        <UserAvatar name={targetUser.name} photo={targetUser.photo} size="lg" className="mx-auto mb-3" />
-        <h3 className="text-base font-black mb-1">{hasPinAlready ? `PIN de ${targetUser.name}` : `Crear PIN para ${targetUser.name}`}</h3>
-        <p className="text-xs text-slate-400 mb-4">Introduce 4 números</p>
-
-        <div className="flex justify-center gap-3 mb-4">
-          {[0, 1, 2, 3].map(i => (
-            <div key={i} className={`w-4 h-4 rounded-full border-2 transition-all ${pinInput.length > i ? 'bg-blue-500 border-blue-500 scale-110' : 'border-slate-600'}`} />
-          ))}
-        </div>
-
-        {errorMsg && <p className="text-rose-400 text-xs font-semibold mb-3">{errorMsg}</p>}
-
-        <div className="grid grid-cols-3 gap-2 max-w-[200px] mx-auto mb-4">
-          {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(num => (
-            <button key={num} onClick={() => handleNumClick(String(num))} className="h-11 bg-slate-800 hover:bg-slate-700 rounded-xl text-base font-bold text-white transition border border-slate-700">
-              {num}
-            </button>
-          ))}
-          <button onClick={onClose} className="h-11 text-xs font-bold text-slate-400">Cancelar</button>
-          <button onClick={() => handleNumClick('0')} className="h-11 bg-slate-800 hover:bg-slate-700 rounded-xl text-base font-bold text-white transition border border-slate-700">0</button>
-          <button onClick={handleDelete} className="h-11 text-sm font-bold text-slate-400 flex items-center justify-center">⌫</button>
-        </div>
-
-        <button onClick={handleSubmit} disabled={pinInput.length !== 4 || saving} className="w-full py-2.5 rounded-xl font-bold text-xs bg-blue-600 hover:bg-blue-500 text-white transition">
-          {saving ? 'Guardando...' : hasPinAlready ? 'Entrar' : 'Guardar y Entrar'}
-        </button>
-      </div>
-    </div>
-  );
-}
-
 // Modal Creador de Torneos con Co-organizadores, Prevención de Zurdos Dobles y Capitanes
 function TournamentCreatorModal({ isOpen, onClose, allPlayers, tournaments, onTournamentCreated, currentUserId, onSaveLevel }) {
   const [step, setStep] = useState(1);
