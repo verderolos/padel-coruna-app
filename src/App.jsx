@@ -626,11 +626,20 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, onPhoto
 
   const tournamentStats = (() => {
     let tList = [];
+    const modeStats = {
+      pozo: { played: 0, won: 0, name: 'Pozo Continuo' },
+      americano: { played: 0, won: 0, name: 'Americano' },
+      eliminatorio: { played: 0, won: 0, name: 'Fase de Grupos + Elim' },
+      equipos: { played: 0, won: 0, name: 'Ryder Cup por Equipos' }
+    };
+
     (tournaments || []).forEach(t => {
       const isParticipant = (t.participants || []).some(
         p => p.id === user.id || normalizeName(p.name) === normUserName
       );
       if (!isParticipant) return;
+
+      const tMode = (t.mode || 'pozo').toLowerCase();
 
       (t.rounds || []).forEach(r => {
         (r.matches || []).forEach(m => {
@@ -647,16 +656,40 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, onPhoto
               score: m.score || 'Finalizado',
               won
             });
+
+            if (modeStats[tMode]) {
+              modeStats[tMode].played++;
+              if (won) modeStats[tMode].won++;
+            }
           }
         });
       });
+    });
+
+    let bestMode = null, bestWinRate = -1;
+    let worstMode = null, worstWinRate = 101;
+
+    Object.entries(modeStats).forEach(([key, st]) => {
+      if (st.played > 0) {
+        const rate = (st.won / st.played) * 100;
+        if (rate > bestWinRate) {
+          bestWinRate = rate;
+          bestMode = { key, ...st, winRate: rate.toFixed(0) };
+        }
+        if (rate < worstWinRate) {
+          worstWinRate = rate;
+          worstMode = { key, ...st, winRate: rate.toFixed(0) };
+        }
+      }
     });
 
     return {
       tList,
       tPlayed: tList.length,
       tWon: tList.filter(x => x.won).length,
-      tLost: tList.filter(x => !x.won).length
+      tLost: tList.filter(x => !x.won).length,
+      bestMode,
+      worstMode
     };
   })();
 
@@ -985,6 +1018,7 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, onPhoto
           </div>
         )}
 
+        {/* RENDIMIENTO Y MODALIDAD EN TORNEOS */}
         <div className="space-y-2 pt-1 border-t border-slate-100">
           <div className="flex justify-between items-center">
             <span className="text-[10px] font-black text-purple-900 uppercase tracking-wider block">
@@ -997,6 +1031,36 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, onPhoto
             >
               {tournamentStats.tPlayed} partidos (Ver todo)
             </button>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2 text-xs">
+            <div className="bg-purple-50/80 border border-purple-200 p-2.5 rounded-2xl">
+              <span className="text-[9px] font-black text-purple-800 uppercase block mb-1">🥇 Mejor Modalidad</span>
+              {tournamentStats.bestMode ? (
+                <div>
+                  <span className="font-extrabold text-slate-900 block truncate">{tournamentStats.bestMode.name}</span>
+                  <span className="text-[10px] font-bold text-purple-700">
+                    {tournamentStats.bestMode.winRate}% Éxito ({tournamentStats.bestMode.won}/{tournamentStats.bestMode.played})
+                  </span>
+                </div>
+              ) : (
+                <span className="text-[10px] text-slate-400 italic">Sin datos suficientes</span>
+              )}
+            </div>
+
+            <div className="bg-amber-50/80 border border-amber-200 p-2.5 rounded-2xl">
+              <span className="text-[9px] font-black text-amber-800 uppercase block mb-1">📉 Peor Modalidad</span>
+              {tournamentStats.worstMode ? (
+                <div>
+                  <span className="font-extrabold text-slate-900 block truncate">{tournamentStats.worstMode.name}</span>
+                  <span className="text-[10px] font-bold text-amber-700">
+                    {tournamentStats.worstMode.winRate}% Éxito ({tournamentStats.worstMode.won}/{tournamentStats.worstMode.played})
+                  </span>
+                </div>
+              ) : (
+                <span className="text-[10px] text-slate-400 italic">Sin datos suficientes</span>
+              )}
+            </div>
           </div>
         </div>
 
@@ -1682,7 +1746,7 @@ function TournamentCreatorModal({ isOpen, onClose, allPlayers, tournaments, onTo
               <div className="bg-slate-900 text-white rounded-2xl p-3.5 space-y-3 border border-slate-700 shadow-sm">
                 <div className="flex justify-between items-center border-b border-slate-800 pb-2">
                   <span className="font-black text-xs text-blue-300 uppercase tracking-wide flex items-center gap-1">
-                    <span>🛡️️</span> Configuración de Escuadras Ryder
+                    <span>🛡️</span> Configuración de Escuadras Ryder
                   </span>
                   <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
                     teamStats.isBalanced ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40' : 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
@@ -2271,6 +2335,74 @@ function LinkPlayerSlotModal({ isOpen, onClose, slotName, allRegisteredPlayers, 
   );
 }
 
+// NUEVO MODAL: Permite el intercambio seguro ("swap") entre jugadores de equipos llenos
+function SwapPlayerModal({ isOpen, onClose, match, sourcePlayerId, onConfirmSwap }) {
+  if (!isOpen || !match || !sourcePlayerId) return null;
+
+  const sourcePlayer = match.players.find(p => p.id === sourcePlayerId);
+  if (!sourcePlayer) return null;
+
+  const sourceTeam = Number(sourcePlayer.team || 1);
+  const targetTeam = sourceTeam === 1 ? 2 : 1;
+  const targetPlayers = match.players.filter(p => Number(p.team || 1) === targetTeam);
+
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 text-left">
+      <div className="bg-white rounded-3xl max-w-sm w-full p-5 shadow-2xl space-y-4">
+        <div className="border-b pb-3 flex justify-between items-center">
+          <h3 className="text-base font-black text-slate-900">🔄 Intercambio de Jugador</h3>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-700 text-xl font-bold">&times;</button>
+        </div>
+        
+        <div className="space-y-3 text-xs">
+          <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200 text-center">
+            <span className="text-[10px] font-black uppercase text-slate-500 block mb-1">Vas a mover a</span>
+            <div className="flex items-center justify-center gap-2">
+              <UserAvatar name={sourcePlayer.name} photo={sourcePlayer.photo} size="sm" />
+              <span className="font-bold text-sm">{sourcePlayer.name}</span>
+            </div>
+          </div>
+
+          <div>
+            <span className="font-black text-slate-800 text-[11px] uppercase tracking-wide block mb-2">
+              Selecciona la acción:
+            </span>
+            <div className="space-y-2">
+              {targetPlayers.map(targetP => (
+                <button
+                  key={targetP.id}
+                  onClick={() => onConfirmSwap(match.id, sourcePlayer.id, targetP.id)}
+                  className="w-full flex items-center justify-between p-2.5 rounded-xl border border-slate-200 bg-white hover:bg-blue-50 hover:border-blue-300 transition"
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="text-xl text-blue-500">⇄</span>
+                    <div className="text-left">
+                      <span className="block text-[10px] font-black text-blue-600 uppercase">Intercambiar por</span>
+                      <span className="block font-bold text-sm text-slate-900">{targetP.name}</span>
+                    </div>
+                  </div>
+                  <UserAvatar name={targetP.name} photo={targetP.photo} size="xs" />
+                </button>
+              ))}
+
+              {/* Si hay hueco en la otra pareja, damos la opción de moverlo directamente sin intercambiar con nadie */}
+              {targetPlayers.length < 2 && (
+                <button
+                  onClick={() => onConfirmSwap(match.id, sourcePlayer.id, null)}
+                  className="w-full flex items-center justify-center gap-2 p-3 rounded-xl border border-dashed border-emerald-400 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 transition font-bold"
+                >
+                  <span className="text-xl">➡️</span> 
+                  <span>Mover a hueco libre en Pareja {targetTeam}</span>
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // APLICACIÓN PRINCIPAL COMPLETA
 export default function App() {
   const [apiUrl] = useState(() => localStorage.getItem('padel_api_url') || DEFAULT_API_URL);
@@ -2334,6 +2466,7 @@ export default function App() {
 
   const [showScoreModal, setShowScoreModal] = useState(false);
   const [linkingSlot, setLinkingSlot] = useState(null);
+  const [swapModalData, setSwapModalData] = useState(null); // NUEVO ESTADO PARA EL MODAL DE INTERCAMBIO
   const [allDinnerGuests, setAllDinnerGuests] = useState([]);
 
   const [loadingDinnerId, setLoadingDinnerId] = useState(null);
@@ -2621,10 +2754,10 @@ export default function App() {
         fetchData();
       }
     } catch (err) {
-  console.error(err);
-} finally {
-  setSyncing(false);
-}
+      console.error(err);
+    } finally {
+      setSyncing(false);
+    }
   };
 
   const handleReloadPlaytomic = async (e) => {
@@ -2799,36 +2932,81 @@ export default function App() {
     }
   };
 
-  const handleToggleTeam = async (matchId, playerId) => {
-    let newTeam = 1;
-    setMatches(prev => prev.map(m => {
-      if (m.id !== matchId) return m;
-      return {
-        ...m,
-        players: m.players.map(p => {
-          if (p.id === playerId) {
-            newTeam = p.team === 1 ? 2 : 1;
-            return { ...p, team: newTeam };
-          }
-          return p;
-        })
-      };
-    }));
+  // NUEVA LÓGICA: Ejecutar el cambio/intercambio en el estado y llamar al Backend
+  const handleConfirmSwap = async (matchId, sourcePlayerId, targetPlayerId) => {
+    const match = matches.find(m => m.id === matchId);
+    const sourcePlayer = match.players.find(p => p.id === sourcePlayerId);
+    const sourceTeam = Number(sourcePlayer.team || 1);
+    const targetTeam = sourceTeam === 1 ? 2 : 1;
 
-    try {
-      fetch(apiUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({
-          action: 'CAMBIAR_PAREJA_JUGADOR',
-          idPartido: matchId,
-          idJugador: playerId,
-          team: newTeam
-        })
-      });
-    } catch (e) {
-      console.warn('Error sincronizando pareja:', e);
+    if (!targetPlayerId) {
+      // Movimiento directo a hueco libre
+      setMatches(prev => prev.map(m => {
+        if (m.id !== matchId) return m;
+        return {
+          ...m,
+          players: m.players.map(p => p.id === sourcePlayerId ? { ...p, team: targetTeam } : p)
+        };
+      }));
+
+      try {
+        fetch(apiUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({
+            action: 'CAMBIAR_PAREJA_JUGADOR',
+            idPartido: matchId,
+            idJugador: sourcePlayerId,
+            team: targetTeam
+          })
+        });
+      } catch (e) {
+        console.warn('Error moviendo jugador:', e);
+      }
+    } else {
+      // Intercambio ("Swap") de posiciones entre dos jugadores
+      setMatches(prev => prev.map(m => {
+        if (m.id !== matchId) return m;
+        return {
+          ...m,
+          players: m.players.map(p => {
+            if (p.id === sourcePlayerId) return { ...p, team: targetTeam };
+            if (p.id === targetPlayerId) return { ...p, team: sourceTeam };
+            return p;
+          })
+        };
+      }));
+
+      try {
+        // Solicitud 1: Mover P1 al equipo 2
+        fetch(apiUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({
+            action: 'CAMBIAR_PAREJA_JUGADOR',
+            idPartido: matchId,
+            idJugador: sourcePlayerId,
+            team: targetTeam
+          })
+        });
+        // Solicitud 2: Mover P2 al equipo 1
+        fetch(apiUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({
+            action: 'CAMBIAR_PAREJA_JUGADOR',
+            idPartido: matchId,
+            idJugador: targetPlayerId,
+            team: sourceTeam
+          })
+        });
+      } catch (e) {
+        console.warn('Error intercambiando jugadores:', e);
+      }
     }
+    
+    // Cierra el modal de Swap
+    setSwapModalData(null);
   };
 
   const handleSaveRegularMatchScore = async (winningTeamNum, composedScoreText) => {
@@ -3851,7 +4029,9 @@ export default function App() {
                             </span>
                           )}
                         </div>
-                        <span className="text-[10px] text-slate-400 font-medium">Pulsa P1/P2 para mover</span>
+                        <span className="text-[10px] text-slate-400 font-medium">
+                          {isFinalizado ? '🔒 Parejas bloqueadas' : 'P1 ⇄ / P2 ⇄ para intercambiar'}
+                        </span>
                       </div>
 
                       <div className="space-y-2">
@@ -3868,9 +4048,16 @@ export default function App() {
                               }`}
                             >
                               <div className="flex items-center gap-2.5">
+                                {/* NUEVO EVENTO DE BOTÓN: Activa el modal SwapModalData */}
                                 <button
-                                  onClick={() => handleToggleTeam(currentMatch.id, p.id)}
-                                  className="text-[10px] font-black bg-slate-100 hover:bg-slate-200 text-slate-700 px-2 py-0.5 rounded"
+                                  disabled={isFinalizado}
+                                  onClick={() => setSwapModalData({ matchId: currentMatch.id, playerId: p.id })}
+                                  className={`text-[10px] font-black px-2 py-0.5 rounded transition ${
+                                    isFinalizado 
+                                      ? 'bg-slate-100 text-slate-300 cursor-not-allowed' 
+                                      : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                                  }`}
+                                  title={isFinalizado ? 'No se pueden cambiar parejas de un partido finalizado' : 'Mover o intercambiar jugador'}
                                 >
                                   P{p.team || 1} ⇄
                                 </button>
@@ -4173,6 +4360,12 @@ export default function App() {
                     <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide">
                       Jornada de Cena:
                     </label>
+                    <button
+                      onClick={() => setShowDinnerHistory(!showDinnerHistory)}
+                      className="text-[11px] font-bold text-blue-600 hover:text-blue-800 underline"
+                    >
+                      {showDinnerHistory ? '📅 Ver Próximas Cenas' : '📜 Ver Histórico de Cenas'}
+                    </button>
                   </div>
 
                   <select
@@ -4180,7 +4373,7 @@ export default function App() {
                     onChange={(e) => setSelectedDinnerDate(e.target.value)}
                     className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 text-xs font-bold text-slate-800"
                   >
-                    {upcomingDinnerDates.map(d => (
+                    {(showDinnerHistory ? pastDinnerDates : upcomingDinnerDates).map(d => (
                       <option key={d.key} value={d.key}>
                         {d.label} {d.key === defaultSmartDinnerKey ? '★ (Siguiente recomendada)' : ''}
                       </option>
@@ -4254,6 +4447,64 @@ export default function App() {
                         ))}
                       </div>
                     </div>
+
+                    {dinnerNo.length > 0 && (
+                      <div className="pt-2 border-t border-slate-100">
+                        <span className="font-extrabold text-rose-800 block mb-2">
+                          🔴 Se Rajan ({dinnerNo.length}):
+                        </span>
+                        <div className="flex flex-wrap gap-2">
+                          {dinnerNo.map((item, i) => (
+                            <div
+                              key={i}
+                              onClick={() => {
+                                const found = players.find(u => normalizeName(u.name) === normalizeName(item.name));
+                                setInspectedUser(found || item);
+                              }}
+                              className="flex items-center gap-1.5 bg-rose-50 border border-rose-200 text-rose-950 px-2.5 py-1 rounded-xl font-bold text-xs cursor-pointer hover:bg-rose-100 transition"
+                            >
+                              <UserAvatar name={item.name} photo={item.photo} size="sm" />
+                              <span>{item.name}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {dinnerPending.length > 0 && (
+                      <div className="pt-2 border-t border-slate-100">
+                        <span className="font-extrabold text-amber-800 block mb-2">
+                          🟡 Pendientes de Confirmar ({dinnerPending.length}):
+                        </span>
+                        <div className="space-y-1.5">
+                          {dinnerPending.map((item, i) => (
+                            <div
+                              key={i}
+                              className="flex items-center justify-between bg-amber-50/80 border border-amber-200 p-2 rounded-xl text-amber-950"
+                            >
+                              <div
+                                onClick={() => {
+                                  const found = players.find(u => normalizeName(u.name) === normalizeName(item.name));
+                                  setInspectedUser(found || item);
+                                }}
+                                className="flex items-center gap-2 cursor-pointer"
+                              >
+                                <UserAvatar name={item.name} photo={item.photo} size="sm" />
+                                <span className="font-bold">{item.name}</span>
+                              </div>
+
+                              <button
+                                onClick={() => handleNotifyPendingWhatsApp(item, currentVisualDinnerLabel)}
+                                className="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white font-extrabold text-[10px] rounded-lg transition flex items-center gap-1 shadow-2xs"
+                                title="Avisar por WhatsApp para que confirme cena"
+                              >
+                                💬 Avisar por WhatsApp
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   <div className="pt-2 border-t border-slate-100">
@@ -4591,6 +4842,15 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {/* MODAL NUEVO: INTERCAMBIO DIRECTO ("SWAP") DE JUGADORES */}
+      <SwapPlayerModal
+        isOpen={Boolean(swapModalData)}
+        onClose={() => setSwapModalData(null)}
+        match={currentMatch}
+        sourcePlayerId={swapModalData?.playerId}
+        onConfirmSwap={handleConfirmSwap}
+      />
 
       {/* MODAL: MARCADOR REGULAR */}
       <MatchVisualScoreModal
