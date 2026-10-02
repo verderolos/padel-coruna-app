@@ -2621,10 +2621,10 @@ export default function App() {
         fetchData();
       }
     } catch (err) {
-      console.error(err);
-    } font-semibold {
-      setSyncing(false);
-    }
+  console.error(err);
+} finally {
+  setSyncing(false);
+}
   };
 
   const handleReloadPlaytomic = async (e) => {
