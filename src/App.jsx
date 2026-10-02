@@ -180,17 +180,6 @@ function parseMatchTiming(dateStr) {
   };
 }
 
-function isTournamentStarted(tournament) {
-  if (!tournament) return true;
-  if (!tournament.startDate) return true;
-
-  const timeStr = tournament.startTime || '09:00';
-  const startDateTime = new Date(`${tournament.startDate}T${timeStr}:00`);
-
-  if (isNaN(startDateTime.getTime())) return true;
-  return new Date() >= startDateTime;
-}
-
 function isCurrentWeek(dateStr) {
   const matchDate = parseMatchDateObject(dateStr);
   if (!matchDate) return true;
@@ -385,7 +374,95 @@ function CriteriosModal({ isOpen, onClose }) {
   );
 }
 
-// MODAL DE PERFIL DE JUGADOR CON RESTAURACIÓN DE ESTADÍSTICAS CLAVE Y SUBPANEL
+function PinModal({ isOpen, onClose, targetUser, onPinSuccess, apiUrl }) {
+  const [pin, setPin] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    setPin('');
+    setError('');
+  }, [isOpen, targetUser]);
+
+  if (!isOpen || !targetUser) return null;
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (pin.length !== 4) {
+      setError('El PIN debe tener 4 dígitos');
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+
+    try {
+      const res = await fetch(apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ action: 'VERIFICAR_PIN', idJugador: targetUser.id, pin })
+      });
+      const data = await res.json();
+      if (data.ok) {
+        onPinSuccess(data.jugador || targetUser);
+      } else {
+        setError(data.error || 'PIN incorrecto');
+      }
+    } catch (err) {
+      if (targetUser.pin && targetUser.pin === pin) {
+        onPinSuccess(targetUser);
+      } else {
+        setError('Error al verificar PIN');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div className="bg-slate-800 rounded-3xl max-w-xs w-full p-6 text-white border border-slate-700 shadow-2xl text-center space-y-4">
+        <UserAvatar name={targetUser.name} photo={targetUser.photo} size="lg" className="mx-auto" />
+        <div>
+          <h3 className="text-base font-black">{targetUser.name}</h3>
+          <p className="text-xs text-slate-400">Introduce tu PIN de 4 dígitos</p>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-3">
+          <input
+            type="password"
+            maxLength={4}
+            autoFocus
+            value={pin}
+            onChange={e => setPin(e.target.value.replace(/\D/g, ''))}
+            placeholder="••••"
+            className="w-full bg-slate-900 border border-slate-700 rounded-2xl py-3 text-center text-2xl tracking-[0.5em] font-black text-white focus:outline-none focus:border-blue-500"
+          />
+
+          {error && <p className="text-xs text-rose-400 font-bold">{error}</p>}
+
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 py-2.5 bg-slate-700 text-slate-300 rounded-xl text-xs font-bold"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              disabled={loading}
+              className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold shadow-lg"
+            >
+              {loading ? 'Entrando...' : 'Entrar'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 function UserProfileModal({ isOpen, onClose, user, matches, tournaments, onPhotoUploaded, onUpdateUserData, isCurrentUser, isThursdayMember }) {
   const fileInputRef = useRef(null);
   const [uploading, setUploading] = useState(false);
@@ -466,7 +543,7 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, onPhoto
     const partnerStats = {};
     const rivalStats = {};
 
-    matches.forEach(m => {
+    (matches || []).forEach(m => {
       if (m.status !== 'FINALIZADO') return;
       if (!isMatchOfficial(m)) return;
 
@@ -589,7 +666,7 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, onPhoto
       case 'victorias': return 'Victorias (Liga)';
       case 'derrotas': return 'Derrotas (Liga)';
       case 'cenas': return 'Cenas Asistidas 🍻';
-      case 'rajadas': return 'Rajadas de Cena 🏃‍♂️️';
+      case 'rajadas': return 'Rajadas de Cena 🏃‍♂️';
       case 'torneos': return 'Partidos en Torneos ⚔️';
       default: return '';
     }
@@ -785,7 +862,7 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, onPhoto
           </div>
         )}
 
-        {/* ANÁLISIS DE PAREJAS Y RIVALES (SECCIONES CLAVE RECUPERADAS) */}
+        {/* ANÁLISIS DE PAREJAS Y RIVALES */}
         {isThursdayMember && (
           <div className="space-y-2 pt-2 border-t border-slate-100 text-xs">
             <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">
@@ -851,7 +928,7 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, onPhoto
           </div>
         )}
 
-        {/* SUBPANEL DE DETALLE DE ESTADÍSTICAS CUANDO SE HACE CLIC EN PJ, VICTORIAS, ETC. */}
+        {/* SUBPANEL DE DETALLE DE ESTADÍSTICAS */}
         {selectedStatCategory && (
           <div className="bg-slate-900 text-white rounded-2xl p-3 space-y-2 border border-slate-700 animate-fadeIn text-xs">
             <div className="flex justify-between items-center border-b border-slate-800 pb-1.5">
@@ -928,7 +1005,7 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, onPhoto
     </div>
   );
 }
-// Modal Creador de Torneos con Co-organizadores, Prevención de Zurdos Dobles y Capitanes
+
 function TournamentCreatorModal({ isOpen, onClose, allPlayers, tournaments, onTournamentCreated, currentUserId, onSaveLevel }) {
   const [step, setStep] = useState(1);
   const [tName, setTName] = useState('Torneo CTC Fin de Semana');
@@ -987,7 +1064,6 @@ function TournamentCreatorModal({ isOpen, onClose, allPlayers, tournaments, onTo
 
   const [captain1Id, setCaptain1Id] = useState('');
   const [captain2Id, setCaptain2Id] = useState('');
-  const [draftTurn, setDraftTurn] = useState(1);
 
   const [guestName, setGuestName] = useState('');
   const [guestLevel, setGuestLevel] = useState(3.0);
@@ -1007,7 +1083,7 @@ function TournamentCreatorModal({ isOpen, onClose, allPlayers, tournaments, onTo
         if (other) setCaptain2Id(other.id);
       }
     }
-  }, [participants]);
+  }, [participants, captain1Id, captain2Id]);
 
   useEffect(() => {
     if (captain1Id) {
@@ -1045,7 +1121,6 @@ function TournamentCreatorModal({ isOpen, onClose, allPlayers, tournaments, onTo
   const handleTeamToggle = (id, teamNum) => {
     if (id === captain1Id || id === captain2Id) return;
     setParticipants(prev => prev.map(p => p.id === id ? { ...p, assignedTeam: teamNum } : p));
-    setDraftTurn(teamNum === 1 ? 2 : 1);
   };
 
   const handleToggleCoOrganizer = (id) => {
@@ -1135,20 +1210,17 @@ function TournamentCreatorModal({ isOpen, onClose, allPlayers, tournaments, onTo
     return { team1Players, team2Players, avgT1, avgT2, delta, isBalanced };
   })();
 
-  // ALGORITMO CON RESTRICCIÓN RÍGIDA DE NO JUNTAR 2 ZURDOS EN EL MISMO EQUIPO DE PADEL
   const pairFourPlayersAvoidingDoubleLefties = (pool4) => {
     const lefties = pool4.filter(p => p.isLeftHanded);
     const righties = pool4.filter(p => !p.isLeftHanded);
 
     if (lefties.length === 2 && righties.length === 2) {
-      // Repartir 1 zurdo con 1 diestro en cada pareja
       return {
         pair1: [lefties[0], righties[0]],
         pair2: [lefties[1], righties[1]]
       };
     }
 
-    // Por defecto si hay 0, 1 o más de 2 zurdos: balancear por nivel (Top con Bottom)
     const sorted = [...pool4].sort((a, b) => b.level - a.level);
     return {
       pair1: [sorted[0], sorted[3]],
@@ -1399,7 +1471,6 @@ function TournamentCreatorModal({ isOpen, onClose, allPlayers, tournaments, onTo
               />
             </div>
 
-            {/* ASIGNACIÓN DE CO-ORGANIZADORES */}
             <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3 space-y-2">
               <label className="block text-[11px] font-black text-purple-900 uppercase tracking-wide">
                 🤝 Co-organizadores del Torneo (Pueden editar el evento)
@@ -1611,7 +1682,7 @@ function TournamentCreatorModal({ isOpen, onClose, allPlayers, tournaments, onTo
               <div className="bg-slate-900 text-white rounded-2xl p-3.5 space-y-3 border border-slate-700 shadow-sm">
                 <div className="flex justify-between items-center border-b border-slate-800 pb-2">
                   <span className="font-black text-xs text-blue-300 uppercase tracking-wide flex items-center gap-1">
-                    <span>🛡️</span> Configuración de Escuadras Ryder
+                    <span>🛡️️</span> Configuración de Escuadras Ryder
                   </span>
                   <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
                     teamStats.isBalanced ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40' : 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
@@ -1896,9 +1967,8 @@ function TournamentCreatorModal({ isOpen, onClose, allPlayers, tournaments, onTo
   );
 }
 
-// MODAL DE MARCADOR MULTISET CON VALIDACIÓN DE COHERENCIA Y SIN PRESELECCIÓN
 function MatchVisualScoreModal({ isOpen, onClose, title, subtitle, team1Name, team2Name, p1Players = [], p2Players = [], onSaveScore }) {
-  const [winnerTeam, setWinnerTeam] = useState(null); // Sin preselección inicial
+  const [winnerTeam, setWinnerTeam] = useState(null);
 
   const [sets, setSets] = useState([
     { t1: 0, t2: 0 },
@@ -2201,9 +2271,7 @@ function LinkPlayerSlotModal({ isOpen, onClose, slotName, allRegisteredPlayers, 
   );
 }
 
-// ==========================================
-// APLICACIÓN PRINCIPAL
-// ==========================================
+// APLICACIÓN PRINCIPAL COMPLETA
 export default function App() {
   const [apiUrl] = useState(() => localStorage.getItem('padel_api_url') || DEFAULT_API_URL);
   const [syncing, setSyncing] = useState(false);
@@ -2554,7 +2622,7 @@ export default function App() {
       }
     } catch (err) {
       console.error(err);
-    } finally {
+    } font-semibold {
       setSyncing(false);
     }
   };
@@ -2630,13 +2698,11 @@ export default function App() {
     }
   };
 
-  // BOTÓN DE CENA INTELIGENTE: Si el usuario tiene partido ese día, actualiza su ficha de partido
   const handleToggleSoloCena = async (rawDateStr, newState) => {
     if (!currentUser || !rawDateStr) return;
     const cleanDate = extractCleanDate(rawDateStr);
     const normMe = normalizeName(currentUser.name);
 
-    // 1. Buscar si el usuario ya tiene un partido asignado en esa fecha
     const userMatchToday = groupMatches.find(m => {
       const matchDateClean = extractCleanDate(m.date);
       if (matchDateClean !== cleanDate) return false;
@@ -2644,7 +2710,6 @@ export default function App() {
     });
 
     if (userMatchToday) {
-      // Si tiene partido, el botón actualiza directamente la cena de su partido
       const mySlot = userMatchToday.players.find(p => p.id === currentUser.id || normalizeName(p.name) === normMe);
       if (mySlot) {
         await handleUpdateDinner(userMatchToday.id, mySlot.id, mySlot.name, newState);
@@ -2653,7 +2718,6 @@ export default function App() {
       }
     }
 
-    // 2. Si no tiene partido, se le inscribe como invitado de cena sin partido
     setAllDinnerGuests(prev => {
       const filtered = prev.filter(g => {
         const guestNameNorm = normalizeName(g.name);
@@ -2702,6 +2766,7 @@ export default function App() {
   };
 
   const handleUpdateDinner = async (matchId, targetId, targetName, newStatus) => {
+    setLoadingDinnerId(targetId || targetName);
     setMatches(prevMatches => prevMatches.map(m => {
       if (m.id !== matchId) return m;
       return {
@@ -2716,7 +2781,7 @@ export default function App() {
     }));
 
     try {
-      fetch(apiUrl, {
+      await fetch(apiUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify({ 
@@ -2729,6 +2794,8 @@ export default function App() {
       });
     } catch (e) {
       console.error(e);
+    } finally {
+      setLoadingDinnerId(null);
     }
   };
 
@@ -2764,24 +2831,19 @@ export default function App() {
     }
   };
 
- // LÓGICA DE GUARDADO DE RESULTADO REGULAR CON LIMPIEZA DE GANADORES PREVIOS
   const handleSaveRegularMatchScore = async (winningTeamNum, composedScoreText) => {
     if (!currentMatch) return;
 
-    // 1. Identificamos a la pareja seleccionada como ganadora
     const winningPlayers = currentMatch.players.filter(p => Number(p.team || 1) === Number(winningTeamNum));
     const ganadorIds = winningPlayers.map(p => p.id);
     const ganadorNombres = winningPlayers.map(p => p.name);
 
-    // 2. Mapeamos los equipos para registrarlos limpiamente
     const parejasMap = {};
     (currentMatch.players || []).forEach(p => {
       parejasMap[p.id] = p.team || 1;
       parejasMap[p.name] = p.team || 1;
     });
 
-    // 3. Actualizamos el estado local (React) inmediatamente:
-    // Solo la pareja con winningTeamNum recibe 'SI', la otra pareja recibe 'NO' limpiando marcadores anteriores.
     setMatches(prev => prev.map(m => {
       if (m.id !== currentMatch.id) return m;
       return {
@@ -2796,7 +2858,6 @@ export default function App() {
     }));
     setShowScoreModal(false);
 
-    // 4. Enviamos los datos al backend (Apps Script)
     try {
       fetch(apiUrl, {
         method: 'POST',
@@ -2816,6 +2877,37 @@ export default function App() {
       fetchData();
     }
   };
+
+  const handleResetMatchScore = async (matchId) => {
+    setMatches(prev => prev.map(m => {
+      if (m.id !== matchId) return m;
+      return {
+        ...m,
+        status: 'PROGRAMADO',
+        score: '',
+        players: m.players.map(p => ({ ...p, won: 'PENDIENTE' }))
+      };
+    }));
+
+    try {
+      fetch(apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({
+          action: 'GUARDAR_RESULTADO',
+          idPartido: matchId,
+          marcador: '',
+          ganadorIds: [],
+          ganadorNombres: [],
+          reiniciar: true
+        })
+      });
+    } catch (e) {
+      console.error(e);
+      fetchData();
+    }
+  };
+
   const handleNotifyPendingWhatsApp = (playerItem, dateLabel) => {
     const appUrl = window.location.origin;
     const phoneClean = (playerItem.phone || '').replace(/\D/g, '');
@@ -2881,16 +2973,6 @@ export default function App() {
     if (phoneTarget) {
       window.open(`https://api.whatsapp.com/send?phone=${phoneTarget}&text=${encodeURIComponent(msg)}`, '_blank');
     } else {
-      window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`, '_blank');
-    }
-  };
-
-  const handleShareTournamentLink = (tournamentItem) => {
-    const link = `${window.location.origin}${window.location.pathname}?torneo=${tournamentItem.id}`;
-    if (navigator.clipboard) {
-      navigator.clipboard.writeText(link);
-    } else {
-      const msg = `🏆 *Torneo CTC - ${tournamentItem.name}*\nAccede directamente a los cruces y cena aquí: ${link}`;
       window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`, '_blank');
     }
   };
@@ -3586,7 +3668,7 @@ export default function App() {
 
       <main className="max-w-xl mx-auto px-4 py-4">
         {selectedMatchId && currentMatch && isThursdayMember ? (
-          /* DETALLE DEL PARTIDO REGULAR CON BANNER PROTAGONISTA PARA MARCADOR */
+          /* DETALLE DEL PARTIDO REGULAR */
           <div className="space-y-4">
             <button
               onClick={() => setSelectedMatchId(null)}
@@ -3595,7 +3677,7 @@ export default function App() {
               ← Volver a la lista de partidos
             </button>
 
-            {/* BANNER PROTAGONISTA CUANDO EL PARTIDO YA HA EMPEZADO O NO TIENE RESULTADO */}
+            {/* BANNER CUANDO EL PARTIDO ESTÁ LISTO PARA ANOTAR */}
             {(() => {
               const dynamicStatus = computeMatchStatus(currentMatch);
               const { canReport } = parseMatchTiming(currentMatch.date);
@@ -3676,13 +3758,30 @@ export default function App() {
                 📍 {currentMatch.location}
               </p>
 
+              {/* BLOQUE DE MARCADOR FINAL */}
               {currentMatch.status === 'FINALIZADO' && (
-                <div className="bg-purple-50/80 border border-purple-200 rounded-2xl p-3.5 text-center my-3.5 space-y-1.5">
+                <div className="bg-purple-50 border border-purple-200 rounded-2xl p-4 text-center my-3.5 space-y-2">
                   <span className="text-[10px] font-black uppercase tracking-wider text-purple-600 block">
-                    Marcador Final Oficial
+                    MARCADOR FINAL OFICIAL
                   </span>
-                  <div className="inline-block bg-purple-900 text-white font-mono font-black text-sm px-3.5 py-1 rounded-xl shadow-xs">
-                    {currentMatch.score || 'Finalizado'}
+                  
+                  <div className="inline-block bg-purple-950 text-white font-mono font-black text-base px-4 py-1.5 rounded-xl shadow-xs">
+                    {currentMatch.score || 'Ganador Registrado'}
+                  </div>
+
+                  <div className="flex justify-center gap-2 pt-1">
+                    <button
+                      onClick={() => setShowScoreModal(true)}
+                      className="px-3 py-1.5 bg-purple-600 text-white font-bold text-xs rounded-xl hover:bg-purple-700 transition"
+                    >
+                      ✏️ Editar Resultado
+                    </button>
+                    <button
+                      onClick={() => handleResetMatchScore(currentMatch.id)}
+                      className="px-3 py-1.5 bg-rose-100 text-rose-700 font-bold text-xs rounded-xl hover:bg-rose-200 transition"
+                    >
+                      🔄 Reiniciar Partido
+                    </button>
                   </div>
                 </div>
               )}
@@ -3706,7 +3805,7 @@ export default function App() {
                 </button>
               </div>
 
-              {/* CONVOCATORIA DE PAREJAS */}
+              {/* CONVOCATORIA Y PAREJAS */}
               <div className="mt-5 space-y-4">
                 <div className="flex justify-between items-center border-b pb-2">
                   <h3 className="text-xs font-black text-slate-800 uppercase tracking-wider">
@@ -3718,10 +3817,11 @@ export default function App() {
                 </div>
 
                 {[1, 2].map(teamNum => {
-                  const teamPlayers = (currentMatch.players || []).filter(p => (p.team || 1) === teamNum);
+                  const teamPlayers = (currentMatch.players || []).filter(p => Number(p.team || 1) === teamNum);
                   const isP1 = teamNum === 1;
                   const isFinalizado = currentMatch.status === 'FINALIZADO';
-                  const isWinningTeam = isFinalizado && teamPlayers.some(p => p.won === 'SI');
+                  
+                  const isWinningTeam = isFinalizado && teamPlayers.some(p => String(p.won).toUpperCase() === 'SI');
 
                   return (
                     <div
@@ -3830,7 +3930,7 @@ export default function App() {
                 })}
               </div>
 
-              {/* PREGUNTA RÁPIDA DE CENA */}
+              {/* PREGUNTA DE CENA EN PARTIDO REGULAR */}
               {(() => {
                 const isOfficial = isMatchOfficial(currentMatch);
                 const mySlot = (currentMatch.players || []).find(p => p.id === currentUser.id || normalizeName(p.name) === normalizeName(currentUser.name));
@@ -3841,7 +3941,7 @@ export default function App() {
                   return (
                     <div className="mt-5 pt-3 border-t border-slate-100 text-center">
                       <span className="text-[11px] text-slate-500 font-semibold italic block">
-                        ℹ Este partido es amistoso. Las cenas y puntos oficiales se computan exclusivamente los Jueves.
+                        ℹ️ Este partido es amistoso. Las cenas y puntos oficiales se computan exclusivamente los Jueves.
                       </span>
                     </div>
                   );
@@ -3914,7 +4014,7 @@ export default function App() {
                   onClick={() => setActiveTab('torneos')}
                   className={`flex-1 py-2 rounded-xl transition ${activeTab === 'torneos' ? 'bg-purple-600 text-white shadow' : 'text-purple-700 hover:text-purple-900 font-black'}`}
                 >
-                  Torneos ⚔️️
+                  Torneos ⚔️
                 </button>
               </div>
             ) : (
@@ -4397,6 +4497,50 @@ export default function App() {
         )}
       </main>
 
+      {/* MODAL: AÑADIR PARTIDO PLAYTOMIC */}
+      {showAddModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-sm w-full p-5 shadow-2xl space-y-3">
+            <h3 className="text-base font-black text-slate-900">Añadir Partido Playtomic</h3>
+            <form onSubmit={handleAddPlaytomicMatch} className="space-y-3">
+              <textarea
+                rows={4}
+                required
+                value={playtomicText}
+                onChange={e => setPlaytomicText(e.target.value)}
+                placeholder="Pega el texto copiado de Playtomic o el enlace..."
+                className="w-full border rounded-xl p-2.5 text-xs font-semibold"
+              />
+
+              {isOnlyPlaytomicLink && (
+                <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200 space-y-2">
+                  <span className="text-[10px] font-black uppercase text-blue-600 block">Datos adicionales requeridos</span>
+                  <input
+                    type="text"
+                    value={manualDate}
+                    onChange={e => setManualDate(e.target.value)}
+                    placeholder="Fecha y Hora (Ej: Jueves 21:00)"
+                    className="w-full border rounded-lg p-1.5 text-xs font-semibold"
+                  />
+                  <div className="grid grid-cols-2 gap-1.5">
+                    <input type="text" value={manualP1} onChange={e => setManualP1(e.target.value)} placeholder="Jugador 1" className="border rounded-lg p-1.5 text-xs" />
+                    <input type="text" value={manualP2} onChange={e => setManualP2(e.target.value)} placeholder="Jugador 2" className="border rounded-lg p-1.5 text-xs" />
+                    <input type="text" value={manualP3} onChange={e => setManualP3(e.target.value)} placeholder="Jugador 3" className="border rounded-lg p-1.5 text-xs" />
+                    <input type="text" value={manualP4} onChange={e => setManualP4(e.target.value)} placeholder="Jugador 4" className="border rounded-lg p-1.5 text-xs" />
+                  </div>
+                </div>
+              )}
+
+              <div className="flex gap-2">
+                <button type="button" onClick={() => setShowAddModal(false)} className="flex-1 py-2 bg-slate-100 font-bold text-xs rounded-xl">Cancelar</button>
+                <button type="submit" disabled={syncing} className="flex-1 py-2 bg-blue-600 text-white font-bold text-xs rounded-xl shadow-xs">Crear Partido</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: RECARGAR PLAYTOMIC */}
       {showReloadPlaytomicModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl max-w-sm w-full p-5 shadow-2xl">
@@ -4408,17 +4552,18 @@ export default function App() {
                 value={reloadPlaytomicText}
                 onChange={e => setReloadPlaytomicText(e.target.value)}
                 placeholder="Pega el mensaje copiado de Playtomic..."
-                className="w-full border rounded-xl p-2.5 text-xs"
+                className="w-full border rounded-xl p-2.5 text-xs font-semibold"
               />
               <div className="flex gap-2">
-                <button type="button" onClick={() => setShowReloadPlaytomicModal(false)} className="flex-1 py-2 bg-slate-100 font-bold text-xs">Cancelar</button>
-                <button type="submit" disabled={syncing} className="flex-1 py-2 bg-blue-600 text-white font-bold text-xs">Actualizar</button>
+                <button type="button" onClick={() => setShowReloadPlaytomicModal(false)} className="flex-1 py-2 bg-slate-100 font-bold text-xs rounded-xl">Cancelar</button>
+                <button type="submit" disabled={syncing} className="flex-1 py-2 bg-blue-600 text-white font-bold text-xs rounded-xl">Actualizar</button>
               </div>
             </form>
           </div>
         </div>
       )}
 
+      {/* MODAL: CAMBIAR SUPLENTES */}
       {showEditPlayersModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl max-w-sm w-full p-5 shadow-2xl">
@@ -4439,79 +4584,49 @@ export default function App() {
                 />
               ))}
               <div className="flex gap-2 pt-2">
-                <button type="button" onClick={() => setShowEditPlayersModal(false)} className="flex-1 py-2 bg-slate-100 font-bold text-xs">Cancelar</button>
-                <button type="submit" disabled={syncing} className="flex-1 py-2 bg-blue-600 text-white font-bold text-xs">Guardar</button>
+                <button type="button" onClick={() => setShowEditPlayersModal(false)} className="flex-1 py-2 bg-slate-100 font-bold text-xs rounded-xl">Cancelar</button>
+                <button type="submit" disabled={syncing} className="flex-1 py-2 bg-blue-600 text-white font-bold text-xs rounded-xl">Guardar</button>
               </div>
             </form>
           </div>
         </div>
       )}
 
-      {showAddModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-sm w-full p-5 shadow-2xl">
-            <div className="flex justify-between items-center mb-3">
-              <h3 className="text-base font-black text-slate-900">Añadir Partido Playtomic</h3>
-              <button onClick={() => setShowAddModal(false)} className="text-slate-400 text-xl font-bold">&times;</button>
-            </div>
+      {/* MODAL: MARCADOR REGULAR */}
+      <MatchVisualScoreModal
+        isOpen={showScoreModal}
+        onClose={() => setShowScoreModal(false)}
+        title="Resultado Liga Regular"
+        subtitle={currentMatch?.date}
+        team1Name="Pareja 1"
+        team2Name="Pareja 2"
+        p1Players={(currentMatch?.players || []).filter(p => Number(p.team || 1) === 1)}
+        p2Players={(currentMatch?.players || []).filter(p => Number(p.team || 1) === 2)}
+        onSaveScore={handleSaveRegularMatchScore}
+      />
 
-            <form onSubmit={handleAddPlaytomicMatch} className="space-y-3 text-xs">
-              <textarea
-                rows={4}
-                required
-                value={playtomicText}
-                onChange={(e) => setPlaytomicText(e.target.value)}
-                placeholder="Pega aquí el mensaje copiado de Playtomic..."
-                className="w-full border rounded-xl p-2.5 text-xs font-mono"
-              />
-              <div className="flex gap-2">
-                <button type="button" onClick={() => setShowAddModal(false)} className="flex-1 py-2 bg-slate-100 font-bold text-xs">Cancelar</button>
-                <button type="submit" disabled={syncing} className="flex-1 py-2 bg-blue-600 text-white font-bold text-xs">
-                  {syncing ? 'Creando...' : 'Crear Partido'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      {/* MODAL: MARCADOR TORNEO */}
+      <MatchVisualScoreModal
+        isOpen={Boolean(reportingTournamentMatch)}
+        onClose={() => setReportingTournamentMatch(null)}
+        title="Resultado de Torneo"
+        subtitle={reportingTournamentMatch?.court}
+        team1Name={reportingTournamentMatch?.team1}
+        team2Name={reportingTournamentMatch?.team2}
+        onSaveScore={handleSaveTournamentScore}
+      />
 
-      {showScoreModal && currentMatch && (
-        <MatchVisualScoreModal
-          isOpen={showScoreModal}
-          onClose={() => setShowScoreModal(false)}
-          title="Marcador Partido Regular"
-          subtitle={currentMatch.date}
-          team1Name="Pareja 1"
-          team2Name="Pareja 2"
-          p1Players={(currentMatch.players || []).filter(p => (p.team || 1) === 1)}
-          p2Players={(currentMatch.players || []).filter(p => (p.team || 1) === 2)}
-          onSaveScore={handleSaveRegularMatchScore}
-        />
-      )}
+      {/* MODAL: VINCULAR JUGADOR */}
+      <LinkPlayerSlotModal
+        isOpen={Boolean(linkingSlot)}
+        onClose={() => setLinkingSlot(null)}
+        slotName={linkingSlot?.name}
+        matchId={linkingSlot?.matchId}
+        allRegisteredPlayers={players}
+        onConfirmLink={handleConfirmLinkSlot}
+      />
 
-      {reportingTournamentMatch && (
-        <MatchVisualScoreModal
-          isOpen={Boolean(reportingTournamentMatch)}
-          onClose={() => setReportingTournamentMatch(null)}
-          title={reportingTournamentMatch.court}
-          subtitle={reportingTournamentMatch.phase || 'Marcador de Encuentro'}
-          team1Name={reportingTournamentMatch.team1}
-          team2Name={reportingTournamentMatch.team2}
-          onSaveScore={handleSaveTournamentScore}
-        />
-      )}
-
-      {linkingSlot && (
-        <LinkPlayerSlotModal
-          isOpen={Boolean(linkingSlot)}
-          onClose={() => setLinkingSlot(null)}
-          slotName={linkingSlot.name}
-          matchId={linkingSlot.matchId}
-          allRegisteredPlayers={players}
-          onConfirmLink={handleConfirmLinkSlot}
-        />
-      )}
-
+      {/* MODAL: CREAR TORNEO */}
       <TournamentCreatorModal
         isOpen={showTournamentWizard}
         onClose={() => setShowTournamentWizard(false)}
@@ -4522,8 +4637,7 @@ export default function App() {
         onSaveLevel={handleSaveLevel}
       />
 
-      <CriteriosModal isOpen={showRulesModal} onClose={() => setShowRulesModal(false)} />
-      
+      {/* MODAL: INSPECCIONAR PERFIL */}
       <UserProfileModal
         isOpen={Boolean(inspectedUser)}
         onClose={() => setInspectedUser(null)}
@@ -4532,8 +4646,14 @@ export default function App() {
         tournaments={activeTournaments}
         onPhotoUploaded={handlePhotoUploaded}
         onUpdateUserData={handleUpdateUserData}
-        isCurrentUser={Boolean(inspectedUser && currentUser && inspectedUser.id === currentUser.id)}
+        isCurrentUser={inspectedUser?.id === currentUser?.id}
         isThursdayMember={isThursdayMember}
+      />
+
+      {/* MODAL: REGLAS OFICIALES */}
+      <CriteriosModal
+        isOpen={showRulesModal}
+        onClose={() => setShowRulesModal(false)}
       />
     </div>
   );
