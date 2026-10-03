@@ -610,224 +610,36 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, allDinn
     puntosDetalle.reverse();
     boteDetalle.reverse();
 
+    // Análisis de química
+    let bestPartner = null, worstPartner = null;
+    let easiestRival = null, hardestRival = null;
+
+    Object.entries(partnerStats).forEach(([name, st]) => {
+      if (st.played >= 2) {
+        const pct = (st.won / st.played) * 100;
+        if (!bestPartner || pct > bestPartner.pct) bestPartner = { name, pct: pct.toFixed(0), ...st };
+        if (!worstPartner || pct < worstPartner.pct) worstPartner = { name, pct: (100 - pct).toFixed(0), ...st };
+      }
+    });
+
+    Object.entries(rivalStats).forEach(([name, st]) => {
+      if (st.played >= 2) {
+        const pctWon = (st.wonAgainst / st.played) * 100;
+        if (!easiestRival || pctWon > easiestRival.pct) easiestRival = { name, pct: pctWon.toFixed(0), ...st };
+        if (!hardestRival || pctWon < hardestRival.pct) hardestRival = { name, pct: (100 - pctWon).toFixed(0), ...st };
+      }
+    });
+
     return {
       playedList, wonList, lostList, dinnerYesList, dinnerNoList, puntosDetalle, boteDetalle,
       played: playedList.length,
-      winRate: playedList.length > 0 ? ((wonList.length / playedList.length) * 100).toFixed(0) : 0
+      won: wonList.length,
+      lost: lostList.length,
+      winRate: playedList.length > 0 ? ((wonList.length / playedList.length) * 100).toFixed(0) : 0,
+      bestPartner, worstPartner, easiestRival, hardestRival
     };
   })();
 
-  const tournamentStats = (() => {
-    let tList = [];
-    (tournaments || []).forEach(t => {
-      const isParticipant = (t.participants || []).some(p => p.id === user.id || normalizeName(p.name) === normUserName);
-      if (!isParticipant) return;
-      (t.rounds || []).forEach(r => {
-        (r.matches || []).forEach(m => {
-          if (m.status !== 'FINALIZADO') return;
-          const inT1 = normalizeName(m.team1 || '').includes(normUserName);
-          const inT2 = normalizeName(m.team2 || '').includes(normUserName);
-          if (inT1 || inT2) {
-            tList.push({ tournamentName: t.name, court: m.court, team1: m.team1, team2: m.team2, score: m.score || 'Finalizado', won: (inT1 && m.winner === 1) || (inT2 && m.winner === 2) });
-          }
-        });
-      });
-    });
-    return { tList, tPlayed: tList.length, tWon: tList.filter(x => x.won).length, tLost: tList.filter(x => !x.won).length };
-  })();
-
-  const getDetailTitle = () => {
-    switch(selectedStatCategory) {
-      case 'pj': return 'Partidos Jugados';
-      case 'victorias': return 'Victorias';
-      case 'derrotas': return 'Derrotas';
-      case 'cenas': return 'Cenas Asistidas 🍻';
-      case 'rajadas': return 'Rajadas de Cena 🏃‍♂️';
-      case 'torneos': return 'Partidos en Torneos ⚔️';
-      case 'puntos': return 'Historial de Puntos Híbridos 🏅';
-      case 'bote': return 'Desglose del Bote 💶';
-      default: return '';
-    }
-  };
-
-  const getDetailItems = () => {
-    switch(selectedStatCategory) {
-      case 'pj': return statsCalculated.playedList;
-      case 'victorias': return statsCalculated.wonList;
-      case 'derrotas': return statsCalculated.lostList;
-      case 'cenas': return statsCalculated.dinnerYesList;
-      case 'rajadas': return statsCalculated.dinnerNoList;
-      case 'torneos': return tournamentStats.tList;
-      case 'puntos': return statsCalculated.puntosDetalle;
-      case 'bote': return statsCalculated.boteDetalle;
-      default: return [];
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-3xl max-w-sm w-full max-h-[90vh] overflow-y-auto p-5 shadow-2xl text-left space-y-4">
-        <div className="flex items-center justify-between border-b pb-4">
-          <div className="flex items-center gap-3">
-            <div className={`relative ${isCurrentUser ? 'group cursor-pointer' : ''}`} onClick={() => isCurrentUser && fileInputRef.current && fileInputRef.current.click()}>
-              <UserAvatar name={user.name} photo={user.photo} size="lg" />
-              {isCurrentUser && (
-                <div className="absolute inset-0 bg-black/40 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition text-white text-xs font-bold">📷</div>
-              )}
-              {isCurrentUser && <input type="file" ref={fileInputRef} accept="image/*" className="hidden" onChange={handleFileChange} />}
-            </div>
-            <div>
-              <div className="flex items-center gap-1.5">
-                <h3 className="text-base font-black text-slate-900">{user.name}</h3>
-                {user.isLeftHanded && <span className="text-[9px] bg-blue-100 text-blue-800 font-extrabold px-1.5 py-0.5 rounded-full border border-blue-300">👈 Zurdo</span>}
-              </div>
-              <p className="text-xs text-blue-600 font-bold">{user.titulo}</p>
-              {isCurrentUser && (
-                <div className="flex gap-2 mt-0.5">
-                  <button onClick={() => setEditing(!editing)} className="text-[10px] text-blue-600 underline font-semibold">
-                    {editing ? 'Cancelar edición' : '✏️ Editar mis datos'}
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-700 text-2xl font-bold">&times;</button>
-        </div>
-
-        {isCurrentUser && editing && (
-          <form onSubmit={handleSaveProfileData} className="bg-slate-50 p-3 rounded-2xl border border-slate-200 space-y-2 text-xs">
-            <div>
-              <label className="block text-[10px] font-bold text-slate-600 mb-0.5">Nombre completo</label>
-              <input type="text" required value={editName} onChange={e => setEditName(e.target.value)} className="w-full bg-white border border-slate-300 rounded-xl p-2 font-semibold" />
-            </div>
-            <div>
-              <label className="block text-[10px] font-bold text-slate-600 mb-0.5">Mano de Juego</label>
-              <label className="flex items-center gap-2 bg-white border border-slate-300 rounded-xl p-2 cursor-pointer">
-                <input type="checkbox" checked={editIsLeftHanded} onChange={e => setEditIsLeftHanded(e.target.checked)} className="w-4 h-4 text-blue-600 rounded accent-blue-600" />
-                <span className="font-bold text-xs text-slate-800">Soy jugador Zurdo 👈</span>
-              </label>
-            </div>
-            <button type="submit" disabled={savingData} className="w-full py-2 bg-blue-600 text-white rounded-xl font-bold shadow-xs transition">
-              {savingData ? 'Guardando...' : 'Guardar Cambios'}
-            </button>
-          </form>
-        )}
-
-        {isThursdayMember && (
-          <div className="space-y-2">
-            <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">Estadísticas Liga Regular</span>
-            <div className="grid grid-cols-4 gap-2 text-center">
-              <button onClick={() => setSelectedStatCategory(selectedStatCategory === 'pj' ? null : 'pj')} className={`border rounded-xl p-2 transition ${selectedStatCategory === 'pj' ? 'bg-blue-600 text-white border-blue-600' : 'bg-slate-50 border-slate-200 hover:bg-slate-100'}`}>
-                <span className="text-base font-black block">{statsCalculated.playedList.length}</span>
-                <span className="text-[9px] uppercase font-bold opacity-80">PJ</span>
-              </button>
-              <button onClick={() => setSelectedStatCategory(selectedStatCategory === 'victorias' ? null : 'victorias')} className={`border rounded-xl p-2 transition ${selectedStatCategory === 'victorias' ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-emerald-50 border-emerald-200 text-emerald-900 hover:bg-emerald-100'}`}>
-                <span className="text-base font-black block">{statsCalculated.wonList.length}</span>
-                <span className="text-[9px] uppercase font-bold opacity-80">Ganados</span>
-              </button>
-              <button onClick={() => setSelectedStatCategory(selectedStatCategory === 'derrotas' ? null : 'derrotas')} className={`border rounded-xl p-2 transition ${selectedStatCategory === 'derrotas' ? 'bg-rose-600 text-white border-rose-600' : 'bg-rose-50 border-rose-200 text-rose-900 hover:bg-rose-100'}`}>
-                <span className="text-base font-black block">{statsCalculated.lostList.length}</span>
-                <span className="text-[9px] uppercase font-bold opacity-80">Perdidos</span>
-              </button>
-              <div className="bg-blue-50 border border-blue-200 rounded-xl p-2 text-blue-900">
-                <span className="text-base font-black block">{statsCalculated.winRate}%</span>
-                <span className="text-[9px] uppercase font-bold opacity-80">% Éxito</span>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2 text-center pt-1">
-              <button onClick={() => setSelectedStatCategory(selectedStatCategory === 'cenas' ? null : 'cenas')} className={`border rounded-xl p-2 transition ${selectedStatCategory === 'cenas' ? 'bg-amber-600 text-white border-amber-600' : 'bg-amber-50 border-amber-200 text-amber-900 hover:bg-amber-100'}`}>
-                <span className="text-base font-black block">{statsCalculated.dinnerYesList.length}</span>
-                <span className="text-[10px] font-bold uppercase">Cenas 🍻</span>
-              </button>
-              <button onClick={() => setSelectedStatCategory(selectedStatCategory === 'rajadas' ? null : 'rajadas')} className={`border rounded-xl p-2 transition ${selectedStatCategory === 'rajadas' ? 'bg-purple-600 text-white border-purple-600' : 'bg-purple-50 border-purple-200 text-purple-900 hover:bg-purple-100'}`}>
-                <span className="text-base font-black block">{statsCalculated.dinnerNoList.length}</span>
-                <span className="text-[10px] font-bold uppercase">Rajadas 🏃‍♂️</span>
-              </button>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2 text-center pt-2">
-              <button onClick={() => setSelectedStatCategory(selectedStatCategory === 'puntos' ? null : 'puntos')} className={`border rounded-xl p-2.5 transition flex flex-col items-center justify-center ${selectedStatCategory === 'puntos' ? 'bg-blue-900 text-white border-blue-900' : 'bg-slate-900 text-white border-slate-700 hover:bg-slate-800'}`}>
-                <span className="text-lg font-black block text-blue-400">{user.hibrido || 0} pts</span>
-                <span className="text-[10px] font-bold uppercase">Ver Historial Puntos 🏅</span>
-              </button>
-              <button onClick={() => setSelectedStatCategory(selectedStatCategory === 'bote' ? null : 'bote')} className={`border rounded-xl p-2.5 transition flex flex-col items-center justify-center ${selectedStatCategory === 'bote' ? 'bg-rose-900 text-white border-rose-900' : 'bg-slate-900 text-white border-slate-700 hover:bg-slate-800'}`}>
-                <span className="text-lg font-black block text-rose-400">{user.deuda || 0} €</span>
-                <span className="text-[10px] font-bold uppercase">Ver Desglose Bote 💶</span>
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* SUBPANEL DE DETALLE DE ESTADÍSTICAS */}
-        {selectedStatCategory && (
-          <div className="bg-slate-900 text-white rounded-2xl p-3 space-y-2 border border-slate-700 animate-fadeIn text-xs">
-            <div className="flex justify-between items-center border-b border-slate-800 pb-1.5">
-              <span className="font-black text-blue-300 text-[11px] uppercase tracking-wide">📋 {getDetailTitle()} ({getDetailItems().length})</span>
-              <button onClick={() => setSelectedStatCategory(null)} className="text-slate-400 hover:text-white font-bold text-sm">✕</button>
-            </div>
-
-            <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
-              {getDetailItems().length === 0 ? (
-                <p className="text-slate-400 italic text-[10px] text-center py-2">Sin registros en este apartado</p>
-              ) : (
-                getDetailItems().map((item, idx) => (
-                  <div key={idx} className="bg-slate-800 p-2 rounded-xl border border-slate-700/80 space-y-0.5">
-                    {'pts' in item || 'bote' in item ? (
-                      <>
-                        <div className="flex justify-between text-[10px] font-bold text-slate-300">
-                          <span>📅 {item.date}</span>
-                          <span className={'pts' in item ? 'text-blue-400' : 'text-rose-400'}>
-                            {'pts' in item ? `Suma: ${item.pts > 0 ? '+'+item.pts : item.pts} pts` : `Añade: +${item.bote} €`}
-                          </span>
-                        </div>
-                        <p className="text-[11px] text-slate-100 font-semibold truncate">{item.title}</p>
-                        <p className="text-[9px] text-slate-400 font-mono mt-0.5">{item.desc}</p>
-                      </>
-                    ) : 'date' in item ? (
-                      <>
-                        <div className="flex justify-between text-[10px] font-bold text-slate-300">
-                          <span>📅 {item.date}</span>
-                          {item.partner !== 'Solo Cena' && (
-                            <span className={item.won ? 'text-emerald-400' : 'text-rose-400'}>{item.won ? 'Victoria 🏆' : 'Derrota ❌'}</span>
-                          )}
-                        </div>
-                        <p className="text-[11px] text-slate-100 font-semibold truncate">
-                          {item.partner === 'Solo Cena' ? 'Sin partido jugado' : <>Pareja con <strong>{item.partner}</strong> vs <span>{item.rivals}</span></>}
-                        </p>
-                        <p className="text-[9px] text-slate-400">
-                          {item.partner !== 'Solo Cena' && `Marcador: ${item.score} · `} Cena: {item.dinner === 'SI' ? '🍻 Sí' : item.dinner === 'NO' ? '🏃‍♂️ No' : '🟡 Pendiente'}
-                        </p>
-                      </>
-                    ) : (
-                      <>
-                        <div className="flex justify-between text-[10px] font-bold text-slate-300">
-                          <span>🏆 {item.tournamentName}</span>
-                          <span className={item.won ? 'text-emerald-400' : 'text-rose-400'}>{item.won ? 'Ganado' : 'Perdido'}</span>
-                        </div>
-                        <p className="text-[10px] text-slate-200">{item.court}: {item.team1} vs {item.team2} ({item.score})</p>
-                      </>
-                    )}
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        )}
-
-        <div className="space-y-2 pt-1 border-t border-slate-100">
-          <div className="flex justify-between items-center">
-            <span className="text-[10px] font-black text-purple-900 uppercase tracking-wider block">⚔️ Rendimiento Torneos</span>
-            <button onClick={() => setSelectedStatCategory(selectedStatCategory === 'torneos' ? null : 'torneos')} className="text-[10px] font-bold text-purple-700 bg-purple-50 hover:bg-purple-100 px-2 py-0.5 rounded-md transition">
-              {tournamentStats.tPlayed} partidos (Ver todo)
-            </button>
-          </div>
-        </div>
-        <button onClick={onClose} className="w-full py-2.5 bg-slate-900 text-white font-bold rounded-xl text-xs">Cerrar</button>
-      </div>
-    </div>
-  );
-}
   const tournamentStats = (() => {
     let tList = [];
     const modeStats = {
@@ -905,6 +717,8 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, allDinn
       case 'cenas': return 'Cenas Asistidas 🍻';
       case 'rajadas': return 'Rajadas de Cena 🏃‍♂️';
       case 'torneos': return 'Partidos en Torneos ⚔️';
+      case 'puntos': return 'Historial de Puntos Híbridos 🏅';
+      case 'bote': return 'Desglose del Bote 💶';
       default: return '';
     }
   };
@@ -917,6 +731,8 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, allDinn
       case 'cenas': return statsCalculated.dinnerYesList;
       case 'rajadas': return statsCalculated.dinnerNoList;
       case 'torneos': return tournamentStats.tList;
+      case 'puntos': return statsCalculated.puntosDetalle;
+      case 'bote': return statsCalculated.boteDetalle;
       default: return [];
     }
   };
@@ -1041,7 +857,7 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, allDinn
         {isThursdayMember && (
           <div className="space-y-2">
             <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">
-              Estadísticas Liga Regular (Pulsa para ver detalle)
+              Estadísticas Liga Regular
             </span>
             <div className="grid grid-cols-4 gap-2 text-center">
               <button
@@ -1059,7 +875,7 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, allDinn
                 className={`border rounded-xl p-2 transition ${selectedStatCategory === 'victorias' ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-emerald-50 border-emerald-200 text-emerald-900 hover:bg-emerald-100'}`}
               >
                 <span className="text-base font-black block">{statsCalculated.won}</span>
-                <span className="text-[9px] uppercase font-bold opacity-80">Victorias</span>
+                <span className="text-[9px] uppercase font-bold opacity-80">Ganados</span>
               </button>
 
               <button
@@ -1068,7 +884,7 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, allDinn
                 className={`border rounded-xl p-2 transition ${selectedStatCategory === 'derrotas' ? 'bg-rose-600 text-white border-rose-600' : 'bg-rose-50 border-rose-200 text-rose-900 hover:bg-rose-100'}`}
               >
                 <span className="text-base font-black block">{statsCalculated.lost}</span>
-                <span className="text-[9px] uppercase font-bold opacity-80">Derrotas</span>
+                <span className="text-[9px] uppercase font-bold opacity-80">Perdidos</span>
               </button>
 
               <div className="bg-blue-50 border border-blue-200 rounded-xl p-2 text-blue-900">
@@ -1084,7 +900,7 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, allDinn
                 className={`border rounded-xl p-2.5 transition ${selectedStatCategory === 'cenas' ? 'bg-amber-600 text-white border-amber-600' : 'bg-amber-50 border-amber-200 text-amber-900 hover:bg-amber-100'}`}
               >
                 <span className="text-base font-black block">{statsCalculated.dinnerYesList.length}</span>
-                <span className="text-[10px] font-bold uppercase">Cenas Asistidas 🍻</span>
+                <span className="text-[10px] font-bold uppercase">Cenas 🍻</span>
               </button>
 
               <button
@@ -1094,6 +910,17 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, allDinn
               >
                 <span className="text-base font-black block">{statsCalculated.dinnerNoList.length}</span>
                 <span className="text-[10px] font-bold uppercase">Rajadas 🏃‍♂️</span>
+              </button>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 text-center pt-2">
+              <button onClick={() => setSelectedStatCategory(selectedStatCategory === 'puntos' ? null : 'puntos')} className={`border rounded-xl p-2.5 transition flex flex-col items-center justify-center ${selectedStatCategory === 'puntos' ? 'bg-blue-900 text-white border-blue-900' : 'bg-slate-900 text-white border-slate-700 hover:bg-slate-800'}`}>
+                <span className="text-lg font-black block text-blue-400">{user.hibrido || 0} pts</span>
+                <span className="text-[10px] font-bold uppercase">Historial Puntos 🏅</span>
+              </button>
+              <button onClick={() => setSelectedStatCategory(selectedStatCategory === 'bote' ? null : 'bote')} className={`border rounded-xl p-2.5 transition flex flex-col items-center justify-center ${selectedStatCategory === 'bote' ? 'bg-rose-900 text-white border-rose-900' : 'bg-slate-900 text-white border-slate-700 hover:bg-slate-800'}`}>
+                <span className="text-lg font-black block text-rose-400">{user.deuda || 0} €</span>
+                <span className="text-[10px] font-bold uppercase">Desglose Bote 💶</span>
               </button>
             </div>
           </div>
@@ -1187,19 +1014,30 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, allDinn
               ) : (
                 getDetailItems().map((item, idx) => (
                   <div key={idx} className="bg-slate-800 p-2 rounded-xl border border-slate-700/80 space-y-0.5">
-                    {'date' in item ? (
+                    {'pts' in item || 'bote' in item ? (
                       <>
                         <div className="flex justify-between text-[10px] font-bold text-slate-300">
                           <span>📅 {item.date}</span>
-                          <span className={item.won ? 'text-emerald-400' : 'text-rose-400'}>
-                            {item.won ? 'Victoria 🏆' : 'Derrota ❌'}
+                          <span className={'pts' in item ? 'text-blue-400' : 'text-rose-400'}>
+                            {'pts' in item ? `Suma: ${item.pts > 0 ? '+'+item.pts : item.pts} pts` : `Añade: +${item.bote} €`}
                           </span>
                         </div>
+                        <p className="text-[11px] text-slate-100 font-semibold truncate">{item.title}</p>
+                        <p className="text-[9px] text-slate-400 font-mono mt-0.5">{item.desc}</p>
+                      </>
+                    ) : 'date' in item ? (
+                      <>
+                        <div className="flex justify-between text-[10px] font-bold text-slate-300">
+                          <span>📅 {item.date}</span>
+                          {item.partner !== 'Solo Cena' && (
+                            <span className={item.won ? 'text-emerald-400' : 'text-rose-400'}>{item.won ? 'Victoria 🏆' : 'Derrota ❌'}</span>
+                          )}
+                        </div>
                         <p className="text-[11px] text-slate-100 font-semibold truncate">
-                          Pareja con <strong>{item.partner}</strong> vs <span>{item.rivals}</span>
+                          {item.partner === 'Solo Cena' ? 'Sin partido jugado' : <>Pareja con <strong>{item.partner}</strong> vs <span>{item.rivals}</span></>}
                         </p>
                         <p className="text-[9px] text-slate-400">
-                          Marcador: {item.score} · Cena: {item.dinner === 'SI' ? '🍻 Sí' : item.dinner === 'NO' ? '🏃‍♂️ No' : '🟡 Pendiente'}
+                          {item.partner !== 'Solo Cena' && `Marcador: ${item.score} · `} Cena: {item.dinner === 'SI' ? '🍻 Sí' : item.dinner === 'NO' ? '🏃‍♂️ No' : '🟡 Pendiente'}
                         </p>
                       </>
                     ) : (
@@ -1273,7 +1111,6 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, allDinn
     </div>
   );
 }
-
 function TournamentCreatorModal({ isOpen, onClose, allPlayers, tournaments, onTournamentCreated, currentUserId, onSaveLevel }) {
   const [step, setStep] = useState(1);
   const [tName, setTName] = useState('Torneo CTC Fin de Semana');
