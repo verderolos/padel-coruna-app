@@ -2536,13 +2536,6 @@ const isOnlyPlaytomicLink = useMemo(() => {
     const hasPlayerCheckmarks = trimmed.includes('✅');
     const hasDateIcons = trimmed.includes('📅') || trimmed.includes('🗓️') || trimmed.toLowerCase().includes('jueves') || trimmed.toLowerCase().includes('martes');
     return isUrl && !hasPlayerCheckmarks && !hasDateIcons;
-  }, [playtomicText]);const isOnlyPlaytomicLink = useMemo(() => {
-    const trimmed = playtomicText.trim();
-    if (!trimmed) return false;
-    const isUrl = trimmed.startsWith('http://') || trimmed.startsWith('https://');
-    const hasPlayerCheckmarks = trimmed.includes('✅');
-    const hasDateIcons = trimmed.includes('📅') || trimmed.includes('🗓️') || trimmed.toLowerCase().includes('jueves') || trimmed.toLowerCase().includes('martes');
-    return isUrl && !hasPlayerCheckmarks && !hasDateIcons;
   }, [playtomicText]);
   
   useEffect(() => {
