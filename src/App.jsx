@@ -463,7 +463,8 @@ function PinModal({ isOpen, onClose, targetUser, onPinSuccess, apiUrl }) {
   );
 }
 
-function UserProfileModal({ isOpen, onClose, user, matches, tournaments, onPhotoUploaded, onUpdateUserData, isCurrentUser, isThursdayMember }) {
+// MODAL DE PERFIL DE JUGADOR CON SUBPANEL INTERACTIVO Y DETALLE DE BOTE/PUNTOS
+function UserProfileModal({ isOpen, onClose, user, matches, tournaments, allDinnerGuests, onPhotoUploaded, onUpdateUserData, isCurrentUser, isThursdayMember }) {
   const fileInputRef = useRef(null);
   const [uploading, setUploading] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -495,7 +496,6 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, onPhoto
   const handleFileChange = (e) => {
     const file = e.target.files[0];
     if (!file) return;
-
     setUploading(true);
     const reader = new FileReader();
     reader.onload = (readerEvent) => {
@@ -505,18 +505,12 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, onPhoto
         const maxSize = 200;
         let width = img.width;
         let height = img.height;
-        if (width > height) {
-          if (width > maxSize) { height *= maxSize / width; width = maxSize; }
-        } else {
-          if (height > maxSize) { width *= maxSize / height; height = maxSize; }
-        }
-        canvas.width = width;
-        canvas.height = height;
+        if (width > height) { if (width > maxSize) { height *= maxSize / width; width = maxSize; } } 
+        else { if (height > maxSize) { width *= maxSize / height; height = maxSize; } }
+        canvas.width = width; canvas.height = height;
         const ctx = canvas.getContext('2d');
         ctx.drawImage(img, 0, 0, width, height);
-
-        const compressedBase64 = canvas.toDataURL('image/jpeg', 0.82);
-        onPhotoUploaded(user.id, compressedBase64);
+        onPhotoUploaded(user.id, canvas.toDataURL('image/jpeg', 0.82));
         setUploading(false);
       };
       img.src = readerEvent.target.result;
@@ -527,46 +521,63 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, onPhoto
   const handleSaveProfileData = async (e) => {
     e.preventDefault();
     setSavingData(true);
-    await onUpdateUserData(user.id, {
-      nombre: editName,
-      telefono: editPhone,
-      grupo: editGroup === 'Solo Torneo' ? 'torneo' : editGroup,
-      playtomic: editPlaytomic,
-      isLeftHanded: editIsLeftHanded
-    });
+    await onUpdateUserData(user.id, { nombre: editName, telefono: editPhone, grupo: editGroup === 'Solo Torneo' ? 'torneo' : editGroup, playtomic: editPlaytomic, isLeftHanded: editIsLeftHanded });
     setSavingData(false);
     setEditing(false);
   };
 
   const statsCalculated = (() => {
     let playedList = [], wonList = [], lostList = [], dinnerYesList = [], dinnerNoList = [];
-    const partnerStats = {};
-    const rivalStats = {};
+    let puntosDetalle = [], boteDetalle = [];
+    const partnerStats = {}, rivalStats = {};
 
-    (matches || []).forEach(m => {
+    matches.forEach(m => {
       if (m.status !== 'FINALIZADO') return;
       if (!isMatchOfficial(m)) return;
 
       const mySlot = (m.players || []).find(p => p.id === user.id || normalizeName(p.name) === normUserName);
       if (!mySlot) return;
 
+      const partner = (m.players || []).find(p => p.team === mySlot.team && normalizeName(p.name) !== normUserName)?.name || 'Compañero';
+      const rivals = (m.players || []).filter(p => p.team !== mySlot.team).map(p => p.name).join(' & ') || 'Rivales';
+
       const matchDetail = {
-        id: m.id,
-        date: m.date,
-        location: m.location || 'Real Club de Tenis Coruña',
-        score: m.score || 'Finalizado',
-        myTeam: mySlot.team,
-        won: mySlot.won === 'SI',
-        dinner: mySlot.dinner,
-        partner: (m.players || []).find(p => p.team === mySlot.team && normalizeName(p.name) !== normUserName)?.name || 'Compañero',
-        rivals: (m.players || []).filter(p => p.team !== mySlot.team).map(p => p.name).join(' & ') || 'Rivales'
+        id: m.id, date: m.date, location: m.location || 'Club', score: m.score || 'Finalizado',
+        myTeam: mySlot.team, won: mySlot.won === 'SI', dinner: mySlot.dinner, partner, rivals
       };
 
       playedList.push(matchDetail);
       if (mySlot.won === 'SI') wonList.push(matchDetail); else lostList.push(matchDetail);
 
-      if (mySlot.dinner === 'SI') dinnerYesList.push(matchDetail);
-      if (mySlot.dinner === 'NO') dinnerNoList.push(matchDetail);
+      let matchPts = 0, matchBote = 0;
+      let breakdownPts = [], breakdownBote = [];
+
+      // Deportivo
+      if (mySlot.won === 'SI') {
+        matchPts += 5; breakdownPts.push('Victoria (+5)');
+      } else {
+        matchBote += 1; breakdownBote.push('Derrota (+1€)');
+      }
+
+      // Jugar (Barandas)
+      matchPts += 1; breakdownPts.push('Jugar (+1)');
+
+      // Cena (Barandas)
+      if (mySlot.dinner === 'SI') {
+        dinnerYesList.push(matchDetail);
+        matchPts += 5; breakdownPts.push('Cena (+5)');
+      } else if (mySlot.dinner === 'NO') {
+        dinnerNoList.push(matchDetail);
+        matchPts -= 1; breakdownPts.push('Rajada (-1)');
+        matchBote += 1; breakdownBote.push('Rajada (+1€)');
+      } else if (mySlot.dinner === 'PENDIENTE') {
+        breakdownPts.push('Cena Pendiente (0)');
+      }
+
+      puntosDetalle.push({ date: m.date, title: `Partido vs ${rivals}`, pts: matchPts, desc: breakdownPts.join(' | ') });
+      if (matchBote > 0) {
+        boteDetalle.push({ date: m.date, title: `Partido vs ${rivals}`, bote: matchBote, desc: breakdownBote.join(' | ') });
+      }
 
       const myTeam = mySlot.team;
       (m.players || []).forEach(p => {
@@ -583,47 +594,240 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, onPhoto
       });
     });
 
-    let bestPartner = null, bestPartnerWinPct = -1;
-    let worstPartner = null, worstPartnerLossPct = -1;
-    Object.entries(partnerStats).forEach(([name, data]) => {
-      const winPct = (data.won / data.played) * 100;
-      const lossPct = (data.lost / data.played) * 100;
-      if (data.won > 0 && winPct > bestPartnerWinPct) {
-        bestPartnerWinPct = winPct;
-        bestPartner = { name, ...data, pct: winPct.toFixed(0) };
-      }
-      if (data.lost > 0 && lossPct > worstPartnerLossPct) {
-        worstPartnerLossPct = lossPct;
-        worstPartner = { name, ...data, pct: lossPct.toFixed(0) };
+    // Añadir las cenas sin partido al listado visual y al historial de puntos
+    (allDinnerGuests || []).forEach(g => {
+      if (normalizeName(g.name) === normUserName) {
+        const cleanDate = extractCleanDate(g.target || g.cleanTarget);
+        dinnerYesList.push({
+          date: cleanDate, partner: 'Solo Cena', rivals: '-', score: '-', dinner: 'SI', won: false
+        });
+        puntosDetalle.push({
+          date: cleanDate, title: 'Asistencia 3º Tiempo (Sin jugar)', pts: 5, desc: 'Solo Cena (+5)'
+        });
       }
     });
 
-    let easiestRival = null, easiestWinPct = -1;
-    let hardestRival = null, hardestLossPct = -1;
-    Object.entries(rivalStats).forEach(([name, data]) => {
-      const winPct = (data.wonAgainst / data.played) * 100;
-      const lossPct = (data.lostAgainst / data.played) * 100;
-      if (data.wonAgainst > 0 && winPct > easiestWinPct) {
-        easiestWinPct = winPct;
-        easiestRival = { name, ...data, pct: winPct.toFixed(0) };
-      }
-      if (data.lostAgainst > 0 && lossPct > hardestLossPct) {
-        hardestLossPct = lossPct;
-        hardestRival = { name, ...data, pct: lossPct.toFixed(0) };
-      }
-    });
+    puntosDetalle.reverse();
+    boteDetalle.reverse();
 
     return {
-      playedList, wonList, lostList, dinnerYesList, dinnerNoList,
+      playedList, wonList, lostList, dinnerYesList, dinnerNoList, puntosDetalle, boteDetalle,
       played: playedList.length,
-      won: wonList.length,
-      lost: lostList.length,
-      winRate: playedList.length > 0 ? ((wonList.length / playedList.length) * 100).toFixed(0) : 0,
-      bestPartner, worstPartner,
-      hardestRival, easiestRival
+      winRate: playedList.length > 0 ? ((wonList.length / playedList.length) * 100).toFixed(0) : 0
     };
   })();
 
+  const tournamentStats = (() => {
+    let tList = [];
+    (tournaments || []).forEach(t => {
+      const isParticipant = (t.participants || []).some(p => p.id === user.id || normalizeName(p.name) === normUserName);
+      if (!isParticipant) return;
+      (t.rounds || []).forEach(r => {
+        (r.matches || []).forEach(m => {
+          if (m.status !== 'FINALIZADO') return;
+          const inT1 = normalizeName(m.team1 || '').includes(normUserName);
+          const inT2 = normalizeName(m.team2 || '').includes(normUserName);
+          if (inT1 || inT2) {
+            tList.push({ tournamentName: t.name, court: m.court, team1: m.team1, team2: m.team2, score: m.score || 'Finalizado', won: (inT1 && m.winner === 1) || (inT2 && m.winner === 2) });
+          }
+        });
+      });
+    });
+    return { tList, tPlayed: tList.length, tWon: tList.filter(x => x.won).length, tLost: tList.filter(x => !x.won).length };
+  })();
+
+  const getDetailTitle = () => {
+    switch(selectedStatCategory) {
+      case 'pj': return 'Partidos Jugados';
+      case 'victorias': return 'Victorias';
+      case 'derrotas': return 'Derrotas';
+      case 'cenas': return 'Cenas Asistidas 🍻';
+      case 'rajadas': return 'Rajadas de Cena 🏃‍♂️';
+      case 'torneos': return 'Partidos en Torneos ⚔️';
+      case 'puntos': return 'Historial de Puntos Híbridos 🏅';
+      case 'bote': return 'Desglose del Bote 💶';
+      default: return '';
+    }
+  };
+
+  const getDetailItems = () => {
+    switch(selectedStatCategory) {
+      case 'pj': return statsCalculated.playedList;
+      case 'victorias': return statsCalculated.wonList;
+      case 'derrotas': return statsCalculated.lostList;
+      case 'cenas': return statsCalculated.dinnerYesList;
+      case 'rajadas': return statsCalculated.dinnerNoList;
+      case 'torneos': return tournamentStats.tList;
+      case 'puntos': return statsCalculated.puntosDetalle;
+      case 'bote': return statsCalculated.boteDetalle;
+      default: return [];
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-3xl max-w-sm w-full max-h-[90vh] overflow-y-auto p-5 shadow-2xl text-left space-y-4">
+        <div className="flex items-center justify-between border-b pb-4">
+          <div className="flex items-center gap-3">
+            <div className={`relative ${isCurrentUser ? 'group cursor-pointer' : ''}`} onClick={() => isCurrentUser && fileInputRef.current && fileInputRef.current.click()}>
+              <UserAvatar name={user.name} photo={user.photo} size="lg" />
+              {isCurrentUser && (
+                <div className="absolute inset-0 bg-black/40 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition text-white text-xs font-bold">📷</div>
+              )}
+              {isCurrentUser && <input type="file" ref={fileInputRef} accept="image/*" className="hidden" onChange={handleFileChange} />}
+            </div>
+            <div>
+              <div className="flex items-center gap-1.5">
+                <h3 className="text-base font-black text-slate-900">{user.name}</h3>
+                {user.isLeftHanded && <span className="text-[9px] bg-blue-100 text-blue-800 font-extrabold px-1.5 py-0.5 rounded-full border border-blue-300">👈 Zurdo</span>}
+              </div>
+              <p className="text-xs text-blue-600 font-bold">{user.titulo}</p>
+              {isCurrentUser && (
+                <div className="flex gap-2 mt-0.5">
+                  <button onClick={() => setEditing(!editing)} className="text-[10px] text-blue-600 underline font-semibold">
+                    {editing ? 'Cancelar edición' : '✏️ Editar mis datos'}
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-700 text-2xl font-bold">&times;</button>
+        </div>
+
+        {isCurrentUser && editing && (
+          <form onSubmit={handleSaveProfileData} className="bg-slate-50 p-3 rounded-2xl border border-slate-200 space-y-2 text-xs">
+            <div>
+              <label className="block text-[10px] font-bold text-slate-600 mb-0.5">Nombre completo</label>
+              <input type="text" required value={editName} onChange={e => setEditName(e.target.value)} className="w-full bg-white border border-slate-300 rounded-xl p-2 font-semibold" />
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold text-slate-600 mb-0.5">Mano de Juego</label>
+              <label className="flex items-center gap-2 bg-white border border-slate-300 rounded-xl p-2 cursor-pointer">
+                <input type="checkbox" checked={editIsLeftHanded} onChange={e => setEditIsLeftHanded(e.target.checked)} className="w-4 h-4 text-blue-600 rounded accent-blue-600" />
+                <span className="font-bold text-xs text-slate-800">Soy jugador Zurdo 👈</span>
+              </label>
+            </div>
+            <button type="submit" disabled={savingData} className="w-full py-2 bg-blue-600 text-white rounded-xl font-bold shadow-xs transition">
+              {savingData ? 'Guardando...' : 'Guardar Cambios'}
+            </button>
+          </form>
+        )}
+
+        {isThursdayMember && (
+          <div className="space-y-2">
+            <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">Estadísticas Liga Regular</span>
+            <div className="grid grid-cols-4 gap-2 text-center">
+              <button onClick={() => setSelectedStatCategory(selectedStatCategory === 'pj' ? null : 'pj')} className={`border rounded-xl p-2 transition ${selectedStatCategory === 'pj' ? 'bg-blue-600 text-white border-blue-600' : 'bg-slate-50 border-slate-200 hover:bg-slate-100'}`}>
+                <span className="text-base font-black block">{statsCalculated.playedList.length}</span>
+                <span className="text-[9px] uppercase font-bold opacity-80">PJ</span>
+              </button>
+              <button onClick={() => setSelectedStatCategory(selectedStatCategory === 'victorias' ? null : 'victorias')} className={`border rounded-xl p-2 transition ${selectedStatCategory === 'victorias' ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-emerald-50 border-emerald-200 text-emerald-900 hover:bg-emerald-100'}`}>
+                <span className="text-base font-black block">{statsCalculated.wonList.length}</span>
+                <span className="text-[9px] uppercase font-bold opacity-80">Ganados</span>
+              </button>
+              <button onClick={() => setSelectedStatCategory(selectedStatCategory === 'derrotas' ? null : 'derrotas')} className={`border rounded-xl p-2 transition ${selectedStatCategory === 'derrotas' ? 'bg-rose-600 text-white border-rose-600' : 'bg-rose-50 border-rose-200 text-rose-900 hover:bg-rose-100'}`}>
+                <span className="text-base font-black block">{statsCalculated.lostList.length}</span>
+                <span className="text-[9px] uppercase font-bold opacity-80">Perdidos</span>
+              </button>
+              <div className="bg-blue-50 border border-blue-200 rounded-xl p-2 text-blue-900">
+                <span className="text-base font-black block">{statsCalculated.winRate}%</span>
+                <span className="text-[9px] uppercase font-bold opacity-80">% Éxito</span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 text-center pt-1">
+              <button onClick={() => setSelectedStatCategory(selectedStatCategory === 'cenas' ? null : 'cenas')} className={`border rounded-xl p-2 transition ${selectedStatCategory === 'cenas' ? 'bg-amber-600 text-white border-amber-600' : 'bg-amber-50 border-amber-200 text-amber-900 hover:bg-amber-100'}`}>
+                <span className="text-base font-black block">{statsCalculated.dinnerYesList.length}</span>
+                <span className="text-[10px] font-bold uppercase">Cenas 🍻</span>
+              </button>
+              <button onClick={() => setSelectedStatCategory(selectedStatCategory === 'rajadas' ? null : 'rajadas')} className={`border rounded-xl p-2 transition ${selectedStatCategory === 'rajadas' ? 'bg-purple-600 text-white border-purple-600' : 'bg-purple-50 border-purple-200 text-purple-900 hover:bg-purple-100'}`}>
+                <span className="text-base font-black block">{statsCalculated.dinnerNoList.length}</span>
+                <span className="text-[10px] font-bold uppercase">Rajadas 🏃‍♂️</span>
+              </button>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 text-center pt-2">
+              <button onClick={() => setSelectedStatCategory(selectedStatCategory === 'puntos' ? null : 'puntos')} className={`border rounded-xl p-2.5 transition flex flex-col items-center justify-center ${selectedStatCategory === 'puntos' ? 'bg-blue-900 text-white border-blue-900' : 'bg-slate-900 text-white border-slate-700 hover:bg-slate-800'}`}>
+                <span className="text-lg font-black block text-blue-400">{user.hibrido || 0} pts</span>
+                <span className="text-[10px] font-bold uppercase">Ver Historial Puntos 🏅</span>
+              </button>
+              <button onClick={() => setSelectedStatCategory(selectedStatCategory === 'bote' ? null : 'bote')} className={`border rounded-xl p-2.5 transition flex flex-col items-center justify-center ${selectedStatCategory === 'bote' ? 'bg-rose-900 text-white border-rose-900' : 'bg-slate-900 text-white border-slate-700 hover:bg-slate-800'}`}>
+                <span className="text-lg font-black block text-rose-400">{user.deuda || 0} €</span>
+                <span className="text-[10px] font-bold uppercase">Ver Desglose Bote 💶</span>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* SUBPANEL DE DETALLE DE ESTADÍSTICAS */}
+        {selectedStatCategory && (
+          <div className="bg-slate-900 text-white rounded-2xl p-3 space-y-2 border border-slate-700 animate-fadeIn text-xs">
+            <div className="flex justify-between items-center border-b border-slate-800 pb-1.5">
+              <span className="font-black text-blue-300 text-[11px] uppercase tracking-wide">📋 {getDetailTitle()} ({getDetailItems().length})</span>
+              <button onClick={() => setSelectedStatCategory(null)} className="text-slate-400 hover:text-white font-bold text-sm">✕</button>
+            </div>
+
+            <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+              {getDetailItems().length === 0 ? (
+                <p className="text-slate-400 italic text-[10px] text-center py-2">Sin registros en este apartado</p>
+              ) : (
+                getDetailItems().map((item, idx) => (
+                  <div key={idx} className="bg-slate-800 p-2 rounded-xl border border-slate-700/80 space-y-0.5">
+                    {'pts' in item || 'bote' in item ? (
+                      <>
+                        <div className="flex justify-between text-[10px] font-bold text-slate-300">
+                          <span>📅 {item.date}</span>
+                          <span className={'pts' in item ? 'text-blue-400' : 'text-rose-400'}>
+                            {'pts' in item ? `Suma: ${item.pts > 0 ? '+'+item.pts : item.pts} pts` : `Añade: +${item.bote} €`}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-100 font-semibold truncate">{item.title}</p>
+                        <p className="text-[9px] text-slate-400 font-mono mt-0.5">{item.desc}</p>
+                      </>
+                    ) : 'date' in item ? (
+                      <>
+                        <div className="flex justify-between text-[10px] font-bold text-slate-300">
+                          <span>📅 {item.date}</span>
+                          {item.partner !== 'Solo Cena' && (
+                            <span className={item.won ? 'text-emerald-400' : 'text-rose-400'}>{item.won ? 'Victoria 🏆' : 'Derrota ❌'}</span>
+                          )}
+                        </div>
+                        <p className="text-[11px] text-slate-100 font-semibold truncate">
+                          {item.partner === 'Solo Cena' ? 'Sin partido jugado' : <>Pareja con <strong>{item.partner}</strong> vs <span>{item.rivals}</span></>}
+                        </p>
+                        <p className="text-[9px] text-slate-400">
+                          {item.partner !== 'Solo Cena' && `Marcador: ${item.score} · `} Cena: {item.dinner === 'SI' ? '🍻 Sí' : item.dinner === 'NO' ? '🏃‍♂️ No' : '🟡 Pendiente'}
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <div className="flex justify-between text-[10px] font-bold text-slate-300">
+                          <span>🏆 {item.tournamentName}</span>
+                          <span className={item.won ? 'text-emerald-400' : 'text-rose-400'}>{item.won ? 'Ganado' : 'Perdido'}</span>
+                        </div>
+                        <p className="text-[10px] text-slate-200">{item.court}: {item.team1} vs {item.team2} ({item.score})</p>
+                      </>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        )}
+
+        <div className="space-y-2 pt-1 border-t border-slate-100">
+          <div className="flex justify-between items-center">
+            <span className="text-[10px] font-black text-purple-900 uppercase tracking-wider block">⚔️ Rendimiento Torneos</span>
+            <button onClick={() => setSelectedStatCategory(selectedStatCategory === 'torneos' ? null : 'torneos')} className="text-[10px] font-bold text-purple-700 bg-purple-50 hover:bg-purple-100 px-2 py-0.5 rounded-md transition">
+              {tournamentStats.tPlayed} partidos (Ver todo)
+            </button>
+          </div>
+        </div>
+        <button onClick={onClose} className="w-full py-2.5 bg-slate-900 text-white font-bold rounded-xl text-xs">Cerrar</button>
+      </div>
+    </div>
+  );
+}
   const tournamentStats = (() => {
     let tList = [];
     const modeStats = {
