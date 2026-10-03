@@ -2529,6 +2529,21 @@ function AddPlaytomicMatchModal({ isOpen, onClose, onAddMatch, syncing }) {
   const [manualP3, setManualP3] = useState('');
   const [manualP4, setManualP4] = useState('');
 
+const isOnlyPlaytomicLink = useMemo(() => {
+    const trimmed = playtomicText.trim();
+    if (!trimmed) return false;
+    const isUrl = trimmed.startsWith('http://') || trimmed.startsWith('https://');
+    const hasPlayerCheckmarks = trimmed.includes('✅');
+    const hasDateIcons = trimmed.includes('📅') || trimmed.includes('🗓️') || trimmed.toLowerCase().includes('jueves') || trimmed.toLowerCase().includes('martes');
+    return isUrl && !hasPlayerCheckmarks && !hasDateIcons;
+  }, [playtomicText]);const isOnlyPlaytomicLink = useMemo(() => {
+    const trimmed = playtomicText.trim();
+    if (!trimmed) return false;
+    const isUrl = trimmed.startsWith('http://') || trimmed.startsWith('https://');
+    const hasPlayerCheckmarks = trimmed.includes('✅');
+    const hasDateIcons = trimmed.includes('📅') || trimmed.includes('🗓️') || trimmed.toLowerCase().includes('jueves') || trimmed.toLowerCase().includes('martes');
+    return isUrl && !hasPlayerCheckmarks && !hasDateIcons;
+  }, [playtomicText]);
   
   useEffect(() => {
     if (!isOpen) {
@@ -2858,14 +2873,6 @@ export default function App() {
     }
   };
 
-  const isOnlyPlaytomicLink = useMemo(() => {
-    const trimmed = playtomicText.trim();
-    if (!trimmed) return false;
-    const isUrl = trimmed.startsWith('http://') || trimmed.startsWith('https://');
-    const hasPlayerCheckmarks = trimmed.includes('✅');
-    const hasDateIcons = trimmed.includes('📅') || trimmed.includes('🗓️') || trimmed.toLowerCase().includes('jueves') || trimmed.toLowerCase().includes('martes');
-    return isUrl && !hasPlayerCheckmarks && !hasDateIcons;
-  }, [playtomicText]);
 
   const handleAddPlaytomicMatch = async (data) => {
     let payloadText = data.playtomicText.trim();
@@ -2898,39 +2905,7 @@ export default function App() {
     } finally {
       setSyncing(false);
     }
-  };const handleAddPlaytomicMatch = async (data) => {
-    let payloadText = data.playtomicText.trim();
-
-    if (data.isOnlyPlaytomicLink) {
-      const d = data.manualDate.trim() || 'Jueves 21:00';
-      const loc = data.manualLocation.trim() || 'Real Club de Tenis de La Coruña';
-      const p1 = data.manualP1.trim() ? `✅ ${data.manualP1.trim()}` : '';
-      const p2 = data.manualP2.trim() ? `✅ ${data.manualP2.trim()}` : '';
-      const p3 = data.manualP3.trim() ? `✅ ${data.manualP3.trim()}` : '';
-      const p4 = data.manualP4.trim() ? `✅ ${data.manualP4.trim()}` : '';
-
-      payloadText = `📅 ${d}\n📍 ${loc}\n${data.playtomicText.trim()}\n${p1}\n${p2}\n${p3}\n${p4}`.trim();
-    }
-
-    setSyncing(true);
-    try {
-      const res = await fetch(apiUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({ action: 'CREAR_PARTIDO_PLAYTOMIC', textoCrudo: payloadText, grupo: myGroup })
-      });
-      const responseData = await res.json();
-      if (responseData.ok) {
-        setShowAddModal(false);
-        fetchData();
-      }
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setSyncing(false);
-    }
   };
-
   const handleReloadPlaytomic = async (e) => {
     e.preventDefault();
     if (!reloadPlaytomicText.trim() || !selectedMatchId) return;
