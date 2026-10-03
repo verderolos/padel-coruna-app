@@ -2458,6 +2458,119 @@ function SwapPlayerModal({ isOpen, onClose, match, sourcePlayerId, onConfirmSwap
     </div>
   );
 }
+function RegisterPlayerForm({ onCancel, onRegister, syncing }) {
+  const [newUserName, setNewUserName] = useState('');
+  const [newUserPhone, setNewUserPhone] = useState('');
+  const [newUserGroup, setNewUserGroup] = useState('Chicos');
+  const [newUserPlaytomic, setNewUserPlaytomic] = useState('');
+  const [newUserPin, setNewUserPin] = useState('');
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (!newUserName.trim()) {
+      alert('Por favor, introduce tu nombre y apellido.');
+      return;
+    }
+    if (newUserPin.trim().length !== 4) {
+      alert('El PIN debe tener exactamente 4 dígitos.');
+      return;
+    }
+    onRegister({
+      nombre: newUserName.trim(),
+      telefono: newUserPhone.trim(),
+      grupo: newUserGroup,
+      playtomic: newUserPlaytomic.trim(),
+      pin: newUserPin.trim()
+    });
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-3">
+      <div>
+        <label className="block text-xs font-bold text-slate-300 mb-1">Nombre y Apellido *</label>
+        <input type="text" required value={newUserName} onChange={(e) => setNewUserName(e.target.value)} placeholder="Ej: Marcos Iglesias" className="w-full bg-slate-700 border border-slate-600 rounded-xl p-2.5 text-xs text-white placeholder-slate-400 focus:outline-none focus:border-blue-500 font-semibold" />
+      </div>
+      <div>
+        <label className="block text-xs font-bold text-slate-300 mb-1">Teléfono Móvil (WhatsApp) *</label>
+        <input type="tel" required value={newUserPhone} onChange={(e) => setNewUserPhone(e.target.value)} placeholder="Ej: 600123456" className="w-full bg-slate-700 border border-slate-600 rounded-xl p-2.5 text-xs text-white placeholder-slate-400 focus:outline-none focus:border-blue-500 font-semibold" />
+      </div>
+      <div>
+        <label className="block text-xs font-bold text-slate-300 mb-1">¿A qué grupo perteneces?</label>
+        <div className="flex gap-2">
+          {[{ key: 'Chicos', label: 'Chicos (Jueves)' }, { key: 'Solo Torneo', label: 'Solo Torneo' }].map(g => (
+            <button type="button" key={g.key} onClick={() => setNewUserGroup(g.key)} className={`flex-1 py-2 text-xs font-bold rounded-xl border transition ${newUserGroup === g.key ? 'bg-blue-600 text-white border-blue-600' : 'bg-slate-700 text-slate-300 border-slate-600'}`}>
+              {g.label}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div>
+        <label className="block text-xs font-bold text-slate-300 mb-1">Crea tu PIN de 4 cifras (seguridad) *</label>
+        <input type="password" maxLength={4} required value={newUserPin} onChange={(e) => setNewUserPin(e.target.value.replace(/\D/g, ''))} placeholder="Ej: 1234" className="w-full bg-slate-700 border border-slate-600 rounded-xl p-2.5 text-xs text-white placeholder-slate-400 focus:outline-none focus:border-blue-500 font-bold tracking-widest text-center" />
+      </div>
+      <div>
+        <label className="block text-xs font-bold text-slate-300 mb-1">Usuario de Playtomic (opcional)</label>
+        <input type="text" value={newUserPlaytomic} onChange={(e) => setNewUserPlaytomic(e.target.value)} placeholder="Ej: marcos-padel" className="w-full bg-slate-700 border border-slate-600 rounded-xl p-2.5 text-xs text-white placeholder-slate-400 focus:outline-none focus:border-blue-500" />
+      </div>
+      <div className="flex gap-2 pt-2">
+        <button type="button" onClick={onCancel} className="flex-1 py-2.5 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded-xl text-xs font-bold transition">Volver</button>
+        <button type="submit" disabled={syncing} className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold shadow-lg transition">{syncing ? 'Guardando...' : 'Crear y Entrar'}</button>
+      </div>
+    </form>
+  );
+}
+
+function AddPlaytomicMatchModal({ isOpen, onClose, onAddMatch, syncing }) {
+  const [playtomicText, setPlaytomicText] = useState('');
+  const [manualDate, setManualDate] = useState('');
+  const [manualLocation, setManualLocation] = useState('Real Club de Tenis de La Coruña');
+  const [manualP1, setManualP1] = useState('');
+  const [manualP2, setManualP2] = useState('');
+  const [manualP3, setManualP3] = useState('');
+  const [manualP4, setManualP4] = useState('');
+
+  
+  useEffect(() => {
+    if (!isOpen) {
+      setPlaytomicText(''); setManualDate(''); setManualP1(''); setManualP2(''); setManualP3(''); setManualP4('');
+    }
+  }, [isOpen]);
+
+  if (!isOpen) return null;
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (!playtomicText.trim()) return;
+    onAddMatch({ playtomicText, isOnlyPlaytomicLink, manualDate, manualLocation, manualP1, manualP2, manualP3, manualP4 });
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-3xl max-w-sm w-full p-5 shadow-2xl space-y-3">
+        <h3 className="text-base font-black text-slate-900">Añadir Partido Playtomic</h3>
+        <form onSubmit={handleSubmit} className="space-y-3">
+          <textarea rows={4} required value={playtomicText} onChange={e => setPlaytomicText(e.target.value)} placeholder="Pega el texto copiado de Playtomic o el enlace..." className="w-full border rounded-xl p-2.5 text-xs font-semibold" />
+          {isOnlyPlaytomicLink && (
+            <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200 space-y-2">
+              <span className="text-[10px] font-black uppercase text-blue-600 block">Datos adicionales requeridos</span>
+              <input type="text" value={manualDate} onChange={e => setManualDate(e.target.value)} placeholder="Fecha y Hora (Ej: Jueves 21:00)" className="w-full border rounded-lg p-1.5 text-xs font-semibold" />
+              <div className="grid grid-cols-2 gap-1.5">
+                <input type="text" value={manualP1} onChange={e => setManualP1(e.target.value)} placeholder="Jugador 1" className="border rounded-lg p-1.5 text-xs" />
+                <input type="text" value={manualP2} onChange={e => setManualP2(e.target.value)} placeholder="Jugador 2" className="border rounded-lg p-1.5 text-xs" />
+                <input type="text" value={manualP3} onChange={e => setManualP3(e.target.value)} placeholder="Jugador 3" className="border rounded-lg p-1.5 text-xs" />
+                <input type="text" value={manualP4} onChange={e => setManualP4(e.target.value)} placeholder="Jugador 4" className="border rounded-lg p-1.5 text-xs" />
+              </div>
+            </div>
+          )}
+          <div className="flex gap-2">
+            <button type="button" onClick={onClose} className="flex-1 py-2 bg-slate-100 font-bold text-xs rounded-xl">Cancelar</button>
+            <button type="submit" disabled={syncing} className="flex-1 py-2 bg-blue-600 text-white font-bold text-xs rounded-xl shadow-xs">Crear Partido</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
 
 // APLICACIÓN PRINCIPAL COMPLETA
 export default function App() {
@@ -2499,20 +2612,10 @@ export default function App() {
   const [targetPinUser, setTargetPinUser] = useState(null);
 
   const [showRegisterForm, setShowRegisterForm] = useState(false);
-  const [newUserName, setNewUserName] = useState('');
-  const [newUserPhone, setNewUserPhone] = useState('');
-  const [newUserGroup, setNewUserGroup] = useState('Chicos');
-  const [newUserPlaytomic, setNewUserPlaytomic] = useState('');
-  const [newUserPin, setNewUserPin] = useState('');
+
 
   const [showAddModal, setShowAddModal] = useState(false);
-  const [playtomicText, setPlaytomicText] = useState('');
-  const [manualDate, setManualDate] = useState('');
-  const [manualLocation, setManualLocation] = useState('Real Club de Tenis de La Coruña');
-  const [manualP1, setManualP1] = useState('');
-  const [manualP2, setManualP2] = useState('');
-  const [manualP3, setManualP3] = useState('');
-  const [manualP4, setManualP4] = useState('');
+  
 
   const [showReloadPlaytomicModal, setShowReloadPlaytomicModal] = useState(false);
   const [reloadPlaytomicText, setReloadPlaytomicText] = useState('');
@@ -2646,19 +2749,9 @@ export default function App() {
     }
   };
 
-  const handleRegisterUser = async (e) => {
-    e.preventDefault();
-    if (!newUserName.trim()) {
-      alert('Por favor, introduce tu nombre y apellido.');
-      return;
-    }
-    if (newUserPin.trim().length !== 4) {
-      alert('El PIN debe tener exactamente 4 dígitos.');
-      return;
-    }
-
+  const handleRegisterUser = async (userData) => {
     setSyncing(true);
-    const assignedGroup = (newUserGroup === 'Solo Torneo' || newUserGroup === 'torneo') ? 'torneo' : 'chicos';
+    const assignedGroup = (userData.grupo === 'Solo Torneo' || userData.grupo === 'torneo') ? 'torneo' : 'chicos';
 
     try {
       const controller = new AbortController();
@@ -2669,11 +2762,11 @@ export default function App() {
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify({
           action: 'REGISTRAR_JUGADOR',
-          nombre: newUserName.trim(),
-          telefono: newUserPhone.trim(),
+          nombre: userData.nombre,
+          telefono: userData.telefono,
           grupo: assignedGroup,
-          playtomic: newUserPlaytomic.trim(),
-          pin: newUserPin.trim()
+          playtomic: userData.playtomic,
+          pin: userData.pin
         }),
         signal: controller.signal
       });
@@ -2685,8 +2778,8 @@ export default function App() {
         const newUserId = json.id || 'u_' + Date.now();
         const createdUser = {
           id: newUserId,
-          name: newUserName.trim(),
-          phone: newUserPhone.trim(),
+          name: userData.nombre,
+          phone: userData.telefono,
           group: assignedGroup,
           photo: '',
           level: 3.5,
@@ -2695,7 +2788,7 @@ export default function App() {
           ptsDeportivo: 0, ptsBarandas: 0, hibrido: 0,
           titulo: assignedGroup === 'torneo' ? 'Jugador de Torneo ⚔️' : 'Fichaje Estrella ⭐',
           deuda: 0,
-          pin: newUserPin.trim()
+          pin: userData.pin
         };
 
         handlePinSuccess(createdUser);
@@ -2774,21 +2867,18 @@ export default function App() {
     return isUrl && !hasPlayerCheckmarks && !hasDateIcons;
   }, [playtomicText]);
 
-  const handleAddPlaytomicMatch = async (e) => {
-    e.preventDefault();
-    if (!playtomicText.trim()) return;
+  const handleAddPlaytomicMatch = async (data) => {
+    let payloadText = data.playtomicText.trim();
 
-    let payloadText = playtomicText.trim();
+    if (data.isOnlyPlaytomicLink) {
+      const d = data.manualDate.trim() || 'Jueves 21:00';
+      const loc = data.manualLocation.trim() || 'Real Club de Tenis de La Coruña';
+      const p1 = data.manualP1.trim() ? `✅ ${data.manualP1.trim()}` : '';
+      const p2 = data.manualP2.trim() ? `✅ ${data.manualP2.trim()}` : '';
+      const p3 = data.manualP3.trim() ? `✅ ${data.manualP3.trim()}` : '';
+      const p4 = data.manualP4.trim() ? `✅ ${data.manualP4.trim()}` : '';
 
-    if (isOnlyPlaytomicLink) {
-      const d = manualDate.trim() || 'Jueves 21:00';
-      const loc = manualLocation.trim() || 'Real Club de Tenis de La Coruña';
-      const p1 = manualP1.trim() ? `✅ ${manualP1.trim()}` : '';
-      const p2 = manualP2.trim() ? `✅ ${manualP2.trim()}` : '';
-      const p3 = manualP3.trim() ? `✅ ${manualP3.trim()}` : '';
-      const p4 = manualP4.trim() ? `✅ ${manualP4.trim()}` : '';
-
-      payloadText = `📅 ${d}\n📍 ${loc}\n${playtomicText.trim()}\n${p1}\n${p2}\n${p3}\n${p4}`.trim();
+      payloadText = `📅 ${d}\n📍 ${loc}\n${data.playtomicText.trim()}\n${p1}\n${p2}\n${p3}\n${p4}`.trim();
     }
 
     setSyncing(true);
@@ -2798,15 +2888,40 @@ export default function App() {
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify({ action: 'CREAR_PARTIDO_PLAYTOMIC', textoCrudo: payloadText, grupo: myGroup })
       });
-      const data = await res.json();
-      if (data.ok) {
+      const responseData = await res.json();
+      if (responseData.ok) {
         setShowAddModal(false);
-        setPlaytomicText('');
-        setManualDate('');
-        setManualP1('');
-        setManualP2('');
-        setManualP3('');
-        setManualP4('');
+        fetchData();
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setSyncing(false);
+    }
+  };const handleAddPlaytomicMatch = async (data) => {
+    let payloadText = data.playtomicText.trim();
+
+    if (data.isOnlyPlaytomicLink) {
+      const d = data.manualDate.trim() || 'Jueves 21:00';
+      const loc = data.manualLocation.trim() || 'Real Club de Tenis de La Coruña';
+      const p1 = data.manualP1.trim() ? `✅ ${data.manualP1.trim()}` : '';
+      const p2 = data.manualP2.trim() ? `✅ ${data.manualP2.trim()}` : '';
+      const p3 = data.manualP3.trim() ? `✅ ${data.manualP3.trim()}` : '';
+      const p4 = data.manualP4.trim() ? `✅ ${data.manualP4.trim()}` : '';
+
+      payloadText = `📅 ${d}\n📍 ${loc}\n${data.playtomicText.trim()}\n${p1}\n${p2}\n${p3}\n${p4}`.trim();
+    }
+
+    setSyncing(true);
+    try {
+      const res = await fetch(apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ action: 'CREAR_PARTIDO_PLAYTOMIC', textoCrudo: payloadText, grupo: myGroup })
+      });
+      const responseData = await res.json();
+      if (responseData.ok) {
+        setShowAddModal(false);
         fetchData();
       }
     } catch (err) {
@@ -3754,95 +3869,11 @@ export default function App() {
               </button>
             </>
           ) : (
-            <form onSubmit={handleRegisterUser} className="space-y-3">
-              <div>
-                <label className="block text-xs font-bold text-slate-300 mb-1">Nombre y Apellido *</label>
-                <input
-                  type="text"
-                  required
-                  value={newUserName}
-                  onChange={(e) => setNewUserName(e.target.value)}
-                  placeholder="Ej: Marcos Iglesias"
-                  className="w-full bg-slate-700 border border-slate-600 rounded-xl p-2.5 text-xs text-white placeholder-slate-400 focus:outline-none focus:border-blue-500 font-semibold"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-300 mb-1">Teléfono Móvil (WhatsApp) *</label>
-                <input
-                  type="tel"
-                  required
-                  value={newUserPhone}
-                  onChange={(e) => setNewUserPhone(e.target.value)}
-                  placeholder="Ej: 600123456"
-                  className="w-full bg-slate-700 border border-slate-600 rounded-xl p-2.5 text-xs text-white placeholder-slate-400 focus:outline-none focus:border-blue-500 font-semibold"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-300 mb-1">¿A qué grupo perteneces?</label>
-                <div className="flex gap-2">
-                  {[
-                    { key: 'Chicos', label: 'Chicos (Jueves)' },
-                    { key: 'Solo Torneo', label: 'Solo Torneo' }
-                  ].map(g => (
-                    <button
-                      type="button"
-                      key={g.key}
-                      onClick={() => setNewUserGroup(g.key)}
-                      className={`flex-1 py-2 text-xs font-bold rounded-xl border transition ${
-                        newUserGroup === g.key
-                          ? 'bg-blue-600 text-white border-blue-600'
-                          : 'bg-slate-700 text-slate-300 border-slate-600'
-                      }`}
-                    >
-                      {g.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-300 mb-1">Crea tu PIN de 4 cifras (seguridad) *</label>
-                <input
-                  type="password"
-                  maxLength={4}
-                  required
-                  value={newUserPin}
-                  onChange={(e) => setNewUserPin(e.target.value.replace(/\D/g, ''))}
-                  placeholder="Ej: 1234"
-                  className="w-full bg-slate-700 border border-slate-600 rounded-xl p-2.5 text-xs text-white placeholder-slate-400 focus:outline-none focus:border-blue-500 font-bold tracking-widest text-center"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-300 mb-1">Usuario de Playtomic (opcional)</label>
-                <input
-                  type="text"
-                  value={newUserPlaytomic}
-                  onChange={(e) => setNewUserPlaytomic(e.target.value)}
-                  placeholder="Ej: marcos-padel"
-                  className="w-full bg-slate-700 border border-slate-600 rounded-xl p-2.5 text-xs text-white placeholder-slate-400 focus:outline-none focus:border-blue-500"
-                />
-              </div>
-
-              <div className="flex gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setShowRegisterForm(false)}
-                  className="flex-1 py-2.5 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded-xl text-xs font-bold transition"
-                >
-                  Volver
-                </button>
-                <button
-                  type="submit"
-                  disabled={syncing}
-                  className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold shadow-lg transition"
-                >
-                  {syncing ? 'Guardando...' : 'Crear y Entrar'}
-                </button>
-              </div>
-            </form>
+            <RegisterPlayerForm 
+              onCancel={() => setShowRegisterForm(false)} 
+              onRegister={handleRegisterUser} 
+              syncing={syncing} 
+            />
           )}
         </div>
 
@@ -4807,48 +4838,13 @@ export default function App() {
         )}
       </main>
 
-      {/* MODAL: AÑADIR PARTIDO PLAYTOMIC */}
-      {showAddModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-sm w-full p-5 shadow-2xl space-y-3">
-            <h3 className="text-base font-black text-slate-900">Añadir Partido Playtomic</h3>
-            <form onSubmit={handleAddPlaytomicMatch} className="space-y-3">
-              <textarea
-                rows={4}
-                required
-                value={playtomicText}
-                onChange={e => setPlaytomicText(e.target.value)}
-                placeholder="Pega el texto copiado de Playtomic o el enlace..."
-                className="w-full border rounded-xl p-2.5 text-xs font-semibold"
-              />
-
-              {isOnlyPlaytomicLink && (
-                <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200 space-y-2">
-                  <span className="text-[10px] font-black uppercase text-blue-600 block">Datos adicionales requeridos</span>
-                  <input
-                    type="text"
-                    value={manualDate}
-                    onChange={e => setManualDate(e.target.value)}
-                    placeholder="Fecha y Hora (Ej: Jueves 21:00)"
-                    className="w-full border rounded-lg p-1.5 text-xs font-semibold"
-                  />
-                  <div className="grid grid-cols-2 gap-1.5">
-                    <input type="text" value={manualP1} onChange={e => setManualP1(e.target.value)} placeholder="Jugador 1" className="border rounded-lg p-1.5 text-xs" />
-                    <input type="text" value={manualP2} onChange={e => setManualP2(e.target.value)} placeholder="Jugador 2" className="border rounded-lg p-1.5 text-xs" />
-                    <input type="text" value={manualP3} onChange={e => setManualP3(e.target.value)} placeholder="Jugador 3" className="border rounded-lg p-1.5 text-xs" />
-                    <input type="text" value={manualP4} onChange={e => setManualP4(e.target.value)} placeholder="Jugador 4" className="border rounded-lg p-1.5 text-xs" />
-                  </div>
-                </div>
-              )}
-
-              <div className="flex gap-2">
-                <button type="button" onClick={() => setShowAddModal(false)} className="flex-1 py-2 bg-slate-100 font-bold text-xs rounded-xl">Cancelar</button>
-                <button type="submit" disabled={syncing} className="flex-1 py-2 bg-blue-600 text-white font-bold text-xs rounded-xl shadow-xs">Crear Partido</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+     {/* MODAL: AÑADIR PARTIDO PLAYTOMIC */}
+      <AddPlaytomicMatchModal 
+        isOpen={showAddModal} 
+        onClose={() => setShowAddModal(false)} 
+        onAddMatch={handleAddPlaytomicMatch} 
+        syncing={syncing} 
+      />
 
       {/* MODAL: RECARGAR PLAYTOMIC */}
       {showReloadPlaytomicModal && (
