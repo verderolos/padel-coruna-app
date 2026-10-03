@@ -596,19 +596,34 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, allDinn
 
     // Añadir las cenas sin partido al listado visual y al historial de puntos
     (allDinnerGuests || []).forEach(g => {
-      if (normalizeName(g.name) === normUserName) {
+      // COMPROBAMOS TAMBIÉN POR ID
+      if (g.id === user.id || normalizeName(g.name) === normUserName) {
         const cleanDate = extractCleanDate(g.target || g.cleanTarget);
-        dinnerYesList.push({
-          date: cleanDate, partner: 'Solo Cena', rivals: '-', score: '-', dinner: 'SI', won: false
-        });
-        puntosDetalle.push({
-          date: cleanDate, title: 'Asistencia 3º Tiempo (Sin jugar)', pts: 5, desc: 'Solo Cena (+5)'
-        });
+        
+        // Evitar duplicar si ya se ha sumado una cena ese mismo día por partido
+        const yaTieneCenaEseDia = dinnerYesList.some(d => d.date === cleanDate);
+        
+        if (!yaTieneCenaEseDia) {
+          dinnerYesList.push({
+            date: cleanDate, partner: 'Solo Cena', rivals: '-', score: '-', dinner: 'SI', won: false
+          });
+          puntosDetalle.push({
+            date: cleanDate, title: 'Asistencia 3º Tiempo (Sin jugar)', pts: 5, desc: 'Solo Cena (+5)'
+          });
+        }
       }
     });
 
-    puntosDetalle.reverse();
-    boteDetalle.reverse();
+    // ORDENACIÓN CRONOLÓGICA (Reemplazamos el puntosDetalle.reverse() estático)
+    const sortByDate = (a, b) => {
+      const dateA = parseMatchDateObject(a.date) || new Date(0);
+      const dateB = parseMatchDateObject(b.date) || new Date(0);
+      return dateB - dateA; // Más recientes primero
+    };
+    
+    puntosDetalle.sort(sortByDate);
+    boteDetalle.sort(sortByDate);
+    playedList.sort(sortByDate);
 
     // Análisis de química
     let bestPartner = null, worstPartner = null;
@@ -3466,33 +3481,36 @@ export default function App() {
     return groupMatches.filter(m => extractCleanDate(m.date) === activeDinnerKey);
   }, [groupMatches, activeDinnerKey]);
 
-  const { dinnerYes, dinnerNo, dinnerPending, dinnerGuests } = useMemo(() => {
-    const yesMap = new Map();
-    const noMap = new Map();
-    const pendingMap = new Map();
-    const guestMap = new Map();
-
-    const targetDateClean = extractCleanDate(activeDinnerKey);
-
-    matchesForDinner.forEach(m => {
+  matchesForDinner.forEach(m => {
       (m.players || []).forEach(p => {
-        const normKey = normalizeName(p.name);
-        const playerObj = { name: p.name, photo: p.photo, phone: p.phone, id: p.id };
+        // BUSCAMOS EL PERFIL OFICIAL PRIORIZANDO EL ID
+        const official = players.find(reg => 
+          (p.id && reg.id === p.id) || normalizeName(reg.name) === normalizeName(p.name)
+        );
+        
+        // USAMOS EL ID COMO CLAVE ÚNICA SI EXISTE, SINO EL NOMBRE
+        const finalId = official ? official.id : p.id;
+        const groupKey = finalId || normalizeName(p.name); 
+        
+        const playerObj = official 
+          ? { name: official.name, photo: official.photo, phone: official.phone, id: official.id }
+          : { name: p.name, photo: p.photo, phone: p.phone, id: p.id };
 
         if (p.dinner === 'SI') {
-          yesMap.set(normKey, playerObj);
-          pendingMap.delete(normKey);
-          noMap.delete(normKey);
+          yesMap.set(groupKey, playerObj);
+          pendingMap.delete(groupKey);
+          noMap.delete(groupKey);
         } else if (p.dinner === 'NO') {
-          noMap.set(normKey, playerObj);
-          pendingMap.delete(normKey);
-          yesMap.delete(normKey);
+          noMap.set(groupKey, playerObj);
+          pendingMap.delete(groupKey);
+          yesMap.delete(groupKey);
         } else {
-          if (!yesMap.has(normKey) && !noMap.has(normKey)) {
-            pendingMap.set(normKey, playerObj);
+          if (!yesMap.has(groupKey) && !noMap.has(groupKey)) {
+            pendingMap.set(groupKey, playerObj);
           }
         }
       });
+    
       (m.guests || []).forEach(g => {
         const normG = normalizeName(g.name);
         if (!guestMap.has(normG)) {
