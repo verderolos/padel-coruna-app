@@ -1443,7 +1443,10 @@ function TournamentCreatorModal({ isOpen, onClose, allPlayers, tournaments, onTo
         selected: false, // Ahora vienen TODOS desmarcados por defecto
         isGuest: false,
         isLeftHanded: Boolean(p.isLeftHanded),
-        dinner: 'SI',
+        // NUEVO: empieza "pendiente" (igual que en los partidos de liga) para que cada
+        // jugador tenga que confirmar expresamente si se queda al 3º tiempo del torneo,
+        // en vez de darlo por hecho como "SI" desde el principio.
+        dinner: 'PENDIENTE',
         assignedTeam: 1
       };
     });
@@ -2749,6 +2752,13 @@ export default function App() {
   const [loadingDinnerId, setLoadingDinnerId] = useState(null);
 
   const [showTournamentWizard, setShowTournamentWizard] = useState(false);
+  // NUEVO: el modal de creación de torneo permanece siempre montado (solo hace
+  // "return null" internamente cuando isOpen=false), así que sus useState
+  // (nombre, jugadores seleccionados, cuadro generado...) conservaban los
+  // valores del torneo anterior cada vez que se volvía a abrir. Cambiando esta
+  // "key" cada vez que se abre, forzamos a React a desmontar y montar una
+  // instancia nueva del modal, con todos sus campos limpios desde cero.
+  const [tournamentWizardKey, setTournamentWizardKey] = useState(0);
   const [activeTournaments, setActiveTournaments] = useState(() => {
     const saved = localStorage.getItem('padel_ctc_tournaments');
     return saved ? JSON.parse(saved) : [];
@@ -2818,8 +2828,19 @@ export default function App() {
           localStorage.setItem('padel_cached_matches', JSON.stringify(json.partidos));
         }
         if (json.torneos) {
-          setActiveTournaments(json.torneos);
-          localStorage.setItem('padel_ctc_tournaments', JSON.stringify(json.torneos));
+          // BLINDAJE: si por cualquier motivo el Sheet llegara a tener dos filas
+          // con el mismo id de torneo (p.ej. por una condición de carrera antigua
+          // al crearlo), nos quedamos solo con una entrada por id en el frontend
+          // para que nunca se vea duplicado en la app, aunque el Sheet no esté limpio.
+          const torneosSinDuplicados = [];
+          const idsVistos = new Set();
+          json.torneos.forEach(t => {
+            if (!t || !t.id || idsVistos.has(t.id)) return;
+            idsVistos.add(t.id);
+            torneosSinDuplicados.push(t);
+          });
+          setActiveTournaments(torneosSinDuplicados);
+          localStorage.setItem('padel_ctc_tournaments', JSON.stringify(torneosSinDuplicados));
         }
         if (json.invitadosCena) {
           setAllDinnerGuests(json.invitadosCena);
@@ -2831,6 +2852,32 @@ export default function App() {
     } finally {
       if (!silent) setSyncing(false);
     }
+  };
+
+  // NUEVO: Cola de sincronización serializada para los torneos.
+  // Antes, cada acción (crear, marcar visto, validar capitán, confirmar cena,
+  // mover de equipo, etc.) lanzaba su propio fetch POST de forma independiente.
+  // Si dos de esas acciones ocurrían casi a la vez para el mismo torneo recién
+  // creado (típicamente: crear torneo + el aviso automático de "marcar como
+  // visto" que salta justo al entrar en la pestaña Torneos), ambas peticiones
+  // podían llegar al backend casi en paralelo; como GUARDAR_TORNEO busca la
+  // fila existente por id antes de decidir si actualiza o añade una fila nueva,
+  // si ninguna de las dos ve todavía la fila de la otra, las dos acaban
+  // añadiendo una fila nueva con el mismo id → torneo duplicado en el Sheet.
+  // Forzando aquí que todas las escrituras de torneo se ejecuten en fila (una
+  // detrás de otra, nunca en paralelo) eliminamos esa condición de carrera
+  // desde el propio frontend, sin depender de cómo responda el backend.
+  const tournamentSyncQueueRef = useRef(Promise.resolve());
+  const syncTorneoToCloud = (payload) => {
+    const run = () => fetch(apiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(payload)
+    }).catch(e => console.error('Error al sincronizar torneo en la nube:', e));
+
+    const next = tournamentSyncQueueRef.current.then(run, run);
+    tournamentSyncQueueRef.current = next;
+    return next;
   };
 
   useEffect(() => {
@@ -3375,21 +3422,20 @@ export default function App() {
   };
 
   const handleTournamentCreated = async (newT) => {
-    const updated = [newT, ...activeTournaments];
+    // Evitamos duplicar localmente si por lo que sea ya existiera un torneo con ese id.
+    const updated = [newT, ...activeTournaments.filter(t => t.id !== newT.id)];
     setActiveTournaments(updated);
     localStorage.setItem('padel_ctc_tournaments', JSON.stringify(updated));
-    setActiveTab('torneos');
 
-    try {
-      await fetch(apiUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({ action: 'GUARDAR_TORNEO', torneo: newT })
-      });
-      fetchData(true);
-    } catch (e) {
-      console.error('Error al persistir torneo en la nube:', e);
-    }
+    // IMPORTANTE: esperamos a que termine de guardarse en la nube ANTES de cambiar
+    // a la pestaña "torneos". Si cambiábamos de pestaña antes, el efecto que marca
+    // el torneo como "visto" saltaba casi al instante y lanzaba su propia escritura
+    // GUARDAR_TORNEO para el mismo id mientras esta primera creación todavía estaba
+    // en curso: las dos peticiones podían no verse la una a la otra en el Sheet y
+    // acababan creando dos filas con el mismo id (torneo duplicado).
+    await syncTorneoToCloud({ action: 'GUARDAR_TORNEO', torneo: newT });
+    setActiveTab('torneos');
+    fetchData(true);
   };
 
   const handleDeleteTournament = async (tId) => {
@@ -3397,16 +3443,8 @@ export default function App() {
     setActiveTournaments(updated);
     localStorage.setItem('padel_ctc_tournaments', JSON.stringify(updated));
 
-    try {
-      await fetch(apiUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({ action: 'ELIMINAR_TORNEO', idTorneo: tId })
-      });
-      fetchData(true);
-    } catch (e) {
-      console.error('Error al borrar torneo en la nube:', e);
-    }
+    await syncTorneoToCloud({ action: 'ELIMINAR_TORNEO', idTorneo: tId });
+    fetchData(true);
   };
 
   const handleSharePlayerPersonalLink = (tournamentItem, playerItem) => {
@@ -3517,16 +3555,8 @@ export default function App() {
     setReportingTournamentMatch(null);
 
     if (tournamentToSync) {
-      try {
-        await fetch(apiUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-          body: JSON.stringify({ action: 'GUARDAR_TORNEO', torneo: tournamentToSync })
-        });
-        fetchData(true);
-      } catch (e) {
-        console.error('Error al guardar marcador en la nube:', e);
-      }
+      await syncTorneoToCloud({ action: 'GUARDAR_TORNEO', torneo: tournamentToSync });
+      fetchData(true);
     }
   };
 
@@ -3551,16 +3581,8 @@ export default function App() {
     localStorage.setItem('padel_ctc_tournaments', JSON.stringify(updatedTournaments));
 
     if (tournamentToSync) {
-      try {
-        await fetch(apiUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-          body: JSON.stringify({ action: 'GUARDAR_TORNEO', torneo: tournamentToSync })
-        });
-        fetchData(true);
-      } catch (e) {
-        console.error('Error al actualizar cena en la nube:', e);
-      }
+      await syncTorneoToCloud({ action: 'GUARDAR_TORNEO', torneo: tournamentToSync });
+      fetchData(true);
     }
   };
 
@@ -3643,15 +3665,7 @@ export default function App() {
     localStorage.setItem('padel_ctc_tournaments', JSON.stringify(updatedTournaments));
 
     if (tournamentToSync) {
-      try {
-        fetch(apiUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-          body: JSON.stringify({ action: 'GUARDAR_TORNEO', torneo: tournamentToSync })
-        });
-      } catch (e) {
-        console.error(e);
-      }
+      syncTorneoToCloud({ action: 'GUARDAR_TORNEO', torneo: tournamentToSync });
     }
   };
 
@@ -3685,15 +3699,7 @@ export default function App() {
     localStorage.setItem('padel_ctc_tournaments', JSON.stringify(updatedTournaments));
 
     if (tournamentToSync) {
-      try {
-        await fetch(apiUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-          body: JSON.stringify({ action: 'GUARDAR_TORNEO', torneo: tournamentToSync })
-        });
-      } catch (e) {
-        console.error(e);
-      }
+      await syncTorneoToCloud({ action: 'GUARDAR_TORNEO', torneo: tournamentToSync });
     }
   };
 
@@ -3710,15 +3716,7 @@ export default function App() {
     localStorage.setItem('padel_ctc_tournaments', JSON.stringify(updatedTournaments));
 
     if (tournamentToSync) {
-      try {
-        fetch(apiUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-          body: JSON.stringify({ action: 'GUARDAR_TORNEO', torneo: tournamentToSync })
-        });
-      } catch (e) {
-        console.error(e);
-      }
+      syncTorneoToCloud({ action: 'GUARDAR_TORNEO', torneo: tournamentToSync });
     }
   };
 
@@ -3740,15 +3738,7 @@ export default function App() {
     setActiveTournaments(updatedTournaments);
     localStorage.setItem('padel_ctc_tournaments', JSON.stringify(updatedTournaments));
 
-    try {
-      await fetch(apiUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({ action: 'GUARDAR_TORNEO', torneo: tournamentToSync })
-      });
-    } catch (e) {
-      console.error(e);
-    }
+    await syncTorneoToCloud({ action: 'GUARDAR_TORNEO', torneo: tournamentToSync });
   };
 
   const currentMatch = matches.find(m => m.id === selectedMatchId);
@@ -3854,6 +3844,23 @@ export default function App() {
           title: 'Falta por confirmar la cena',
           description: `${m.date} · ¿Te quedas al 3º tiempo?`,
           action: () => { setActiveTab('partidos'); setSelectedMatchId(m.id); }
+        });
+      }
+    });
+
+    // 1b. Cena de un torneo (3º Tiempo) sin confirmar
+    (activeTournaments || []).forEach(t => {
+      if (t.status !== 'ACTIVO' && t.status !== 'BOCETO_EQUIPOS' && t.status !== 'BOCETO_CUADRO') return;
+      const myParticipant = (t.participants || []).find(
+        p => p.id === currentUser.id || normalizeName(p.name) === myNameNorm
+      );
+      if (myParticipant && myParticipant.dinner !== 'SI' && myParticipant.dinner !== 'NO') {
+        alerts.push({
+          id: `cena-torneo-${t.id}`,
+          icon: '🍻',
+          title: 'Falta por confirmar la cena del torneo',
+          description: `${t.name} · ¿Te quedas al 3º tiempo?`,
+          action: () => { setActiveTab('torneos'); setTournamentSubTab(prev => ({ ...prev, [t.id]: 'cena' })); }
         });
       }
     });
@@ -5154,7 +5161,7 @@ export default function App() {
                     <span className="text-3xl">⚔️</span>
                   </div>
                   <button
-                    onClick={() => setShowTournamentWizard(true)}
+                    onClick={() => { setTournamentWizardKey(k => k + 1); setShowTournamentWizard(true); }}
                     className="w-full mt-3 py-2.5 bg-white text-purple-900 hover:bg-purple-50 font-black rounded-xl text-xs transition shadow-sm flex items-center justify-center gap-1.5"
                   >
                     <span>✨</span> Crear Nuevo Torneo con Gemini
@@ -5236,15 +5243,7 @@ export default function App() {
                         localStorage.setItem('padel_ctc_tournaments', JSON.stringify(updatedTournaments));
 
                         if (updatedSync) {
-                          try {
-                            fetch(apiUrl, {
-                              method: 'POST',
-                              headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-                              body: JSON.stringify({ action: 'GUARDAR_TORNEO', torneo: updatedSync })
-                            });
-                          } catch (e) {
-                            console.error(e);
-                          }
+                          syncTorneoToCloud({ action: 'GUARDAR_TORNEO', torneo: updatedSync });
                         }
                       };
 
@@ -5422,15 +5421,7 @@ export default function App() {
                         localStorage.setItem('padel_ctc_tournaments', JSON.stringify(updatedTournaments));
 
                         if (updatedSync) {
-                          try {
-                            await fetch(apiUrl, {
-                              method: 'POST',
-                              headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-                              body: JSON.stringify({ action: 'GUARDAR_TORNEO', torneo: updatedSync })
-                            });
-                          } catch (e) {
-                            console.error(e);
-                          }
+                          await syncTorneoToCloud({ action: 'GUARDAR_TORNEO', torneo: updatedSync });
                         }
                       };
 
@@ -5562,16 +5553,61 @@ export default function App() {
                           </div>
                         )}
 
-                        {curSubTab === 'cena' && (
-                          <div className="space-y-2 text-xs">
-                            <button
-                              onClick={() => handleShareTournamentDinnerWhatsapp(t)}
-                              className="w-full py-2 bg-emerald-600 text-white font-bold rounded-xl"
-                            >
-                              📲 Avisar al Restaurante por WhatsApp
-                            </button>
-                          </div>
-                        )}
+                        {curSubTab === 'cena' && (() => {
+                          const myParticipant = (t.participants || []).find(
+                            p => p.id === currentUser?.id || normalizeName(p.name) === normalizeName(currentUser?.name || '')
+                          );
+                          const siList = (t.participants || []).filter(p => p.dinner === 'SI');
+                          const noList = (t.participants || []).filter(p => p.dinner === 'NO');
+                          const pendList = (t.participants || []).filter(p => p.dinner !== 'SI' && p.dinner !== 'NO');
+
+                          return (
+                            <div className="space-y-2.5 text-xs">
+                              {/* NUEVO: el propio jugador confirma aquí si se queda al 3º tiempo de ESTE torneo */}
+                              {myParticipant && (
+                                <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3 space-y-2">
+                                  <p className="font-bold text-amber-900">¿Te quedas a la cena de este torneo?</p>
+                                  <div className="flex gap-2">
+                                    <button
+                                      onClick={() => handleUpdateTournamentDinner(t.id, myParticipant.id, 'SI')}
+                                      className={`flex-1 py-2 rounded-xl font-black transition ${myParticipant.dinner === 'SI' ? 'bg-emerald-600 text-white shadow-xs' : 'bg-white text-slate-600 border border-slate-200'}`}
+                                    >
+                                      🍻 Sí, me quedo
+                                    </button>
+                                    <button
+                                      onClick={() => handleUpdateTournamentDinner(t.id, myParticipant.id, 'NO')}
+                                      className={`flex-1 py-2 rounded-xl font-black transition ${myParticipant.dinner === 'NO' ? 'bg-rose-600 text-white shadow-xs' : 'bg-white text-slate-600 border border-slate-200'}`}
+                                    >
+                                      🏃‍♂️ No me quedo
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
+
+                              <div className="grid grid-cols-3 gap-1.5 text-center">
+                                <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-2">
+                                  <span className="block font-black text-emerald-700">{siList.length}</span>
+                                  <span className="text-[9px] font-bold text-emerald-900 uppercase">Cenan</span>
+                                </div>
+                                <div className="bg-amber-50 border border-amber-200 rounded-xl p-2">
+                                  <span className="block font-black text-amber-700">{pendList.length}</span>
+                                  <span className="text-[9px] font-bold text-amber-900 uppercase">Pendientes</span>
+                                </div>
+                                <div className="bg-rose-50 border border-rose-200 rounded-xl p-2">
+                                  <span className="block font-black text-rose-700">{noList.length}</span>
+                                  <span className="text-[9px] font-bold text-rose-900 uppercase">Se rajan</span>
+                                </div>
+                              </div>
+
+                              <button
+                                onClick={() => handleShareTournamentDinnerWhatsapp(t)}
+                                className="w-full py-2 bg-emerald-600 text-white font-bold rounded-xl"
+                              >
+                                📲 Avisar al Restaurante por WhatsApp
+                              </button>
+                            </div>
+                          );
+                        })()}
                       </div>
                     );
                   })}
@@ -5687,6 +5723,7 @@ export default function App() {
 
       {/* MODAL: CREAR TORNEO */}
       <TournamentCreatorModal
+        key={tournamentWizardKey}
         isOpen={showTournamentWizard}
         onClose={() => setShowTournamentWizard(false)}
         allPlayers={players}
