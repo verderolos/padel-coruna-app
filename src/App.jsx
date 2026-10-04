@@ -3557,14 +3557,20 @@ export default function App() {
     };
   }, [groupMatches]);
 
-  const activeDinnerKey = selectedDinnerDate || defaultSmartDinnerKey;
-
   const matchesForDinner = useMemo(() => {
     if (!activeDinnerKey) return [];
     return groupMatches.filter(m => extractCleanDate(m.date) === activeDinnerKey);
   }, [groupMatches, activeDinnerKey]);
 
-  matchesForDinner.forEach(m => {
+  // Aquí faltaba la apertura del useMemo y la inicialización de los Map
+  const { dinnerYes, dinnerNo, dinnerPending, dinnerGuests } = useMemo(() => {
+    const yesMap = new Map();
+    const noMap = new Map();
+    const pendingMap = new Map();
+    const guestMap = new Map();
+    const targetDateClean = activeDinnerKey;
+
+    matchesForDinner.forEach(m => {
       (m.players || []).forEach(p => {
         // BUSCAMOS EL PERFIL OFICIAL PRIORIZANDO EL ID
         const official = players.find(reg => 
