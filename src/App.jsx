@@ -4934,6 +4934,7 @@ export default function App() {
         user={inspectedUser}
         matches={matches}
         tournaments={activeTournaments}
+        allDinnerGuests={allDinnerGuests}
         onPhotoUploaded={handlePhotoUploaded}
         onUpdateUserData={handleUpdateUserData}
         isCurrentUser={inspectedUser?.id === currentUser?.id}
