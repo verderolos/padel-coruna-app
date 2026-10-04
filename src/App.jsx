@@ -1788,6 +1788,7 @@ function TournamentCreatorModal({ isOpen, onClose, allPlayers, tournaments, onTo
       </div>
     </div>
   );
+}
 function MatchVisualScoreModal({ isOpen, onClose, title, subtitle, team1Name, team2Name, p1Players = [], p2Players = [], onSaveScore }) {
   const [winnerTeam, setWinnerTeam] = useState(null);
 
@@ -1796,7 +1797,7 @@ function MatchVisualScoreModal({ isOpen, onClose, title, subtitle, team1Name, te
     { t1: 0, t2: 0 },
     { t1: 0, t2: 0 }
   ]);
-}
+  
   if (!isOpen) return null;
 
   const handleScoreChange = (setIndex, teamKey, delta) => {
