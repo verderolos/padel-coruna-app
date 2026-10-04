@@ -3502,7 +3502,63 @@ export default function App() {
     const msg = `Hola, para cenar tras el ${tournamentItem.name} seremos un total de ${attendingCount} personas. Muchas gracias.`;
     window.open(`https://api.whatsapp.com/send?text=${encodeURI(msg)}`, '_blank');
   };
+  const handleShareTournamentImage = async (tournamentId, tournamentName) => {
+    const element = document.getElementById(`tournament-fixture-${tournamentId}`);
+    const btn = document.getElementById(`share-btn-${tournamentId}`);
+    if (!element || !btn) return;
 
+    const originalText = btn.innerHTML;
+    btn.innerHTML = '⏳ Generando imagen...';
+    btn.disabled = true;
+
+    try {
+      // Cargamos la librería mágica sin instalar nada en Vercel
+      if (!window.html2canvas) {
+        await new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+
+      // Hacemos la "foto" en alta calidad (scale: 2)
+      const canvas = await window.html2canvas(element, { 
+        backgroundColor: '#ffffff',
+        scale: 2,
+        useCORS: true
+      });
+      
+      canvas.toBlob(async (blob) => {
+        if (!blob) return;
+        const file = new File([blob], `Cuadrante_${tournamentName.replace(/\s+/g, '_')}.png`, { type: 'image/png' });
+        
+        // Si el móvil soporta compartir archivos nativamente (iOS/Android modernos)
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+          await navigator.share({
+            title: tournamentName,
+            text: `🏆 Cuadrante Oficial: ${tournamentName}`,
+            files: [file]
+          });
+        } else {
+          // Si es PC o no lo soporta, descargamos la imagen
+          const link = document.createElement('a');
+          link.download = file.name;
+          link.href = URL.createObjectURL(blob);
+          link.click();
+          alert('✅ Imagen descargada. Ya puedes adjuntarla en WhatsApp Web.');
+        }
+        btn.innerHTML = originalText;
+        btn.disabled = false;
+      });
+    } catch (error) {
+      console.error('Error generando imagen:', error);
+      alert('Hubo un error al generar la imagen.');
+      btn.innerHTML = originalText;
+      btn.disabled = false;
+    }
+  };
   const currentMatch = matches.find(m => m.id === selectedMatchId);
   const myGroup = (currentUser?.group || 'chicos').toLowerCase();
 
@@ -4832,24 +4888,47 @@ export default function App() {
 
                         {curSubTab === 'partidos' && (
                           <div className="space-y-2">
-                            {t.rounds.map(r => (
-                              <div key={r.round} className="bg-slate-50 p-2.5 rounded-2xl border space-y-1">
-                                {r.matches.map((m, mIdx) => (
-                                  <div
-                                    key={m.id || mIdx}
-                                    onClick={() => {
-                                      setActiveTournamentId(t.id);
-                                      setReportingTournamentMatch(m);
-                                    }}
-                                    className="bg-white p-2.5 rounded-xl border flex items-center justify-between text-xs cursor-pointer hover:border-purple-300"
-                                  >
-                                    <span className="font-bold text-slate-800">{m.court}</span>
-                                    <span className="font-semibold text-slate-600">{m.team1} vs {m.team2}</span>
-                                    <span className="text-purple-700 font-black">{m.score || 'Anotar ✍️'}</span>
-                                  </div>
-                                ))}
+                            <button
+                              id={`share-btn-${t.id}`}
+                              onClick={() => handleShareTournamentImage(t.id, t.name)}
+                              className="w-full mb-1 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-sm transition"
+                            >
+                              <span>📷</span> Compartir Cuadrante por WhatsApp
+                            </button>
+
+                            {/* Contenedor invisible para nosotros pero que será el lienzo de la foto */}
+                            <div id={`tournament-fixture-${t.id}`} className="space-y-2 bg-white p-2 rounded-xl">
+                              
+                              {/* Título interno para que la foto se vea profesional */}
+                              <div className="text-center pb-2 pt-1 border-b border-slate-100 mb-2">
+                                <span className="font-black text-slate-800 text-sm block">{t.name}</span>
+                                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Cuadrante Oficial</span>
                               </div>
-                            ))}
+
+                              {t.rounds.map(r => (
+                                <div key={r.round} className="bg-slate-50 p-2.5 rounded-2xl border border-slate-200 space-y-1">
+                                  <div className="text-center mb-1.5">
+                                    <span className="text-[9px] font-black uppercase text-purple-700 bg-purple-100 px-2 py-0.5 rounded-md">
+                                      {r.timeLabel || `Ronda ${r.round}`}
+                                    </span>
+                                  </div>
+                                  {r.matches.map((m, mIdx) => (
+                                    <div
+                                      key={m.id || mIdx}
+                                      onClick={() => {
+                                        setActiveTournamentId(t.id);
+                                        setReportingTournamentMatch(m);
+                                      }}
+                                      className="bg-white p-2.5 rounded-xl border border-slate-200 flex items-center justify-between text-xs cursor-pointer hover:border-purple-300"
+                                    >
+                                      <span className="font-bold text-slate-800">{m.court}</span>
+                                      <span className="font-semibold text-slate-600">{m.team1} vs {m.team2}</span>
+                                      <span className="text-purple-700 font-black">{m.score || 'Anotar ✍️'}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              ))}
+                            </div>
                           </div>
                         )}
 
