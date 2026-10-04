@@ -2579,11 +2579,43 @@ const isOnlyPlaytomicLink = useMemo(() => {
     </div>
   );
 }
+// CUSTOM HOOK: Gestiona las llamadas a Google Sheets de forma centralizada y con timeout
+function usePadelApi(apiUrl) {
+  const [syncing, setSyncing] = useState(false);
 
+  const fetchWithTimeout = async (payload, timeoutMs = 12000) => {
+    setSyncing(true);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify(payload),
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+      
+      const data = await response.json();
+      if (!data.ok) throw new Error(data.error || 'Error en el servidor');
+      return data;
+      
+    } catch (error) {
+      clearTimeout(timeoutId);
+      // Lanzamos el error hacia arriba para que la función principal haga el Rollback
+      throw error; 
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  return { syncing, setSyncing, fetchWithTimeout };
+}
 // APLICACIÓN PRINCIPAL COMPLETA
 export default function App() {
   const [apiUrl] = useState(() => localStorage.getItem('padel_api_url') || DEFAULT_API_URL);
-  const [syncing, setSyncing] = useState(false);
+  const { syncing, setSyncing, fetchWithTimeout } = usePadelApi(apiUrl);
   const [activeTab, setActiveTab] = useState('partidos');
   const [rankingType, setRankingType] = useState('hibrido');
 
@@ -3039,6 +3071,11 @@ export default function App() {
 
   const handleUpdateDinner = async (matchId, targetId, targetName, newStatus) => {
     setLoadingDinnerId(targetId || targetName);
+    
+    // 1. BACKUP: Guardamos el estado exacto de los partidos antes del cambio
+    const previousMatches = [...matches];
+
+    // 2. ACTUALIZACIÓN OPTIMISTA: Cambiamos la interfaz al instante para que sea súper rápida
     setMatches(prevMatches => prevMatches.map(m => {
       if (m.id !== matchId) return m;
       return {
@@ -3052,20 +3089,25 @@ export default function App() {
       };
     }));
 
+    // 3. LLAMADA A LA API CON EL NUEVO HOOK
     try {
-      await fetch(apiUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({ 
-          action: 'ACTUALIZAR_CENA', 
-          idPartido: matchId, 
-          idJugador: targetId, 
-          nombreJugador: targetName, 
-          estado: newStatus 
-        })
+      await fetchWithTimeout({ 
+        action: 'ACTUALIZAR_CENA', 
+        idPartido: matchId, 
+        idJugador: targetId, 
+        nombreJugador: targetName, 
+        estado: newStatus 
       });
     } catch (e) {
-      console.error(e);
+      // 4. ROLLBACK: Si falla (no hay internet o tarda más de 12s), restauramos el backup
+      console.error('Fallo de red al actualizar cena. Revirtiendo...', e);
+      setMatches(previousMatches);
+      
+      if (e.name === 'AbortError') {
+        alert('⏳ La conexión va muy lenta. No se ha podido confirmar tu asistencia a la cena. Revisa tu cobertura e inténtalo de nuevo.');
+      } else {
+        alert('❌ Error de conexión: No se ha podido guardar en el servidor. Inténtalo de nuevo.');
+      }
     } finally {
       setLoadingDinnerId(null);
     }
