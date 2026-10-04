@@ -3556,7 +3556,8 @@ export default function App() {
       defaultSmartDinnerKey: bestDefaultKey
     };
   }, [groupMatches]);
-
+// AÑADE ESTA LÍNEA AQUÍ
+  const activeDinnerKey = selectedDinnerDate || defaultSmartDinnerKey;
   const matchesForDinner = useMemo(() => {
     if (!activeDinnerKey) return [];
     return groupMatches.filter(m => extractCleanDate(m.date) === activeDinnerKey);
