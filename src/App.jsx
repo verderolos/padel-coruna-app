@@ -3580,9 +3580,11 @@ export default function App() {
     setActiveTournaments(updatedTournaments);
     localStorage.setItem('padel_ctc_tournaments', JSON.stringify(updatedTournaments));
 
+    // REDISEÑO MULTIUSUARIO: en vez de reenviar el torneo entero (lo que podía pisar el
+    // equipo o la validación que otro jugador acababa de cambiar), tocamos solo la cena
+    // de ESTE participante en la hoja dedicada "Torneo_Jugadores".
     if (tournamentToSync) {
-      await syncTorneoToCloud({ action: 'GUARDAR_TORNEO', torneo: tournamentToSync });
-      fetchData(true);
+      await syncTorneoToCloud({ action: 'ACTUALIZAR_CENA_TORNEO', idTorneo: tId, idJugador: participantId, cena: newDinnerStatus });
     }
   };
 
@@ -3664,8 +3666,11 @@ export default function App() {
     setActiveTournaments(updatedTournaments);
     localStorage.setItem('padel_ctc_tournaments', JSON.stringify(updatedTournaments));
 
+    // REDISEÑO MULTIUSUARIO: tocamos solo el equipo de ESTE jugador en "Torneo_Jugadores",
+    // en vez de reenviar el torneo completo (que podía pisar lo que otro capitán u
+    // organizador estuviera cambiando en ese mismo instante sobre el mismo torneo).
     if (tournamentToSync) {
-      syncTorneoToCloud({ action: 'GUARDAR_TORNEO', torneo: tournamentToSync });
+      syncTorneoToCloud({ action: 'ACTUALIZAR_EQUIPO_JUGADOR', idTorneo: tId, idJugador: playerId, equipo: teamNum });
     }
   };
 
@@ -3698,8 +3703,11 @@ export default function App() {
     setActiveTournaments(updatedTournaments);
     localStorage.setItem('padel_ctc_tournaments', JSON.stringify(updatedTournaments));
 
+    // REDISEÑO MULTIUSUARIO: el visto bueno de este capitán ahora es su propia celda en
+    // "Torneos" (columna F o G), así el otro capitán, el organizador, o un cambio de equipo
+    // de un jugador no pueden pisarlo al guardar algo distinto sobre el mismo torneo.
     if (tournamentToSync) {
-      await syncTorneoToCloud({ action: 'GUARDAR_TORNEO', torneo: tournamentToSync });
+      await syncTorneoToCloud({ action: 'VALIDAR_CAPITAN', idTorneo: tId, captainNum, value });
     }
   };
 
@@ -3708,7 +3716,7 @@ export default function App() {
     const updatedTournaments = activeTournaments.map(t => {
       if (t.id !== tId) return t;
       // Pasamos el borrador a la fase final
-      tournamentToSync = { ...t, status: 'BOCETO_CUADRO' }; 
+      tournamentToSync = { ...t, status: 'BOCETO_CUADRO' };
       return tournamentToSync;
     });
 
@@ -3716,7 +3724,7 @@ export default function App() {
     localStorage.setItem('padel_ctc_tournaments', JSON.stringify(updatedTournaments));
 
     if (tournamentToSync) {
-      syncTorneoToCloud({ action: 'GUARDAR_TORNEO', torneo: tournamentToSync });
+      syncTorneoToCloud({ action: 'APROBAR_EQUIPOS', idTorneo: tId });
     }
   };
 
@@ -3738,7 +3746,9 @@ export default function App() {
     setActiveTournaments(updatedTournaments);
     localStorage.setItem('padel_ctc_tournaments', JSON.stringify(updatedTournaments));
 
-    await syncTorneoToCloud({ action: 'GUARDAR_TORNEO', torneo: tournamentToSync });
+    // REDISEÑO MULTIUSUARIO: "visto por" vive ahora en su propia columna (H), que el
+    // backend actualiza sumando un id a la lista en vez de recibir el torneo entero.
+    await syncTorneoToCloud({ action: 'MARCAR_VISTO_TORNEO', idTorneo: tId, idUsuario: currentUser.id });
   };
 
   const currentMatch = matches.find(m => m.id === selectedMatchId);
@@ -5223,7 +5233,7 @@ export default function App() {
                         });
 
                         const team1Ids = new Set(team1Arr.map(p => p.id));
-                        
+
                         let updatedSync = null;
                         const updatedTournaments = activeTournaments.map(item => {
                           if (item.id === t.id) {
@@ -5242,8 +5252,16 @@ export default function App() {
                         setActiveTournaments(updatedTournaments);
                         localStorage.setItem('padel_ctc_tournaments', JSON.stringify(updatedTournaments));
 
+                        // REDISEÑO MULTIUSUARIO: mandamos solo la lista de asignaciones de
+                        // equipo (id de jugador + equipo), no el torneo entero, para no pisar
+                        // la cena o la validación de un capitán que otra persona esté tocando
+                        // a la vez sobre este mismo torneo.
                         if (updatedSync) {
-                          syncTorneoToCloud({ action: 'GUARDAR_TORNEO', torneo: updatedSync });
+                          syncTorneoToCloud({
+                            action: 'ACTUALIZAR_EQUIPOS_MASIVO',
+                            idTorneo: t.id,
+                            asignaciones: participantsList.map(p => ({ idJugador: p.id, equipo: team1Ids.has(p.id) ? 1 : 2 }))
+                          });
                         }
                       };
 
@@ -5755,5 +5773,6 @@ export default function App() {
     </div>
   );
 }
+
 
 
