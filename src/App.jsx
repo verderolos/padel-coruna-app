@@ -1482,7 +1482,10 @@ function TournamentCreatorModal({ isOpen, onClose, allPlayers, tournaments, onTo
     setEditingMatchInfo(null);
   };
 
-  const handleLaunchTournament = () => {
+  const handleLaunchTournament = (statusOverwrite) => {
+    // Si recibe un texto (ej: 'BOCETO_EQUIPOS') usa ese. Si no, o si recibe el evento del click, usa 'ACTIVO'
+    const finalStatus = typeof statusOverwrite === 'string' ? statusOverwrite : 'ACTIVO';
+    
     onTournamentCreated({
       id: 'TORNEO_' + Date.now(),
       name: tName,
@@ -1497,11 +1500,13 @@ function TournamentCreatorModal({ isOpen, onClose, allPlayers, tournaments, onTo
       coOrganizerIds: coOrganizerIds,
       participants: selectedPlayers,
       rounds: generatedFixture,
-      teams: generatedTeams
+      teams: generatedTeams,
+      status: finalStatus,
+      captain1Id: captain1Id || null,
+      captain2Id: captain2Id || null
     });
     onClose();
   };
-
   return (
     <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-3 text-left">
       <div className="bg-white rounded-3xl max-w-md w-full max-h-[92vh] overflow-y-auto p-5 shadow-2xl flex flex-col space-y-4">
@@ -1639,11 +1644,84 @@ function TournamentCreatorModal({ isOpen, onClose, allPlayers, tournaments, onTo
               )}
             </div>
 
-            <div className="flex gap-2 pt-1">
-              <button onClick={() => setStep(1)} className="flex-1 py-2 bg-slate-100 text-slate-600 font-bold rounded-xl">← Volver</button>
-              <button onClick={() => setStep(tournamentMode === 'equipos' ? 3 : 4)} disabled={selectedCount < 4} className="flex-1 py-2 bg-blue-600 text-white font-bold rounded-xl shadow-xs disabled:opacity-50">
-                Siguiente →
-              </button>
+            {/* NUEVO: Selección rápida de capitanes y guardado de borrador si es Ryder */}
+            {tournamentMode === 'equipos' && selectedCount >= 4 && (
+              <div className="bg-slate-900 text-white p-3 rounded-2xl border border-slate-700 mt-4 space-y-3">
+                <span className="text-[10px] font-black text-blue-400 uppercase block">Delegar en Capitanes</span>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-[9px] font-bold text-slate-400 mb-1">Capitán Azul 🔵</label>
+                    <select value={captain1Id} onChange={e => setCaptain1Id(e.target.value)} className="w-full bg-slate-800 border border-slate-600 rounded-lg p-1.5 text-xs">
+                      <option value="">Seleccionar...</option>
+                      {selectedPlayers.map(p => <option key={p.id} value={p.id} disabled={p.id === captain2Id}>{p.name}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[9px] font-bold text-slate-400 mb-1">Capitán Rojo 🔴</label>
+                    <select value={captain2Id} onChange={e => setCaptain2Id(e.target.value)} className="w-full bg-slate-800 border border-slate-600 rounded-lg p-1.5 text-xs">
+                      <option value="">Seleccionar...</option>
+                      {selectedPlayers.map(p => <option key={p.id} value={p.id} disabled={p.id === captain1Id}>{p.name}</option>)}
+                    </select>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="flex gap-2 pt-2">
+              <button onClick={() => setStep(1)} className="flex-1 py-2 bg-slate-100 text-slate-600 font-bold rounded-xl shadow-sm">← Volver</button>
+              
+              {tournamentMode === 'equipos' ? (
+                <button 
+                  onClick={() => handleLaunchTournament('BOCETO_EQUIPOS')} 
+                  disabled={selectedCount < 4 || !captain1Id || !captain2Id} 
+                  className="flex-1 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold rounded-xl shadow-xs disabled:opacity-50"
+                >
+                  Guardar y Avisar Capitanes
+                </button>
+              ) : (
+                <button onClick={() => setStep(4)} disabled={selectedCount < 4} className="flex-1 py-2 bg-blue-600 text-white font-bold rounded-xl shadow-xs disabled:opacity-50">
+                  Siguiente →
+                </button>
+              )}
+            </div>{/* NUEVO: Selección rápida de capitanes y guardado de borrador si es Ryder */}
+            {tournamentMode === 'equipos' && selectedCount >= 4 && (
+              <div className="bg-slate-900 text-white p-3 rounded-2xl border border-slate-700 mt-4 space-y-3">
+                <span className="text-[10px] font-black text-blue-400 uppercase block">Delegar en Capitanes</span>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-[9px] font-bold text-slate-400 mb-1">Capitán Azul 🔵</label>
+                    <select value={captain1Id} onChange={e => setCaptain1Id(e.target.value)} className="w-full bg-slate-800 border border-slate-600 rounded-lg p-1.5 text-xs">
+                      <option value="">Seleccionar...</option>
+                      {selectedPlayers.map(p => <option key={p.id} value={p.id} disabled={p.id === captain2Id}>{p.name}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[9px] font-bold text-slate-400 mb-1">Capitán Rojo 🔴</label>
+                    <select value={captain2Id} onChange={e => setCaptain2Id(e.target.value)} className="w-full bg-slate-800 border border-slate-600 rounded-lg p-1.5 text-xs">
+                      <option value="">Seleccionar...</option>
+                      {selectedPlayers.map(p => <option key={p.id} value={p.id} disabled={p.id === captain1Id}>{p.name}</option>)}
+                    </select>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="flex gap-2 pt-2">
+              <button onClick={() => setStep(1)} className="flex-1 py-2 bg-slate-100 text-slate-600 font-bold rounded-xl shadow-sm">← Volver</button>
+              
+              {tournamentMode === 'equipos' ? (
+                <button 
+                  onClick={() => handleLaunchTournament('BOCETO_EQUIPOS')} 
+                  disabled={selectedCount < 4 || !captain1Id || !captain2Id} 
+                  className="flex-1 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold rounded-xl shadow-xs disabled:opacity-50"
+                >
+                  Guardar y Avisar Capitanes
+                </button>
+              ) : (
+                <button onClick={() => setStep(4)} disabled={selectedCount < 4} className="flex-1 py-2 bg-blue-600 text-white font-bold rounded-xl shadow-xs disabled:opacity-50">
+                  Siguiente →
+                </button>
+              )}
             </div>
           </div>
         )}
