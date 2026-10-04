@@ -92,6 +92,25 @@ function normalizeName(str) {
     .toLowerCase();
 }
 
+// Rota un array un n\u00famero de posiciones (m\u00e9todo del "c\u00edrculo" usado para generar
+// enfrentamientos de round-robin sin repetir siempre el mismo grupo).
+function rotateArray(arr, offset) {
+  const n = arr.length;
+  if (n === 0) return [...arr];
+  const off = ((offset % n) + n) % n;
+  return [...arr.slice(off), ...arr.slice(0, off)];
+}
+
+// Calcula cu\u00e1ntas rondas hay por delante en un cuadro de eliminaci\u00f3n directa para
+// poner una etiqueta legible ("Final", "Semifinales", "Cuartos de Final"...).
+function eliminationRoundLabel(matchesInRound) {
+  if (matchesInRound === 1) return 'Final';
+  if (matchesInRound === 2) return 'Semifinales';
+  if (matchesInRound === 4) return 'Cuartos de Final';
+  if (matchesInRound === 8) return 'Octavos de Final';
+  return `Ronda de ${matchesInRound * 2}`;
+}
+
 function isMatchOfficial(m) {
   if (!m) return false;
   if (m.isOfficial !== undefined) return Boolean(m.isOfficial);
@@ -242,6 +261,47 @@ function UserAvatar({ name, photo, size = 'md', className = '' }) {
   );
 }
 
+// NUEVO: Mini gráfico de barras en SVG puro (sin librerías externas) para mostrar la
+// evolución de puntos día a día. Cada barra es un día del mes con el total de puntos
+// sumados ese día (puede ser negativo, p.ej. por una rajada de cena).
+function MiniBarChart({ data, height = 80 }) {
+  if (!data || data.length === 0) {
+    return (
+      <div className="text-center py-4 text-[10px] text-slate-400 italic">
+        Todavía no hay partidos este mes para dibujar la evolución.
+      </div>
+    );
+  }
+
+  const width = Math.max(220, data.length * 26);
+  const maxVal = Math.max(1, ...data.map(d => Math.abs(d.pts)));
+  const zeroY = height / 2;
+  const barWidth = Math.min(18, (width / data.length) - 6);
+
+  return (
+    <svg viewBox={`0 0 ${width} ${height + 16}`} width="100%" height={height + 16} role="img" aria-label="Evolución de puntos del mes">
+      <line x1="0" y1={zeroY} x2={width} y2={zeroY} stroke="#e2e8f0" strokeWidth="1" />
+      {data.map((d, idx) => {
+        const barHeight = (Math.abs(d.pts) / maxVal) * (height / 2 - 4);
+        const x = idx * (width / data.length) + ((width / data.length) - barWidth) / 2;
+        const isPositive = d.pts >= 0;
+        const y = isPositive ? zeroY - barHeight : zeroY;
+        return (
+          <g key={d.day}>
+            <rect
+              x={x} y={y} width={barWidth} height={Math.max(2, barHeight)}
+              rx="3" fill={isPositive ? '#3b82f6' : '#f43f5e'}
+            />
+            <text x={x + barWidth / 2} y={height + 12} textAnchor="middle" fontSize="8" fill="#94a3b8" fontWeight="700">
+              {d.day}
+            </text>
+          </g>
+        );
+      })}
+    </svg>
+  );
+}
+
 function StarRating({ value, onChange }) {
   const stars = [1, 2, 3, 4, 5];
   return (
@@ -271,7 +331,11 @@ function StarRating({ value, onChange }) {
 
 function calculateTournamentSuggestedLevel(user, tournaments) {
   let baseLevel = Number(user.level) || 3.5;
-  const normUserName = normalizeName(user.name);
+  // IMPORTANTE: m.team1/m.team2 solo guardan el PRIMER nombre de cada jugador (p.ej. "Bruno & Berto"),
+  // así que comparar contra el nombre completo del usuario casi nunca coincidía para nadie con nombre
+  // compuesto. Usamos los IDs cuando el partido los tiene (torneos nuevos) y, si no (torneos antiguos
+  // generados antes de este cambio), comparamos solo el primer nombre como aproximación razonable.
+  const myFirstName = normalizeName(user.name || '').split(' ')[0];
 
   let tourMatches = 0;
   let tourWon = 0;
@@ -279,8 +343,16 @@ function calculateTournamentSuggestedLevel(user, tournaments) {
     (t.rounds || []).forEach(r => {
       (r.matches || []).forEach(m => {
         if (m.status !== 'FINALIZADO') return;
-        const inT1 = normalizeName(m.team1 || '').includes(normUserName);
-        const inT2 = normalizeName(m.team2 || '').includes(normUserName);
+
+        let inT1, inT2;
+        if ((m.team1Ids && m.team1Ids.length) || (m.team2Ids && m.team2Ids.length)) {
+          inT1 = (m.team1Ids || []).includes(user.id);
+          inT2 = (m.team2Ids || []).includes(user.id);
+        } else {
+          inT1 = myFirstName && normalizeName(m.team1 || '').split(' ').includes(myFirstName);
+          inT2 = myFirstName && normalizeName(m.team2 || '').split(' ').includes(myFirstName);
+        }
+
         if (inT1 || inT2) {
           tourMatches++;
           if (inT1 && m.winner === 1) tourWon++;
@@ -459,6 +531,55 @@ function PinModal({ isOpen, onClose, targetUser, onPinSuccess, apiUrl }) {
           </div>
         </form>
       </div>
+    </div>
+  );
+}
+
+// NUEVO: PANTALLA DE AVISOS / PENDIENTES DEL JUGADOR
+function AlertsScreen({ alerts, onBack }) {
+  return (
+    <div className="space-y-3">
+      <button onClick={onBack} className="text-xs font-bold text-blue-600 hover:underline flex items-center gap-1">
+        ← Volver
+      </button>
+
+      <div className="bg-gradient-to-r from-amber-500 to-orange-600 rounded-3xl p-5 text-white shadow-md">
+        <div className="flex items-center gap-2.5">
+          <span className="text-3xl">🔔</span>
+          <div>
+            <h2 className="text-xl font-black">Tus pendientes</h2>
+            <p className="text-[11px] opacity-90 font-semibold">
+              {alerts.length === 0
+                ? 'No tienes nada pendiente ahora mismo 🎉'
+                : `${alerts.length} ${alerts.length === 1 ? 'cosa pendiente' : 'cosas pendientes'}`}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {alerts.length === 0 ? (
+        <div className="bg-white rounded-2xl p-8 text-center border border-slate-200">
+          <p className="text-3xl mb-1">✅</p>
+          <p className="text-sm font-bold text-slate-700">¡Estás al día! No tienes ninguna acción pendiente.</p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {alerts.map(a => (
+            <button
+              key={a.id}
+              onClick={a.action}
+              className="w-full text-left bg-white rounded-2xl p-3.5 border border-slate-200 shadow-xs hover:border-amber-400 transition flex items-center gap-3"
+            >
+              <span className="text-2xl shrink-0">{a.icon}</span>
+              <div className="min-w-0 flex-1">
+                <span className="font-black text-slate-900 text-xs block truncate">{a.title}</span>
+                <span className="text-[11px] text-slate-500 truncate block">{a.description}</span>
+              </div>
+              <span className="text-slate-300 text-lg shrink-0">→</span>
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -676,6 +797,36 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, allDinn
     };
   })();
 
+  // NUEVO: Racha de victorias actual + evolución de puntos del mes en curso (Paso 4).
+  const streakAndTrend = (() => {
+    // Racha: partidos oficiales consecutivos ganados, empezando por el más reciente.
+    // playedList ya viene ordenado de más reciente a más antiguo.
+    let winStreak = 0;
+    for (const m of statsCalculated.playedList) {
+      if (m.partner === 'Solo Cena') continue; // las cenas sueltas no cuentan como partido
+      if (m.won) winStreak++;
+      else break;
+    }
+
+    // Evolución de puntos: sumamos los puntos de puntosDetalle por día, dentro del mes natural actual.
+    const now = new Date();
+    const month = now.getMonth();
+    const year = now.getFullYear();
+    const byDay = {};
+    statsCalculated.puntosDetalle.forEach(entry => {
+      const d = parseMatchDateObject(entry.date);
+      if (!d || d.getMonth() !== month || d.getFullYear() !== year) return;
+      const dayKey = d.getDate();
+      byDay[dayKey] = (byDay[dayKey] || 0) + entry.pts;
+    });
+    const monthlyTrend = Object.keys(byDay)
+      .map(Number)
+      .sort((a, b) => a - b)
+      .map(day => ({ day, pts: byDay[day] }));
+
+    return { winStreak, monthlyTrend };
+  })();
+
   const tournamentStats = (() => {
     let tList = [];
     const modeStats = {
@@ -696,8 +847,18 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, allDinn
       (t.rounds || []).forEach(r => {
         (r.matches || []).forEach(m => {
           if (m.status !== 'FINALIZADO') return;
-          const inT1 = normalizeName(m.team1 || '').includes(normUserName);
-          const inT2 = normalizeName(m.team2 || '').includes(normUserName);
+          // m.team1/m.team2 solo llevan el primer nombre de cada jugador; comparar contra el
+          // nombre completo casi nunca coincidía. Usamos IDs si el partido los tiene, y si no
+          // (torneos antiguos) comparamos por primer nombre como aproximación.
+          let inT1, inT2;
+          if ((m.team1Ids && m.team1Ids.length) || (m.team2Ids && m.team2Ids.length)) {
+            inT1 = (m.team1Ids || []).includes(user.id);
+            inT2 = (m.team2Ids || []).includes(user.id);
+          } else {
+            const myFirstName = normUserName.split(' ')[0];
+            inT1 = myFirstName && normalizeName(m.team1 || '').split(' ').includes(myFirstName);
+            inT2 = myFirstName && normalizeName(m.team2 || '').split(' ').includes(myFirstName);
+          }
           if (inT1 || inT2) {
             const won = (inT1 && m.winner === 1) || (inT2 && m.winner === 2);
             tList.push({
@@ -1096,6 +1257,28 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, allDinn
           </div>
         )}
 
+        {/* NUEVO (Paso 4): RACHA DE VICTORIAS Y EVOLUCIÓN DE PUNTOS DEL MES */}
+        <div className="space-y-2 pt-1 border-t border-slate-100">
+          <div className="flex items-center justify-between gap-2">
+            <div className={`flex-1 rounded-2xl p-3 border ${streakAndTrend.winStreak >= 2 ? 'bg-gradient-to-br from-orange-50 to-amber-50 border-amber-300' : 'bg-slate-50 border-slate-200'}`}>
+              <span className="text-[9px] font-black text-slate-500 uppercase tracking-wide block">Racha actual</span>
+              <span className="text-xl font-black text-slate-900 block mt-0.5">
+                {streakAndTrend.winStreak >= 2 ? `🔥 Racha: ${streakAndTrend.winStreak}` : streakAndTrend.winStreak === 1 ? '✅ 1 victoria seguida' : '—'}
+              </span>
+              {streakAndTrend.winStreak < 1 && (
+                <span className="text-[10px] text-slate-400">Gana tu próximo partido para empezar racha</span>
+              )}
+            </div>
+          </div>
+
+          <div className="bg-white rounded-2xl p-3 border border-slate-200">
+            <span className="text-[10px] font-black text-slate-600 uppercase tracking-wide block mb-1">
+              📈 Evolución de puntos este mes
+            </span>
+            <MiniBarChart data={streakAndTrend.monthlyTrend} />
+          </div>
+        </div>
+
         {/* RENDIMIENTO Y MODALIDAD EN TORNEOS */}
         <div className="space-y-2 pt-1 border-t border-slate-100">
           <div className="flex justify-between items-center">
@@ -1281,11 +1464,19 @@ function TournamentCreatorModal({ isOpen, onClose, allPlayers, tournaments, onTo
     let team1 = cap1 ? [cap1] : [];
     let team2 = cap2 ? [cap2] : [];
 
+    // Repartimos primero igualando el NÚMERO de jugadores por equipo (indispensable),
+    // y solo usamos el nivel como criterio de desempate cuando ambos equipos están igualados en tamaño.
     rest.forEach(p => {
-      const sum1 = team1.reduce((acc, item) => acc + item.level, 0);
-      const sum2 = team2.reduce((acc, item) => acc + item.level, 0);
-      if (sum1 <= sum2) team1.push(p);
-      else team2.push(p);
+      if (team1.length < team2.length) {
+        team1.push(p);
+      } else if (team2.length < team1.length) {
+        team2.push(p);
+      } else {
+        const sum1 = team1.reduce((acc, item) => acc + item.level, 0);
+        const sum2 = team2.reduce((acc, item) => acc + item.level, 0);
+        if (sum1 <= sum2) team1.push(p);
+        else team2.push(p);
+      }
     });
 
     const team1Ids = new Set(team1.map(p => p.id));
@@ -1360,9 +1551,12 @@ function TournamentCreatorModal({ isOpen, onClose, allPlayers, tournaments, onTo
       const rounds = [];
 
       if (tournamentMode === 'pozo') {
+        // FIX: antes se partía siempre del mismo "sorted" sin rotar, así que cada ronda
+        // repetía exactamente los mismos 4 jugadores por pista. Con el método del círculo,
+        // cada ronda rota el orden de salida para que las parejas/rivales vayan cambiando.
         for (let r = 1; r <= totalRounds; r++) {
           const matchesList = [];
-          const roundPool = [...sorted];
+          const roundPool = rotateArray(sorted, r - 1);
           for (let c = 1; c <= (Number(tCourts) || 1); c++) {
             if (roundPool.length >= 4) {
               const p1 = roundPool.shift(); const p2 = roundPool.shift(); const p3 = roundPool.shift(); const p4 = roundPool.shift();
@@ -1372,6 +1566,8 @@ function TournamentCreatorModal({ isOpen, onClose, allPlayers, tournaments, onTo
                 court: c === 1 ? 'Pista 1 👑 (Pista Reina)' : `Pista ${c}`,
                 team1: `${paired.pair1[0].name.split(' ')[0]} & ${paired.pair1[1].name.split(' ')[0]}`,
                 team2: `${paired.pair2[0].name.split(' ')[0]} & ${paired.pair2[1].name.split(' ')[0]}`,
+                team1Ids: [paired.pair1[0].id, paired.pair1[1].id],
+                team2Ids: [paired.pair2[0].id, paired.pair2[1].id],
                 courtNum: c,
                 score: '', winner: null, status: 'PENDIENTE'
               });
@@ -1392,6 +1588,8 @@ function TournamentCreatorModal({ isOpen, onClose, allPlayers, tournaments, onTo
                 court: `Pista ${c}`,
                 team1: `${paired.pair1[0].name.split(' ')[0]} & ${paired.pair1[1].name.split(' ')[0]}`,
                 team2: `${paired.pair2[0].name.split(' ')[0]} & ${paired.pair2[1].name.split(' ')[0]}`,
+                team1Ids: [paired.pair1[0].id, paired.pair1[1].id],
+                team2Ids: [paired.pair2[0].id, paired.pair2[1].id],
                 score: '', winner: null, status: 'PENDIENTE'
               });
             }
@@ -1399,31 +1597,97 @@ function TournamentCreatorModal({ isOpen, onClose, allPlayers, tournaments, onTo
           rounds.push({ round: r, timeLabel: `Ronda ${r}`, matches: matchesList });
         }
       } else if (tournamentMode === 'eliminatorio') {
+        // CUADRO GENERALIZADO DE ELIMINACIÓN DIRECTA.
+        // El código anterior solo funcionaba de verdad con exactamente 8 jugadores (4 parejas):
+        // generaba la ronda de semis con texto fijo ("1º Grupo A"...) que nunca se sustituía por
+        // el ganador real de la fase de grupos, y con cualquier otro número de parejas el cuadro
+        // quedaba incompleto o roto. Ahora se construye un cuadro de eliminación directa de
+        // cualquier tamaño (con "byes" para las parejas mejor clasificadas si no se llega a una
+        // potencia de 2), y cada partido sabe de qué partido anterior depende su team1/team2
+        // (team1Source/team2Source) para que handleSaveTournamentScore pueda ir propagando
+        // ganadores automáticamente ronda a ronda, sea cual sea el tamaño del cuadro.
         const couples = [];
         for (let i = 0; i < sorted.length; i += 2) {
           if (sorted[i + 1]) {
-            couples.push({ name: `${sorted[i].name.split(' ')[0]} & ${sorted[i + 1].name.split(' ')[0]}` });
+            couples.push({
+              name: `${sorted[i].name.split(' ')[0]} & ${sorted[i + 1].name.split(' ')[0]}`,
+              ids: [sorted[i].id, sorted[i + 1].id]
+            });
           }
         }
-        const groupMatches = [];
-        for (let i = 0; i < couples.length - 1; i += 2) {
-          groupMatches.push({
-            id: `ELIM_G_${i}_${Date.now()}`,
-            court: `Pista ${(Math.floor(i / 2) % (Number(tCourts) || 1)) + 1}`,
-            team1: `${couples[i].name}`,
-            team2: `${couples[i + 1].name}`,
-            score: '', winner: null, status: 'PENDIENTE'
-          });
+
+        if (couples.length < 2) {
+          // No hay parejas suficientes para montar un cuadro (hacen falta al menos 2 parejas, 4 jugadores).
+        } else {
+          let bracketSize = 2;
+          while (bracketSize < couples.length) bracketSize *= 2;
+
+          // Las mejor clasificadas (couples ya viene ordenado por nivel) reciben los "byes" si sobran huecos.
+          let currentSlots = [...couples];
+          while (currentSlots.length < bracketSize) currentSlots.push(null);
+
+          let roundNum = 1;
+          let semifinalMatchIds = [];
+
+          while (currentSlots.length > 1) {
+            const matchesThisRound = currentSlots.length / 2;
+            const label = eliminationRoundLabel(matchesThisRound);
+            const matchesList = [];
+            const nextSlots = [];
+
+            for (let i = 0; i < currentSlots.length; i += 2) {
+              const a = currentSlots[i];
+              const b = currentSlots[i + 1];
+              const matchId = `ELIM_R${roundNum}_M${i / 2}`;
+
+              if (a && b) {
+                matchesList.push({
+                  id: matchId,
+                  court: `Pista ${((i / 2) % (Number(tCourts) || 1)) + 1}`,
+                  team1: a.name, team2: b.name,
+                  team1Ids: a.ids || [], team2Ids: b.ids || [],
+                  // Si el hueco venía de un partido anterior (no es una pareja real todavía
+                  // conocida), anotamos de qué partido depende para poder propagar el ganador.
+                  team1Source: a.pendingFrom || null,
+                  team2Source: b.pendingFrom || null,
+                  score: '', winner: null, status: 'PENDIENTE'
+                });
+                // Slot pendiente: se rellenará con el ganador real de este partido en cuanto se reporte.
+                nextSlots.push({ name: `Ganador (${label})`, ids: [], pendingFrom: matchId });
+              } else {
+                // Bye: la única pareja real de este cruce pasa directa, sin partido que jugar.
+                nextSlots.push(a || b || null);
+              }
+            }
+
+            if (matchesThisRound === 2) {
+              semifinalMatchIds = matchesList.map(m => m.id);
+            }
+
+            if (matchesList.length > 0) {
+              rounds.push({ round: roundNum, timeLabel: label, matches: matchesList });
+            }
+            currentSlots = nextSlots;
+            roundNum++;
+          }
+
+          // Final de consolación (3º y 4º puesto) entre los dos perdedores de semifinales.
+          if (bracketSize >= 4 && semifinalMatchIds.length === 2) {
+            rounds.push({
+              round: roundNum,
+              timeLabel: 'Final de Consolación (3º y 4º puesto)',
+              matches: [{
+                id: 'ELIM_CONSOLACION',
+                court: `Pista ${(Number(tCourts) || 1) > 1 ? 2 : 1}`,
+                team1: 'Perdedor Semifinal 1', team2: 'Perdedor Semifinal 2',
+                team1Ids: [], team2Ids: [],
+                team1LoserFrom: semifinalMatchIds[0],
+                team2LoserFrom: semifinalMatchIds[1],
+                score: '', winner: null, status: 'PENDIENTE'
+              }]
+            });
+          }
         }
-        rounds.push({ round: 1, timeLabel: 'Fase de Grupos', matches: groupMatches });
-        rounds.push({ round: 2, timeLabel: 'Semifinales', matches: [
-            { id: 'SEMIS_1', court: 'Pista 1', team1: '1º Grupo A', team2: '2º Grupo B', score: '', winner: null, status: 'PENDIENTE' },
-            { id: 'SEMIS_2', court: 'Pista 2', team1: '1º Grupo B', team2: '2º Grupo A', score: '', winner: null, status: 'PENDIENTE' }
-        ]});
-        rounds.push({ round: 3, timeLabel: 'Finales', matches: [
-            { id: 'FINAL_ORO', court: 'Pista 1 (Central)', team1: 'Ganador Semifinal 1', team2: 'Ganador Semifinal 2', score: '', winner: null, status: 'PENDIENTE' },
-            { id: 'FINAL_CONSOL', court: 'Pista 2', team1: 'Perdedor Semifinal 1', team2: 'Perdedor Semifinal 2', score: '', winner: null, status: 'PENDIENTE' }
-        ]});
       } else if (tournamentMode === 'equipos') {
         const teamA = teamStats.team1Players;
         const teamB = teamStats.team2Players;
@@ -1451,6 +1715,8 @@ function TournamentCreatorModal({ isOpen, onClose, allPlayers, tournaments, onTo
                 court: `Pista ${c}`,
                 team1: `${a1.name.split(' ')[0]} & ${a2.name.split(' ')[0]} (Azul)`,
                 team2: `${b1.name.split(' ')[0]} & ${b2.name.split(' ')[0]} (Rojo)`,
+                team1Ids: [a1.id, a2.id],
+                team2Ids: [b1.id, b2.id],
                 score: '',
                 winner: null,
                 status: 'PENDIENTE'
@@ -3103,6 +3369,8 @@ export default function App() {
 
       let winningTeamName = '';
       let losingTeamName = '';
+      let winningTeamIds = [];
+      let losingTeamIds = [];
 
       const updatedRounds = (t.rounds || []).map(r => ({
         ...r,
@@ -3110,6 +3378,8 @@ export default function App() {
           if (m.id === matchId) {
             winningTeamName = winningTeamNum === 1 ? m.team1 : m.team2;
             losingTeamName = winningTeamNum === 1 ? m.team2 : m.team1;
+            winningTeamIds = winningTeamNum === 1 ? (m.team1Ids || []) : (m.team2Ids || []);
+            losingTeamIds = winningTeamNum === 1 ? (m.team2Ids || []) : (m.team1Ids || []);
             return {
               ...m,
               score: composedScoreText,
@@ -3121,22 +3391,35 @@ export default function App() {
         })
       }));
 
+      // PROPAGACIÓN GENÉRICA PARA EL CUADRO DE ELIMINACIÓN DIRECTA: cada partido de una ronda
+      // posterior sabe (team1Source/team2Source) de qué partido depende su hueco, así que en
+      // cuanto ese partido de origen se finaliza, rellenamos el nombre real del ganador. Esto
+      // funciona para cualquier tamaño de cuadro, no solo para el caso fijo de 8 jugadores.
       if (t.mode === 'eliminatorio' && winningTeamName) {
-        if (matchId === 'SEMIS_1') {
-          updatedRounds.forEach(r => {
-            r.matches.forEach(m => {
-              if (m.id === 'FINAL_ORO') m.team1 = winningTeamName;
-              if (m.id === 'FINAL_CONSOL') m.team1 = losingTeamName;
-            });
+        updatedRounds.forEach(r => {
+          r.matches.forEach(m => {
+            if (m.team1Source === matchId) {
+              m.team1 = winningTeamName;
+              m.team1Ids = winningTeamIds;
+              delete m.team1Source;
+            }
+            if (m.team2Source === matchId) {
+              m.team2 = winningTeamName;
+              m.team2Ids = winningTeamIds;
+              delete m.team2Source;
+            }
+            if (m.team1LoserFrom === matchId) {
+              m.team1 = losingTeamName;
+              m.team1Ids = losingTeamIds;
+              delete m.team1LoserFrom;
+            }
+            if (m.team2LoserFrom === matchId) {
+              m.team2 = losingTeamName;
+              m.team2Ids = losingTeamIds;
+              delete m.team2LoserFrom;
+            }
           });
-        } else if (matchId === 'SEMIS_2') {
-          updatedRounds.forEach(r => {
-            r.matches.forEach(m => {
-              if (m.id === 'FINAL_ORO') m.team2 = winningTeamName;
-              if (m.id === 'FINAL_CONSOL') m.team2 = losingTeamName;
-            });
-          });
-        }
+        });
       }
 
       let updatedTeams = t.teams || [];
@@ -3309,10 +3592,20 @@ export default function App() {
 
   // NUEVO: Validación de capitanes persistida en el propio torneo (y por tanto en Sheets),
   // para que el visto bueno de cada capitán se vea aunque cada uno entre desde su propio móvil.
+  // Comprobamos aquí también (no solo en el "disabled" del checkbox) que quien marca la casilla
+  // es realmente el capitán designado para ese equipo: ni el organizador ni ningún otro jugador
+  // pueden validar en nombre de un capitán.
   const handleSetCaptainValidation = async (tId, captainNum, value) => {
     let tournamentToSync = null;
+    let allowed = false;
     const updatedTournaments = activeTournaments.map(t => {
       if (t.id !== tId) return t;
+
+      const isRealCaptain1 = captainNum === 1 && currentUser?.id === t.captain1Id;
+      const isRealCaptain2 = captainNum === 2 && currentUser?.id === t.captain2Id;
+      allowed = isRealCaptain1 || isRealCaptain2;
+      if (!allowed) return t;
+
       tournamentToSync = {
         ...t,
         captain1Validated: captainNum === 1 ? value : Boolean(t.captain1Validated),
@@ -3320,6 +3613,8 @@ export default function App() {
       };
       return tournamentToSync;
     });
+
+    if (!allowed) return;
 
     setActiveTournaments(updatedTournaments);
     localStorage.setItem('padel_ctc_tournaments', JSON.stringify(updatedTournaments));
@@ -3361,6 +3656,36 @@ export default function App() {
       }
     }
   };
+
+  // NUEVO: Marca el torneo como "visto" por el jugador actual (persistido),
+  // para que el aviso de "te han convocado a un torneo" desaparezca una vez que ha entrado a verlo.
+  const handleMarkTournamentSeen = async (tId) => {
+    if (!currentUser) return;
+    let tournamentToSync = null;
+    const updatedTournaments = activeTournaments.map(t => {
+      if (t.id !== tId) return t;
+      const seenBy = t.seenBy || [];
+      if (seenBy.includes(currentUser.id)) return t;
+      tournamentToSync = { ...t, seenBy: [...seenBy, currentUser.id] };
+      return tournamentToSync;
+    });
+
+    if (!tournamentToSync) return;
+
+    setActiveTournaments(updatedTournaments);
+    localStorage.setItem('padel_ctc_tournaments', JSON.stringify(updatedTournaments));
+
+    try {
+      await fetch(apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ action: 'GUARDAR_TORNEO', torneo: tournamentToSync })
+      });
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   const currentMatch = matches.find(m => m.id === selectedMatchId);
   const myGroup = (currentUser?.group || 'chicos').toLowerCase();
 
@@ -3433,6 +3758,128 @@ export default function App() {
       return isParticipant || isCreator || isCoOrg;
     });
   }, [activeTournaments, currentUser]);
+
+  // NUEVO: Cuando el jugador entra a la pestaña Torneos, marcamos como "visto" cualquier
+  // torneo en el que participe y que todavía no hubiera abierto, para que su aviso desaparezca.
+  useEffect(() => {
+    if (activeTab !== 'torneos' || !currentUser) return;
+    visibleTournaments.forEach(t => {
+      if (!(t.seenBy || []).includes(currentUser.id)) {
+        handleMarkTournamentSeen(t.id);
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, visibleTournaments, currentUser]);
+
+  // NUEVO: Lista unificada de "pendientes" del jugador actual, para la pantalla de Avisos.
+  const pendingAlerts = useMemo(() => {
+    if (!currentUser) return [];
+    const alerts = [];
+    const myNameNorm = normalizeName(currentUser.name || '');
+    const myFirstName = myNameNorm.split(' ')[0];
+
+    // 1. Cena sin confirmar en un partido oficial
+    (matches || []).forEach(m => {
+      if (!isMatchOfficial(m) || m.status === 'CANCELADO') return;
+      const mySlot = (m.players || []).find(p => p.id === currentUser.id || normalizeName(p.name) === myNameNorm);
+      if (mySlot && String(mySlot.dinner || '').toUpperCase() === 'PENDIENTE') {
+        alerts.push({
+          id: `cena-${m.id}`,
+          icon: '🍻',
+          title: 'Falta por confirmar la cena',
+          description: `${m.date} · ¿Te quedas al 3º tiempo?`,
+          action: () => { setActiveTab('partidos'); setSelectedMatchId(m.id); }
+        });
+      }
+    });
+
+    // 2. Equipo pendiente de revisar como capitán
+    (activeTournaments || []).forEach(t => {
+      if (t.status !== 'BOCETO_EQUIPOS') return;
+      if (t.captain1Id === currentUser.id && !t.captain1Validated) {
+        alerts.push({
+          id: `capitan-${t.id}-1`,
+          icon: '🛡️',
+          title: 'Revisa tu equipo de torneo',
+          description: `${t.name} · Eres el Capitán Azul y falta tu visto bueno`,
+          action: () => setActiveTab('torneos')
+        });
+      }
+      if (t.captain2Id === currentUser.id && !t.captain2Validated) {
+        alerts.push({
+          id: `capitan-${t.id}-2`,
+          icon: '🛡️',
+          title: 'Revisa tu equipo de torneo',
+          description: `${t.name} · Eres el Capitán Rojo y falta tu visto bueno`,
+          action: () => setActiveTab('torneos')
+        });
+      }
+    });
+
+    // 3. Convocatoria a torneo todavía no vista
+    (activeTournaments || []).forEach(t => {
+      const isParticipant = (t.participants || []).some(
+        p => p.id === currentUser.id || normalizeName(p.name) === myNameNorm
+      );
+      const alreadySeen = (t.seenBy || []).includes(currentUser.id);
+      if (isParticipant && !alreadySeen) {
+        alerts.push({
+          id: `invite-${t.id}`,
+          icon: '📣',
+          title: 'Te han convocado a un torneo',
+          description: t.name,
+          action: () => setActiveTab('torneos')
+        });
+      }
+    });
+
+    // 4a. Partido de liga regular ya jugado sin resultado
+    (matches || []).forEach(m => {
+      if (m.status === 'CANCELADO') return;
+      const mySlot = (m.players || []).find(p => p.id === currentUser.id || normalizeName(p.name) === myNameNorm);
+      if (mySlot && computeMatchStatus(m) === 'SIN RESULTADO') {
+        alerts.push({
+          id: `resultado-${m.id}`,
+          icon: '✍️',
+          title: 'Falta el resultado de un partido',
+          description: `${m.date} · Pon el marcador`,
+          action: () => { setActiveTab('partidos'); setSelectedMatchId(m.id); }
+        });
+      }
+    });
+
+    // 4b. Partido de torneo ya jugado (por horario) sin resultado
+    (activeTournaments || []).forEach(t => {
+      if (t.status !== 'ACTIVO' || !t.startDate || !myFirstName) return;
+      const start = new Date(`${t.startDate}T${t.startTime || '00:00'}`);
+      if (isNaN(start.getTime())) return;
+      const end = new Date(start.getTime() + (Number(t.duration) || 120) * 60000);
+      if (new Date() <= end) return;
+
+      (t.rounds || []).forEach(r => {
+        (r.matches || []).forEach(m => {
+          if (m.status !== 'PENDIENTE') return;
+          // Preferimos comparar por ID (fiable al 100%); solo si el partido es de un torneo
+          // antiguo sin IDs guardados, caemos de vuelta a comparar por primer nombre.
+          const hasIds = (m.team1Ids && m.team1Ids.length) || (m.team2Ids && m.team2Ids.length);
+          const amInMatch = hasIds
+            ? (m.team1Ids || []).includes(currentUser.id) || (m.team2Ids || []).includes(currentUser.id)
+            : normalizeName(`${m.team1 || ''} ${m.team2 || ''}`).split(' ').includes(myFirstName);
+          if (amInMatch) {
+            alerts.push({
+              id: `torneo-resultado-${t.id}-${m.id}`,
+              icon: '🏆',
+              title: 'Falta el resultado de un partido de torneo',
+              description: `${t.name} · ${m.court}: ${m.team1} vs ${m.team2}`,
+              action: () => { setActiveTab('torneos'); setActiveTournamentId(t.id); setReportingTournamentMatch(m); }
+            });
+          }
+        });
+      });
+    });
+
+    return alerts;
+  }, [matches, activeTournaments, currentUser]);
 
   const groupMatches = useMemo(() => {
     return matches.filter(m => {
@@ -3820,6 +4267,18 @@ export default function App() {
             </div>
           </div>
           <div className="flex items-center gap-1.5">
+            <button
+              onClick={() => setActiveTab('avisos')}
+              className="relative px-2.5 py-1.5 text-sm font-bold bg-slate-100 hover:bg-amber-50 text-slate-700 rounded-lg transition"
+              title="Tus pendientes"
+            >
+              🔔
+              {pendingAlerts.length > 0 && (
+                <span className="absolute -top-1 -right-1 bg-rose-600 text-white text-[9px] font-black w-4 h-4 rounded-full flex items-center justify-center shadow-sm">
+                  {pendingAlerts.length > 9 ? '9+' : pendingAlerts.length}
+                </span>
+              )}
+            </button>
             {isThursdayMember && (
               <button
                 onClick={() => setShowRulesModal(true)}
@@ -3847,7 +4306,9 @@ export default function App() {
       </header>
 
       <main className="max-w-xl mx-auto px-4 py-4">
-        {selectedMatchId && currentMatch && isThursdayMember ? (
+        {activeTab === 'avisos' ? (
+          <AlertsScreen alerts={pendingAlerts} onBack={() => setActiveTab(isThursdayMember ? 'partidos' : 'torneos')} />
+        ) : selectedMatchId && currentMatch && isThursdayMember ? (
           /* DETALLE DEL PARTIDO REGULAR */
           <div className="space-y-4">
             <button
@@ -4674,11 +5135,19 @@ export default function App() {
                         let team1Arr = captain1Obj ? [captain1Obj] : [];
                         let team2Arr = captain2Obj ? [captain2Obj] : [];
 
+                        // Igualamos primero el NÚMERO de jugadores por equipo (indispensable),
+                        // y el nivel solo desempata cuando ambos equipos ya tienen el mismo tamaño.
                         rest.forEach(p => {
-                          const sum1 = team1Arr.reduce((acc, item) => acc + (item.level || 3.5), 0);
-                          const sum2 = team2Arr.reduce((acc, item) => acc + (item.level || 3.5), 0);
-                          if (sum1 <= sum2) team1Arr.push(p);
-                          else team2Arr.push(p);
+                          if (team1Arr.length < team2Arr.length) {
+                            team1Arr.push(p);
+                          } else if (team2Arr.length < team1Arr.length) {
+                            team2Arr.push(p);
+                          } else {
+                            const sum1 = team1Arr.reduce((acc, item) => acc + (item.level || 3.5), 0);
+                            const sum2 = team2Arr.reduce((acc, item) => acc + (item.level || 3.5), 0);
+                            if (sum1 <= sum2) team1Arr.push(p);
+                            else team2Arr.push(p);
+                          }
                         });
 
                         const team1Ids = new Set(team1Arr.map(p => p.id));
@@ -4788,26 +5257,33 @@ export default function App() {
                                 <span className="text-[10px] font-black text-blue-400 uppercase block">Validación de Equipos</span>
                                 
                                 <label className="flex items-center gap-2 cursor-pointer bg-slate-900/60 p-2 rounded-xl border border-slate-700">
-                                  <input 
-                                    type="checkbox" 
-                                    disabled={!isMeCaptain1 && !isCreatorOrCoOrg}
+                                  <input
+                                    type="checkbox"
+                                    disabled={!isMeCaptain1}
+                                    title={!isMeCaptain1 ? 'Solo el Capitán Azul puede marcar esta casilla' : ''}
                                     checked={Boolean(t.captain1Validated)}
                                     onChange={e => handleSetCaptainValidation(t.id, 1, e.target.checked)}
-                                    className="w-4 h-4 text-blue-600 accent-blue-600" 
+                                    className="w-4 h-4 text-blue-600 accent-blue-600 disabled:opacity-40 disabled:cursor-not-allowed"
                                   />
                                   <span className="font-bold text-slate-200">Capitán Azul ({cap1?.name || 'Por asignar'}) da el visto bueno</span>
                                 </label>
 
                                 <label className="flex items-center gap-2 cursor-pointer bg-slate-900/60 p-2 rounded-xl border border-slate-700">
-                                  <input 
-                                    type="checkbox" 
-                                    disabled={!isMeCaptain2 && !isCreatorOrCoOrg}
+                                  <input
+                                    type="checkbox"
+                                    disabled={!isMeCaptain2}
+                                    title={!isMeCaptain2 ? 'Solo el Capitán Rojo puede marcar esta casilla' : ''}
                                     checked={Boolean(t.captain2Validated)}
                                     onChange={e => handleSetCaptainValidation(t.id, 2, e.target.checked)}
-                                    className="w-4 h-4 text-rose-600 accent-rose-600" 
+                                    className="w-4 h-4 text-rose-600 accent-rose-600 disabled:opacity-40 disabled:cursor-not-allowed"
                                   />
                                   <span className="font-bold text-slate-200">Capitán Rojo ({cap2?.name || 'Por asignar'}) da el visto bueno</span>
                                 </label>
+                                {!isMeCaptain1 && !isMeCaptain2 && (
+                                  <p className="text-[10px] text-slate-400 italic pt-0.5">
+                                    👀 Solo {cap1?.name || 'el Capitán Azul'} y {cap2?.name || 'el Capitán Rojo'} pueden dar el visto bueno a su equipo. Como organizador puedes ver el estado, pero no validar en su nombre.
+                                  </p>
+                                )}
                               </div>
                               
                               <button 
@@ -4856,6 +5332,8 @@ export default function App() {
                                 court: `Pista ${c}`,
                                 team1: `${a1.name.split(' ')[0]} & ${a2.name.split(' ')[0]} (Azul)`,
                                 team2: `${b1.name.split(' ')[0]} & ${b2.name.split(' ')[0]} (Rojo)`,
+                                team1Ids: [a1.id, a2.id],
+                                team2Ids: [b1.id, b2.id],
                                 score: '',
                                 winner: null,
                                 status: 'PENDIENTE'
@@ -5175,4 +5653,5 @@ export default function App() {
     </div>
   );
 }
+
 
