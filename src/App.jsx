@@ -4621,14 +4621,10 @@ export default function App() {
                     if (t.status === 'BOCETO_EQUIPOS') {
                       const cap1 = (t.participants || []).find(p => p.id === t.captain1Id);
                       const cap2 = (t.participants || []).find(p => p.id === t.captain2Id);
-
-                      // NUEVO: Estados de validación individuales de cada capitán
-                      const [cap1Validated, setCap1Validated] = useState(false);
-                      const [cap2Validated, setCap2Validated] = useState(false);
                       
                       const isMeCaptain1 = currentUser?.id === t.captain1Id;
                       const isMeCaptain2 = currentUser?.id === t.captain2Id;
-                      const bothValidated = cap1Validated && cap2Validated;
+                      const bothValidated = draftCap1Validated && draftCap2Validated;
 
                       // RECUPERADO: Cálculo de estadísticas y equilibrio de equipos en tiempo real
                       const team1Players = (t.participants || []).filter(p => Number(p.assignedTeam || 1) === 1);
@@ -4660,7 +4656,6 @@ export default function App() {
 
                         const team1Ids = new Set(team1Arr.map(p => p.id));
                         
-                        // Actualizamos el torneo directamente con los equipos balanceados
                         let updatedSync = null;
                         const updatedTournaments = activeTournaments.map(item => {
                           if (item.id === t.id) {
@@ -4708,7 +4703,6 @@ export default function App() {
 
                           {canEditDraft ? (
                             <div className="space-y-3.5 mt-2">
-                              {/* PANEL DE ESTADÍSTICAS Y EQUILIBRIO RECUPERADO */}
                               <div className="bg-slate-800 p-3 rounded-2xl border border-slate-700 space-y-2">
                                 <div className="flex justify-between items-center">
                                   <span className="text-[10px] font-black uppercase text-blue-400">📊 Balance de Escuadras</span>
@@ -4752,7 +4746,7 @@ export default function App() {
                                         🔵 Azul
                                       </button>
                                       <button 
-                                        disabled={p.id === t.captain1Id || t.captain2Id === p.id}
+                                        disabled={p.id === t.captain1Id || p.id === t.captain2Id}
                                         onClick={() => handleUpdateDraftTeam(t.id, p.id, 2)} 
                                         className={`px-2 py-1 rounded-md text-[10px] font-black transition ${p.assignedTeam === 2 ? 'bg-rose-600 text-white' : 'text-slate-500'}`}
                                       >
@@ -4763,7 +4757,6 @@ export default function App() {
                                 ))}
                               </div>
 
-                              {/* Doble casilla de confirmación para los capitanes */}
                               <div className="bg-slate-800 p-3 rounded-2xl border border-slate-700 space-y-2 text-xs">
                                 <span className="text-[10px] font-black text-blue-400 uppercase block">Validación de Equipos</span>
                                 
@@ -4771,8 +4764,8 @@ export default function App() {
                                   <input 
                                     type="checkbox" 
                                     disabled={!isMeCaptain1 && !isCreatorOrCoOrg}
-                                    checked={cap1Validated} 
-                                    onChange={e => setCap1Validated(e.target.checked)} 
+                                    checked={draftCap1Validated} 
+                                    onChange={e => setDraftCap1Validated(e.target.checked)} 
                                     className="w-4 h-4 text-blue-600 accent-blue-600" 
                                   />
                                   <span className="font-bold text-slate-200">Capitán Azul ({cap1?.name || 'Por asignar'}) da el visto bueno</span>
@@ -4782,8 +4775,8 @@ export default function App() {
                                   <input 
                                     type="checkbox" 
                                     disabled={!isMeCaptain2 && !isCreatorOrCoOrg}
-                                    checked={cap2Validated} 
-                                    onChange={e => setCap2Validated(e.target.checked)} 
+                                    checked={draftCap2Validated} 
+                                    onChange={e => setDraftCap2Validated(e.target.checked)} 
                                     className="w-4 h-4 text-rose-600 accent-rose-600" 
                                   />
                                   <span className="font-bold text-slate-200">Capitán Rojo ({cap2?.name || 'Por asignar'}) da el visto bueno</span>
