@@ -3190,7 +3190,7 @@ export default function App() {
     setSwapModalData(null);
   };
 
-  const handleSaveRegularMatchScore = async (winningTeamNum, composedScoreText) => {
+ const handleSaveRegularMatchScore = async (winningTeamNum, composedScoreText) => {
     if (!currentMatch) return;
 
     const winningPlayers = currentMatch.players.filter(p => Number(p.team || 1) === Number(winningTeamNum));
@@ -3203,6 +3203,10 @@ export default function App() {
       parejasMap[p.name] = p.team || 1;
     });
 
+    // 1. BACKUP: Guardamos el estado exacto de los partidos
+    const previousMatches = [...matches];
+
+    // 2. ACTUALIZACIÓN OPTIMISTA: Cambiamos la interfaz al instante y cerramos el modal
     setMatches(prev => prev.map(m => {
       if (m.id !== currentMatch.id) return m;
       return {
@@ -3217,23 +3221,27 @@ export default function App() {
     }));
     setShowScoreModal(false);
 
+    // 3. LLAMADA A LA API CON EL NUEVO HOOK ANTI-FALLOS
     try {
-      fetch(apiUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({
-          action: 'GUARDAR_RESULTADO',
-          idPartido: currentMatch.id,
-          marcador: composedScoreText,
-          ganadorIds: ganadorIds,
-          ganadorNombres: ganadorNombres,
-          parejas: parejasMap,
-          reiniciar: false
-        })
+      await fetchWithTimeout({
+        action: 'GUARDAR_RESULTADO',
+        idPartido: currentMatch.id,
+        marcador: composedScoreText,
+        ganadorIds: ganadorIds,
+        ganadorNombres: ganadorNombres,
+        parejas: parejasMap,
+        reiniciar: false
       });
     } catch (e) {
-      console.error(e);
-      fetchData();
+      // 4. ROLLBACK: Si falla, restauramos la interfaz y avisamos al usuario
+      console.error('Fallo de red al guardar resultado. Revirtiendo...', e);
+      setMatches(previousMatches);
+      
+      if (e.name === 'AbortError') {
+        alert('⏳ La conexión va muy lenta. El resultado NO se ha guardado. Inténtalo de nuevo cuando tengas mejor cobertura.');
+      } else {
+        alert('❌ Error de conexión: No se ha podido guardar el resultado en el servidor.');
+      }
     }
   };
 
