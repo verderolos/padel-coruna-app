@@ -264,41 +264,60 @@ function UserAvatar({ name, photo, size = 'md', className = '' }) {
 // NUEVO: Mini gráfico de barras en SVG puro (sin librerías externas) para mostrar la
 // evolución de puntos día a día. Cada barra es un día del mes con el total de puntos
 // sumados ese día (puede ser negativo, p.ej. por una rajada de cena).
-function MiniBarChart({ data, height = 80 }) {
-  if (!data || data.length === 0) {
+function MiniBarChart({ data, height = 90 }) {
+  if (!data || data.length === 0 || data.every(d => d.played === 0)) {
     return (
       <div className="text-center py-4 text-[10px] text-slate-400 italic">
-        Todavía no hay partidos este mes para dibujar la evolución.
+        Todavía no hay partidos registrados en los últimos meses.
       </div>
     );
   }
 
-  const width = Math.max(220, data.length * 26);
-  const maxVal = Math.max(1, ...data.map(d => Math.abs(d.pts)));
-  const zeroY = height / 2;
-  const barWidth = Math.min(18, (width / data.length) - 6);
+  const width = Math.max(240, data.length * 40);
+  const maxVal = Math.max(1, ...data.map(d => d.played));
+  const slot = width / data.length;
+  const barWidth = Math.min(26, slot - 10);
 
   return (
-    <svg viewBox={`0 0 ${width} ${height + 16}`} width="100%" height={height + 16} role="img" aria-label="Evolución de puntos del mes">
-      <line x1="0" y1={zeroY} x2={width} y2={zeroY} stroke="#e2e8f0" strokeWidth="1" />
-      {data.map((d, idx) => {
-        const barHeight = (Math.abs(d.pts) / maxVal) * (height / 2 - 4);
-        const x = idx * (width / data.length) + ((width / data.length) - barWidth) / 2;
-        const isPositive = d.pts >= 0;
-        const y = isPositive ? zeroY - barHeight : zeroY;
-        return (
-          <g key={d.day}>
-            <rect
-              x={x} y={y} width={barWidth} height={Math.max(2, barHeight)}
-              rx="3" fill={isPositive ? '#3b82f6' : '#f43f5e'}
-            />
-            <text x={x + barWidth / 2} y={height + 12} textAnchor="middle" fontSize="8" fill="#94a3b8" fontWeight="700">
-              {d.day}
-            </text>
-          </g>
-        );
-      })}
-    </svg>
+    <div>
+      <div className="flex items-center gap-3 text-[9px] font-bold text-slate-500 mb-1.5">
+        <span className="flex items-center gap-1">
+          <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" /> Victorias
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="w-2 h-2 rounded-full bg-rose-500 inline-block" /> Derrotas
+        </span>
+      </div>
+      <svg viewBox={`0 0 ${width} ${height + 18}`} width="100%" height={height + 18} role="img" aria-label="Partidos y victorias por mes">
+        <line x1="0" y1={height} x2={width} y2={height} stroke="#e2e8f0" strokeWidth="1" />
+        {data.map((d, idx) => {
+          const x = idx * slot + (slot - barWidth) / 2;
+          const totalH = d.played > 0 ? Math.max(4, (d.played / maxVal) * (height - 14)) : 0;
+          const wonH = d.played > 0 ? (d.won / d.played) * totalH : 0;
+          const lostH = totalH - wonH;
+          const yWon = height - wonH;
+          const yLost = yWon - lostH;
+          return (
+            <g key={d.key}>
+              {d.played > 0 && lostH > 0 && (
+                <rect x={x} y={yLost} width={barWidth} height={lostH} rx="2" fill="#f43f5e" />
+              )}
+              {d.played > 0 && wonH > 0 && (
+                <rect x={x} y={yWon} width={barWidth} height={wonH} rx="2" fill="#10b981" />
+              )}
+              {d.played > 0 && (
+                <text x={x + barWidth / 2} y={height - totalH - 4} textAnchor="middle" fontSize="8" fill="#475569" fontWeight="800">
+                  {d.played}
+                </text>
+              )}
+              <text x={x + barWidth / 2} y={height + 14} textAnchor="middle" fontSize="8" fill="#94a3b8" fontWeight="700">
+                {d.month}
+              </text>
+            </g>
+          );
+        })}
+      </svg>
+    </div>
   );
 }
 
@@ -797,7 +816,7 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, allDinn
     };
   })();
 
-  // NUEVO: Racha de victorias actual + evolución de puntos del mes en curso (Paso 4).
+  // NUEVO: Racha de victorias actual + partidos y victorias por mes (Paso 4).
   const streakAndTrend = (() => {
     // Racha: partidos oficiales consecutivos ganados, empezando por el más reciente.
     // playedList ya viene ordenado de más reciente a más antiguo.
@@ -808,21 +827,67 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, allDinn
       else break;
     }
 
-    // Evolución de puntos: sumamos los puntos de puntosDetalle por día, dentro del mes natural actual.
+    // Partidos y victorias por mes (últimos 6 meses), combinando Liga regular + Torneos
+    // (a petición explícita: "más que en puntos lo enfocaría a victorias y partidos por mes" +
+    // "Liga + torneos"). Cada "cubo" de mes cuenta partidos jugados y ganados.
+    const MESES_CORTOS = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
     const now = new Date();
-    const month = now.getMonth();
-    const year = now.getFullYear();
-    const byDay = {};
-    statsCalculated.puntosDetalle.forEach(entry => {
-      const d = parseMatchDateObject(entry.date);
-      if (!d || d.getMonth() !== month || d.getFullYear() !== year) return;
-      const dayKey = d.getDate();
-      byDay[dayKey] = (byDay[dayKey] || 0) + entry.pts;
+    const monthKeyOf = (y, m) => `${y}-${m}`;
+    const monthMap = {};
+    const monthlyTrend = [];
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const key = monthKeyOf(d.getFullYear(), d.getMonth());
+      const bucket = { key, month: MESES_CORTOS[d.getMonth()], played: 0, won: 0 };
+      monthMap[key] = bucket;
+      monthlyTrend.push(bucket);
+    }
+
+    // Liga regular: cada partido jugado (playedList) trae su resultado y fecha en texto
+    // (formato "15 oct", parseado por parseMatchDateObject).
+    statsCalculated.playedList.forEach(m => {
+      if (m.partner === 'Solo Cena') return; // las cenas sueltas no cuentan como partido
+      const d = parseMatchDateObject(m.date);
+      if (!d) return;
+      const bucket = monthMap[monthKeyOf(d.getFullYear(), d.getMonth())];
+      if (!bucket) return;
+      bucket.played++;
+      if (m.won) bucket.won++;
     });
-    const monthlyTrend = Object.keys(byDay)
-      .map(Number)
-      .sort((a, b) => a - b)
-      .map(day => ({ day, pts: byDay[day] }));
+
+    // Torneos: recorremos los partidos FINALIZADO de los torneos en los que participa el jugador.
+    // Las fechas de los partidos de torneo no se guardan individualmente, así que usamos la fecha
+    // de inicio del torneo (t.startDate, formato ISO de <input type="date">) para ubicar el mes.
+    (tournaments || []).forEach(t => {
+      const isParticipant = (t.participants || []).some(
+        p => p.id === user.id || normalizeName(p.name) === normUserName
+      );
+      if (!isParticipant) return;
+
+      const tDateObj = t.startDate ? new Date(`${t.startDate}T${t.startTime || '00:00'}`) : null;
+      if (!tDateObj || isNaN(tDateObj.getTime())) return;
+      const bucket = monthMap[monthKeyOf(tDateObj.getFullYear(), tDateObj.getMonth())];
+      if (!bucket) return;
+
+      (t.rounds || []).forEach(r => {
+        (r.matches || []).forEach(m => {
+          if (m.status !== 'FINALIZADO') return;
+          let inT1, inT2;
+          if ((m.team1Ids && m.team1Ids.length) || (m.team2Ids && m.team2Ids.length)) {
+            inT1 = (m.team1Ids || []).includes(user.id);
+            inT2 = (m.team2Ids || []).includes(user.id);
+          } else {
+            const myFirstName = normUserName.split(' ')[0];
+            inT1 = myFirstName && normalizeName(m.team1 || '').split(' ').includes(myFirstName);
+            inT2 = myFirstName && normalizeName(m.team2 || '').split(' ').includes(myFirstName);
+          }
+          if (!inT1 && !inT2) return;
+          const won = (inT1 && m.winner === 1) || (inT2 && m.winner === 2);
+          bucket.played++;
+          if (won) bucket.won++;
+        });
+      });
+    });
 
     return { winStreak, monthlyTrend };
   })();
@@ -1273,7 +1338,7 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, allDinn
 
           <div className="bg-white rounded-2xl p-3 border border-slate-200">
             <span className="text-[10px] font-black text-slate-600 uppercase tracking-wide block mb-1">
-              📈 Evolución de puntos este mes
+              📊 Partidos y victorias (últimos 6 meses) · Liga + Torneos
             </span>
             <MiniBarChart data={streakAndTrend.monthlyTrend} />
           </div>
