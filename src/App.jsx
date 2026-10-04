@@ -630,33 +630,37 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, allDinn
     boteDetalle.sort(sortByDate);
     playedList.sort(sortByDate);
 
-    // Análisis de química
+// Análisis de química
     let bestPartner = null, worstPartner = null;
     let easiestRival = null, hardestRival = null;
 
     Object.entries(partnerStats).forEach(([name, st]) => {
-      if (st.played >= 1) { // 👈 Reducido a 1 partido para que lo veas siempre
+      if (st.played >= 1) {
         const winRate = (st.won / st.played) * 100;
         const lossRate = (st.lost / st.played) * 100;
         
-        if (!bestPartner || winRate > bestPartner.winRate) {
+        // Solo asigna mejor pareja si hay al menos 1 victoria
+        if (st.won > 0 && (!bestPartner || winRate > bestPartner.winRate)) {
           bestPartner = { name, winRate, pct: winRate.toFixed(0), ...st };
         }
-        if (!worstPartner || lossRate > worstPartner.lossRate) {
+        // Solo asigna pareja complicada si hay al menos 1 derrota
+        if (st.lost > 0 && (!worstPartner || lossRate > worstPartner.lossRate)) {
           worstPartner = { name, lossRate, pct: lossRate.toFixed(0), ...st };
         }
       }
     });
 
     Object.entries(rivalStats).forEach(([name, st]) => {
-      if (st.played >= 1) { // 👈 Reducido a 1 partido para que lo veas siempre
+      if (st.played >= 1) {
         const winRate = (st.wonAgainst / st.played) * 100;
         const lossRate = (st.lostAgainst / st.played) * 100;
         
-        if (!easiestRival || winRate > easiestRival.winRate) {
+        // Solo asigna rival fetiche si hay al menos 1 victoria contra él
+        if (st.wonAgainst > 0 && (!easiestRival || winRate > easiestRival.winRate)) {
           easiestRival = { name, winRate, pct: winRate.toFixed(0), ...st };
         }
-        if (!hardestRival || lossRate > hardestRival.lossRate) {
+        // Solo asigna rival duro si hay al menos 1 derrota contra él
+        if (st.lostAgainst > 0 && (!hardestRival || lossRate > hardestRival.lossRate)) {
           hardestRival = { name, lossRate, pct: lossRate.toFixed(0), ...st };
         }
       }
