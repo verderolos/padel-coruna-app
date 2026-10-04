@@ -579,10 +579,10 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, allDinn
         boteDetalle.push({ date: m.date, title: `Partido vs ${rivals}`, bote: matchBote, desc: breakdownBote.join(' | ') });
       }
 
-      const myTeam = mySlot.team;
+     const myTeam = Number(mySlot.team || 1);
       (m.players || []).forEach(p => {
         if (normalizeName(p.name) === normUserName) return;
-        if (p.team === myTeam) {
+        if (Number(p.team || 1) === myTeam) {
           if (!partnerStats[p.name]) partnerStats[p.name] = { played: 0, won: 0, lost: 0 };
           partnerStats[p.name].played++;
           if (mySlot.won === 'SI') partnerStats[p.name].won++; else partnerStats[p.name].lost++;
@@ -2666,7 +2666,14 @@ export default function App() {
   const [showScoreModal, setShowScoreModal] = useState(false);
   const [linkingSlot, setLinkingSlot] = useState(null);
   const [swapModalData, setSwapModalData] = useState(null); // NUEVO ESTADO PARA EL MODAL DE INTERCAMBIO
-  const [allDinnerGuests, setAllDinnerGuests] = useState([]);
+  const [allDinnerGuests, setAllDinnerGuests] = useState(() => {
+    try {
+      const cached = localStorage.getItem('padel_cached_dinners');
+      return cached ? JSON.parse(cached) : [];
+    } catch {
+      return [];
+    }
+  });
 
   const [loadingDinnerId, setLoadingDinnerId] = useState(null);
 
@@ -2745,6 +2752,7 @@ export default function App() {
         }
         if (json.invitadosCena) {
           setAllDinnerGuests(json.invitadosCena);
+          localStorage.setItem('padel_cached_dinners', JSON.stringify(json.invitadosCena));
         }
       }
     } catch (e) {
