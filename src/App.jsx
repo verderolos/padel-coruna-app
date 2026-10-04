@@ -579,10 +579,15 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, allDinn
         boteDetalle.push({ date: m.date, title: `Partido vs ${rivals}`, bote: matchBote, desc: breakdownBote.join(' | ') });
       }
 
-     const myTeam = Number(mySlot.team || 1);
-      (m.players || []).forEach(p => {
+     const playersArr = m.players || [];
+      // Si el partido es antiguo y no tiene 'team', deduce que los 2 primeros son el equipo 1
+      const myTeam = mySlot.team !== undefined ? Number(mySlot.team) : (playersArr.indexOf(mySlot) < 2 ? 1 : 2);
+      
+      playersArr.forEach((p, idx) => {
         if (normalizeName(p.name) === normUserName) return;
-        if (Number(p.team || 1) === myTeam) {
+        const pTeam = p.team !== undefined ? Number(p.team) : (idx < 2 ? 1 : 2);
+        
+        if (pTeam === myTeam) {
           if (!partnerStats[p.name]) partnerStats[p.name] = { played: 0, won: 0, lost: 0 };
           partnerStats[p.name].played++;
           if (mySlot.won === 'SI') partnerStats[p.name].won++; else partnerStats[p.name].lost++;
@@ -630,18 +635,30 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, allDinn
     let easiestRival = null, hardestRival = null;
 
     Object.entries(partnerStats).forEach(([name, st]) => {
-      if (st.played >= 2) {
-        const pct = (st.won / st.played) * 100;
-        if (!bestPartner || pct > bestPartner.pct) bestPartner = { name, pct: pct.toFixed(0), ...st };
-        if (!worstPartner || pct < worstPartner.pct) worstPartner = { name, pct: (100 - pct).toFixed(0), ...st };
+      if (st.played >= 1) { // 👈 Reducido a 1 partido para que lo veas siempre
+        const winRate = (st.won / st.played) * 100;
+        const lossRate = (st.lost / st.played) * 100;
+        
+        if (!bestPartner || winRate > bestPartner.winRate) {
+          bestPartner = { name, winRate, pct: winRate.toFixed(0), ...st };
+        }
+        if (!worstPartner || lossRate > worstPartner.lossRate) {
+          worstPartner = { name, lossRate, pct: lossRate.toFixed(0), ...st };
+        }
       }
     });
 
     Object.entries(rivalStats).forEach(([name, st]) => {
-      if (st.played >= 2) {
-        const pctWon = (st.wonAgainst / st.played) * 100;
-        if (!easiestRival || pctWon > easiestRival.pct) easiestRival = { name, pct: pctWon.toFixed(0), ...st };
-        if (!hardestRival || pctWon < hardestRival.pct) hardestRival = { name, pct: (100 - pctWon).toFixed(0), ...st };
+      if (st.played >= 1) { // 👈 Reducido a 1 partido para que lo veas siempre
+        const winRate = (st.wonAgainst / st.played) * 100;
+        const lossRate = (st.lostAgainst / st.played) * 100;
+        
+        if (!easiestRival || winRate > easiestRival.winRate) {
+          easiestRival = { name, winRate, pct: winRate.toFixed(0), ...st };
+        }
+        if (!hardestRival || lossRate > hardestRival.lossRate) {
+          hardestRival = { name, lossRate, pct: lossRate.toFixed(0), ...st };
+        }
       }
     });
 
