@@ -4615,10 +4615,80 @@ export default function App() {
                     const isCaptain = t.captain1Id === currentUser?.id || t.captain2Id === currentUser?.id;
                     const canEditDraft = isCreatorOrCoOrg || isCaptain;
 
-                    // NUEVA VISTA 1: BORRADOR DE EQUIPOS (FASE 2)
+                   // NUEVA VISTA 1: BORRADOR DE EQUIPOS (FASE 2)
                     if (t.status === 'BOCETO_EQUIPOS') {
                       const cap1 = (t.participants || []).find(p => p.id === t.captain1Id);
                       const cap2 = (t.participants || []).find(p => p.id === t.captain2Id);
+
+                      // NUEVO: Estados de validación individuales de cada capitán
+                      const [cap1Validated, setCap1Validated] = useState(false);
+                      const [cap2Validated, setCap2Validated] = useState(false);
+                      
+                      const isMeCaptain1 = currentUser?.id === t.captain1Id;
+                      const isMeCaptain2 = currentUser?.id === t.captain2Id;
+                      const bothValidated = cap1Validated && cap2Validated;
+
+                      // RECUPERADO: Cálculo de estadísticas y equilibrio de equipos en tiempo real
+                      const team1Players = (t.participants || []).filter(p => Number(p.assignedTeam || 1) === 1);
+                      const team2Players = (t.participants || []).filter(p => Number(p.assignedTeam || 1) === 2);
+                      const avgT1 = team1Players.length > 0 ? (team1Players.reduce((acc, p) => acc + (p.level || 3.5), 0) / team1Players.length).toFixed(2) : '0.00';
+                      const avgT2 = team2Players.length > 0 ? (team2Players.reduce((acc, p) => acc + (p.level || 3.5), 0) / team2Players.length).toFixed(2) : '0.00';
+                      const delta = Math.abs(parseFloat(avgT1) - parseFloat(avgT2)).toFixed(2);
+                      const isBalanced = parseFloat(delta) <= 0.2;
+
+                      // RECUPERADO: Función de Auto-Equilibrado para el borrador
+                      const handleAutoBalanceDraft = () => {
+                        const participantsList = t.participants || [];
+                        const captain1Obj = participantsList.find(p => p.id === t.captain1Id);
+                        const captain2Obj = participantsList.find(p => p.id === t.captain2Id);
+                        
+                        const rest = participantsList
+                          .filter(p => p.id !== t.captain1Id && p.id !== t.captain2Id)
+                          .sort((a, b) => (b.level || 3.5) - (a.level || 3.5));
+
+                        let team1Arr = captain1Obj ? [captain1Obj] : [];
+                        let team2Arr = captain2Obj ? [captain2Obj] : [];
+
+                        rest.forEach(p => {
+                          const sum1 = team1Arr.reduce((acc, item) => acc + (item.level || 3.5), 0);
+                          const sum2 = team2Arr.reduce((acc, item) => acc + (item.level || 3.5), 0);
+                          if (sum1 <= sum2) team1Arr.push(p);
+                          else team2Arr.push(p);
+                        });
+
+                        const team1Ids = new Set(team1Arr.map(p => p.id));
+                        
+                        // Actualizamos el torneo directamente con los equipos balanceados
+                        let updatedSync = null;
+                        const updatedTournaments = activeTournaments.map(item => {
+                          if (item.id === t.id) {
+                            updatedSync = {
+                              ...item,
+                              participants: participantsList.map(p => ({
+                                ...p,
+                                assignedTeam: team1Ids.has(p.id) ? 1 : 2
+                              }))
+                            };
+                            return updatedSync;
+                          }
+                          return item;
+                        });
+
+                        setActiveTournaments(updatedTournaments);
+                        localStorage.setItem('padel_ctc_tournaments', JSON.stringify(updatedTournaments));
+
+                        if (updatedSync) {
+                          try {
+                            fetch(apiUrl, {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                              body: JSON.stringify({ action: 'GUARDAR_TORNEO', torneo: updatedSync })
+                            });
+                          } catch (e) {
+                            console.error(e);
+                          }
+                        }
+                      };
 
                       return (
                         <div key={t.id} className="bg-slate-900 rounded-3xl p-4 border border-blue-500/30 shadow-lg text-white space-y-3">
@@ -4635,15 +4705,41 @@ export default function App() {
                           </div>
 
                           {canEditDraft ? (
-                            <div className="space-y-3 mt-2">
-                              <p className="text-[11px] text-slate-300">Organiza las escuadras. Los cambios se guardan y sincronizan en tiempo real.</p>
+                            <div className="space-y-3.5 mt-2">
+                              {/* PANEL DE ESTADÍSTICAS Y EQUILIBRIO RECUPERADO */}
+                              <div className="bg-slate-800 p-3 rounded-2xl border border-slate-700 space-y-2">
+                                <div className="flex justify-between items-center">
+                                  <span className="text-[10px] font-black uppercase text-blue-400">📊 Balance de Escuadras</span>
+                                  <span className={`text-[9px] font-black px-2 py-0.5 rounded-full ${isBalanced ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40' : 'bg-amber-500/20 text-amber-300 border border-amber-500/40'}`}>
+                                    {isBalanced ? '✓ Equilibrado' : '⚠️ Desnivelado'} (Δ {delta})
+                                  </span>
+                                </div>
+                                <div className="grid grid-cols-2 gap-2 text-center text-xs">
+                                  <div className="bg-blue-950/60 p-2 rounded-xl border border-blue-500/30">
+                                    <span className="text-[9px] text-blue-300 font-bold block">Equipo Azul 🔵</span>
+                                    <span className="text-sm font-black text-white">{avgT1} <span className="text-[10px] font-normal text-slate-400">({team1Players.length} jugs)</span></span>
+                                  </div>
+                                  <div className="bg-rose-950/60 p-2 rounded-xl border border-rose-500/30">
+                                    <span className="text-[9px] text-rose-300 font-bold block">Equipo Rojo 🔴</span>
+                                    <span className="text-sm font-black text-white">{avgT2} <span className="text-[10px] font-normal text-slate-400">({team2Players.length} jugs)</span></span>
+                                  </div>
+                                </div>
+
+                                <button 
+                                  type="button" 
+                                  onClick={handleAutoBalanceDraft} 
+                                  className="w-full py-2 bg-gradient-to-r from-blue-600 to-rose-600 hover:from-blue-500 text-white font-black rounded-xl text-xs shadow-md transition"
+                                >
+                                  ⚡ Auto-Equilibrar Escuadras por Rating
+                                </button>
+                              </div>
                               
-                              <div className="max-h-64 overflow-y-auto pr-1 space-y-1.5">
+                              <div className="max-h-52 overflow-y-auto pr-1 space-y-1.5">
                                 {(t.participants || []).map(p => (
                                   <div key={p.id} className="p-2 rounded-xl border border-slate-700 bg-slate-800 flex items-center justify-between">
                                     <div className="flex items-center gap-2 truncate">
                                       <UserAvatar name={p.name} photo={p.photo} size="xs" />
-                                      <span className="font-bold text-slate-200 text-xs truncate">{p.name}</span>
+                                      <span className="font-bold text-slate-200 text-xs truncate">{p.name} <span className="text-[10px] text-amber-400">★{p.level || 3.5}</span></span>
                                     </div>
                                     <div className="flex bg-slate-900 p-0.5 rounded-lg border border-slate-700 shrink-0">
                                       <button 
@@ -4654,7 +4750,7 @@ export default function App() {
                                         🔵 Azul
                                       </button>
                                       <button 
-                                        disabled={p.id === t.captain1Id || p.id === t.captain2Id}
+                                        disabled={p.id === t.captain1Id || t.captain2Id === p.id}
                                         onClick={() => handleUpdateDraftTeam(t.id, p.id, 2)} 
                                         className={`px-2 py-1 rounded-md text-[10px] font-black transition ${p.assignedTeam === 2 ? 'bg-rose-600 text-white' : 'text-slate-500'}`}
                                       >
@@ -4664,9 +4760,40 @@ export default function App() {
                                   </div>
                                 ))}
                               </div>
+
+                              {/* Doble casilla de confirmación para los capitanes */}
+                              <div className="bg-slate-800 p-3 rounded-2xl border border-slate-700 space-y-2 text-xs">
+                                <span className="text-[10px] font-black text-blue-400 uppercase block">Validación de Equipos</span>
+                                
+                                <label className="flex items-center gap-2 cursor-pointer bg-slate-900/60 p-2 rounded-xl border border-slate-700">
+                                  <input 
+                                    type="checkbox" 
+                                    disabled={!isMeCaptain1 && !isCreatorOrCoOrg}
+                                    checked={cap1Validated} 
+                                    onChange={e => setCap1Validated(e.target.checked)} 
+                                    className="w-4 h-4 text-blue-600 accent-blue-600" 
+                                  />
+                                  <span className="font-bold text-slate-200">Capitán Azul ({cap1?.name || 'Por asignar'}) da el visto bueno</span>
+                                </label>
+
+                                <label className="flex items-center gap-2 cursor-pointer bg-slate-900/60 p-2 rounded-xl border border-slate-700">
+                                  <input 
+                                    type="checkbox" 
+                                    disabled={!isMeCaptain2 && !isCreatorOrCoOrg}
+                                    checked={cap2Validated} 
+                                    onChange={e => setCap2Validated(e.target.checked)} 
+                                    className="w-4 h-4 text-rose-600 accent-rose-600" 
+                                  />
+                                  <span className="font-bold text-slate-200">Capitán Rojo ({cap2?.name || 'Por asignar'}) da el visto bueno</span>
+                                </label>
+                              </div>
                               
-                              <button onClick={() => handleApproveDraftTeams(t.id)} className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-black rounded-xl text-xs mt-2 transition shadow-md">
-                                ✅ Validar Equipos
+                              <button 
+                                onClick={() => handleApproveDraftTeams(t.id)} 
+                                disabled={!bothValidated}
+                                className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white font-black rounded-xl text-xs mt-2 transition shadow-md"
+                              >
+                                {bothValidated ? '✅ Equipos Validados por ambos Capitanes' : '⏳ Esperando doble validación...'}
                               </button>
                             </div>
                           ) : (
@@ -4678,17 +4805,78 @@ export default function App() {
                         </div>
                       );
                     }
-
-                    // NUEVA VISTA 2: ESPERANDO GENERAR CUADRO (Fase 3 que haremos luego)
+                    // NUEVA VISTA 2: GENERACIÓN DE CUADRO (FASE 3)
                     if (t.status === 'BOCETO_CUADRO') {
+                      const handleGenerateFixtureForDraft = async () => {
+                        // Generamos los cruces automáticos de equipo
+                        const teamA = (t.participants || []).filter(p => p.assignedTeam === 1);
+                        const teamB = (t.participants || []).filter(p => p.participants || (p.assignedTeam === 2));
+                        const totalRounds = Math.max(1, Math.floor((t.duration || 120) / 20));
+                        const rounds = [];
+
+                        let generatedTeams = [
+                          { name: `Equipo Azul 🔵`, players: teamA, score: 0 },
+                          { name: `Equipo Rojo 🔴`, players: teamB, score: 0 }
+                        ];
+
+                        for (let r = 1; r <= totalRounds; r++) {
+                          const matchesList = [];
+                          const poolA = [...teamA].sort(() => Math.random() - 0.5);
+                          const poolB = [...teamB].sort(() => Math.random() - 0.5);
+
+                          for (let c = 1; c <= (Number(t.courts) || 1); c++) {
+                            if (poolA.length >= 2 && poolB.length >= 2) {
+                              const a1 = poolA.pop(); const a2 = poolA.pop();
+                              const b1 = poolB.pop(); const b2 = poolB.pop();
+
+                              matchesList.push({
+                                id: `RYDER_R${r}_P${c}_${Date.now()}`,
+                                court: `Pista ${c}`,
+                                team1: `${a1.name.split(' ')[0]} & ${a2.name.split(' ')[0]} (Azul)`,
+                                team2: `${b1.name.split(' ')[0]} & ${b2.name.split(' ')[0]} (Rojo)`,
+                                score: '',
+                                winner: null,
+                                status: 'PENDIENTE'
+                              });
+                            }
+                          }
+                          rounds.push({ round: r, timeLabel: `Cruce Ryder - Ronda ${r}`, matches: matchesList });
+                        }
+
+                        // Actualizamos el torneo a estado ACTIVO con los cruces listos
+                        let updatedSync = null;
+                        const updatedTournaments = activeTournaments.map(item => {
+                          if (item.id === t.id) {
+                            updatedSync = { ...item, status: 'ACTIVO', rounds, teams: generatedTeams };
+                            return updatedSync;
+                          }
+                          return item;
+                        });
+
+                        setActiveTournaments(updatedTournaments);
+                        localStorage.setItem('padel_ctc_tournaments', JSON.stringify(updatedTournaments));
+
+                        if (updatedSync) {
+                          try {
+                            await fetch(apiUrl, {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                              body: JSON.stringify({ action: 'GUARDAR_TORNEO', torneo: updatedSync })
+                            });
+                          } catch (e) {
+                            console.error(e);
+                          }
+                        }
+                      };
+
                       return (
                         <div key={t.id} className="bg-purple-900 rounded-3xl p-4 border border-purple-500/30 shadow-lg text-white space-y-3 text-center">
                           <span className="text-3xl block mb-1">✨</span>
-                          <h3 className="text-base font-black">Equipos Validados</h3>
-                          <p className="text-xs text-purple-200">Falta que el organizador genere el cuadrante inteligente con Gemini.</p>
+                          <h3 className="text-base font-black">¡Equipos Validados por los Capitanes!</h3>
+                          <p className="text-xs text-purple-200">Ambos capitanes han dado su conformidad. Pulsa para generar los cruces definitivos.</p>
                           {isCreatorOrCoOrg && (
-                            <button className="w-full py-2.5 bg-purple-600 hover:bg-purple-500 text-white font-black rounded-xl text-xs mt-2 transition shadow-md">
-                              Generar Cuadrante (Próximamente)
+                            <button onClick={handleGenerateFixtureForDraft} className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-black rounded-xl text-xs mt-2 transition shadow-md">
+                              🚀 Generar Cuadrante Definitivo
                             </button>
                           )}
                         </div>
