@@ -3318,6 +3318,59 @@ export default function App() {
       btn.disabled = false;
     }
   };
+  const handleUpdateDraftTeam = async (tId, playerId, teamNum) => {
+    let tournamentToSync = null;
+    const updatedTournaments = activeTournaments.map(t => {
+      if (t.id !== tId) return t;
+      tournamentToSync = {
+        ...t,
+        participants: (t.participants || []).map(p => 
+          p.id === playerId ? { ...p, assignedTeam: teamNum } : p
+        )
+      };
+      return tournamentToSync;
+    });
+
+    setActiveTournaments(updatedTournaments);
+    localStorage.setItem('padel_ctc_tournaments', JSON.stringify(updatedTournaments));
+
+    if (tournamentToSync) {
+      try {
+        fetch(apiUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({ action: 'GUARDAR_TORNEO', torneo: tournamentToSync })
+        });
+      } catch (e) {
+        console.error(e);
+      }
+    }
+  };
+
+  const handleApproveDraftTeams = async (tId) => {
+    let tournamentToSync = null;
+    const updatedTournaments = activeTournaments.map(t => {
+      if (t.id !== tId) return t;
+      // Pasamos el borrador a la fase final
+      tournamentToSync = { ...t, status: 'BOCETO_CUADRO' }; 
+      return tournamentToSync;
+    });
+
+    setActiveTournaments(updatedTournaments);
+    localStorage.setItem('padel_ctc_tournaments', JSON.stringify(updatedTournaments));
+
+    if (tournamentToSync) {
+      try {
+        fetch(apiUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({ action: 'GUARDAR_TORNEO', torneo: tournamentToSync })
+        });
+      } catch (e) {
+        console.error(e);
+      }
+    }
+  };
   const currentMatch = matches.find(m => m.id === selectedMatchId);
   const myGroup = (currentUser?.group || 'chicos').toLowerCase();
 
@@ -4596,7 +4649,92 @@ export default function App() {
                   {visibleTournaments.map(t => {
                     const curSubTab = tournamentSubTab[t.id] || 'partidos';
                     const isCreatorOrCoOrg = t.creatorId === currentUser?.id || (t.coOrganizerIds || []).includes(currentUser?.id);
+                    
+                    // NUEVO: Verificación de permisos de borrador
+                    const isCaptain = t.captain1Id === currentUser?.id || t.captain2Id === currentUser?.id;
+                    const canEditDraft = isCreatorOrCoOrg || isCaptain;
 
+                    // NUEVA VISTA 1: BORRADOR DE EQUIPOS (FASE 2)
+                    if (t.status === 'BOCETO_EQUIPOS') {
+                      const cap1 = (t.participants || []).find(p => p.id === t.captain1Id);
+                      const cap2 = (t.participants || []).find(p => p.id === t.captain2Id);
+
+                      return (
+                        <div key={t.id} className="bg-slate-900 rounded-3xl p-4 border border-blue-500/30 shadow-lg text-white space-y-3">
+                          <div className="flex justify-between items-start">
+                            <div>
+                              <span className="text-[10px] font-black uppercase tracking-wider bg-amber-500 text-amber-950 px-2 py-0.5 rounded-md">
+                                Draft Ryder (Capitanes)
+                              </span>
+                              <h3 className="text-base font-black mt-1">{t.name}</h3>
+                            </div>
+                            {isCreatorOrCoOrg && (
+                              <button onClick={() => handleDeleteTournament(t.id)} className="text-[11px] font-bold text-rose-400">🗑️ Borrar</button>
+                            )}
+                          </div>
+
+                          {canEditDraft ? (
+                            <div className="space-y-3 mt-2">
+                              <p className="text-[11px] text-slate-300">Organiza las escuadras. Los cambios se guardan y sincronizan en tiempo real.</p>
+                              
+                              <div className="max-h-64 overflow-y-auto pr-1 space-y-1.5">
+                                {(t.participants || []).map(p => (
+                                  <div key={p.id} className="p-2 rounded-xl border border-slate-700 bg-slate-800 flex items-center justify-between">
+                                    <div className="flex items-center gap-2 truncate">
+                                      <UserAvatar name={p.name} photo={p.photo} size="xs" />
+                                      <span className="font-bold text-slate-200 text-xs truncate">{p.name}</span>
+                                    </div>
+                                    <div className="flex bg-slate-900 p-0.5 rounded-lg border border-slate-700 shrink-0">
+                                      <button 
+                                        disabled={p.id === t.captain1Id || p.id === t.captain2Id}
+                                        onClick={() => handleUpdateDraftTeam(t.id, p.id, 1)} 
+                                        className={`px-2 py-1 rounded-md text-[10px] font-black transition ${p.assignedTeam === 1 ? 'bg-blue-600 text-white' : 'text-slate-500'}`}
+                                      >
+                                        🔵 Azul
+                                      </button>
+                                      <button 
+                                        disabled={p.id === t.captain1Id || p.id === t.captain2Id}
+                                        onClick={() => handleUpdateDraftTeam(t.id, p.id, 2)} 
+                                        className={`px-2 py-1 rounded-md text-[10px] font-black transition ${p.assignedTeam === 2 ? 'bg-rose-600 text-white' : 'text-slate-500'}`}
+                                      >
+                                        🔴 Rojo
+                                      </button>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                              
+                              <button onClick={() => handleApproveDraftTeams(t.id)} className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-black rounded-xl text-xs mt-2 transition shadow-md">
+                                ✅ Validar Equipos
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="p-4 text-center bg-slate-800 rounded-2xl border border-slate-700 mt-2">
+                              <span className="text-3xl block mb-2">🛡️</span>
+                              <p className="text-xs text-slate-300">Los capitanes <strong>{cap1?.name?.split(' ')[0] || 'Azul'}</strong> y <strong>{cap2?.name?.split(' ')[0] || 'Rojo'}</strong> están confeccionando los equipos.<br/><br/>Recibirás una alerta cuando el cuadrante esté listo.</p>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    }
+
+                    // NUEVA VISTA 2: ESPERANDO GENERAR CUADRO (Fase 3 que haremos luego)
+                    if (t.status === 'BOCETO_CUADRO') {
+                      return (
+                        <div key={t.id} className="bg-purple-900 rounded-3xl p-4 border border-purple-500/30 shadow-lg text-white space-y-3 text-center">
+                          <span className="text-3xl block mb-1">✨</span>
+                          <h3 className="text-base font-black">Equipos Validados</h3>
+                          <p className="text-xs text-purple-200">Falta que el organizador genere el cuadrante inteligente con Gemini.</p>
+                          {isCreatorOrCoOrg && (
+                            <button className="w-full py-2.5 bg-purple-600 hover:bg-purple-500 text-white font-black rounded-xl text-xs mt-2 transition shadow-md">
+                              Generar Cuadrante (Próximamente)
+                            </button>
+                          )}
+                        </div>
+                      );
+                    }
+
+                    // VISTA NORMAL (Torneo ACTIVO)
                     return (
                       <div key={t.id} className="bg-white rounded-3xl p-4 border border-slate-200 shadow-xs space-y-3">
                         <div className="flex justify-between items-start">
