@@ -1203,7 +1203,9 @@ function TournamentCreatorModal({ isOpen, onClose, allPlayers, tournaments, onTo
 
   const [captain1Id, setCaptain1Id] = useState('');
   const [captain2Id, setCaptain2Id] = useState('');
-
+  // NUEVOS ESTADOS GLOBALES PARA EL BORRADOR DE CAPITANES
+  const [draftCap1Validated, setDraftCap1Validated] = useState(false);
+  const [draftCap2Validated, setDraftCap2Validated] = useState(false);
   const [guestName, setGuestName] = useState('');
   const [guestLevel, setGuestLevel] = useState(3.0);
   const [guestIsLeftHanded, setGuestIsLeftHanded] = useState(false);
