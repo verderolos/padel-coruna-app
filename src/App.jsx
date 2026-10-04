@@ -1203,9 +1203,6 @@ function TournamentCreatorModal({ isOpen, onClose, allPlayers, tournaments, onTo
 
   const [captain1Id, setCaptain1Id] = useState('');
   const [captain2Id, setCaptain2Id] = useState('');
-  // NUEVOS ESTADOS GLOBALES PARA EL BORRADOR DE CAPITANES
-  const [draftCap1Validated, setDraftCap1Validated] = useState(false);
-  const [draftCap2Validated, setDraftCap2Validated] = useState(false);
   const [guestName, setGuestName] = useState('');
   const [guestLevel, setGuestLevel] = useState(3.0);
   const [guestIsLeftHanded, setGuestIsLeftHanded] = useState(false);
@@ -1790,7 +1787,7 @@ function TournamentCreatorModal({ isOpen, onClose, allPlayers, tournaments, onTo
                     <span className="uppercase text-slate-900">{r.phase || `Ronda ${r.round}`}</span>
                     <span>⏱️ {r.timeLabel}</span>
                   </div>
-                  {r.matches.map((m, mIdx) => (
+                  {(r.matches || []).map((m, mIdx) => (
                     <div key={m.id || mIdx} className="bg-white p-1.5 rounded-lg border border-slate-200 text-[10px]">
                       {editingMatchInfo?.id === m.id ? (
                         <div className="space-y-1.5 p-1">
@@ -3107,9 +3104,9 @@ export default function App() {
       let winningTeamName = '';
       let losingTeamName = '';
 
-      const updatedRounds = t.rounds.map(r => ({
+      const updatedRounds = (t.rounds || []).map(r => ({
         ...r,
-        matches: r.matches.map(m => {
+        matches: (r.matches || []).map(m => {
           if (m.id === matchId) {
             winningTeamName = winningTeamNum === 1 ? m.team1 : m.team2;
             losingTeamName = winningTeamNum === 1 ? m.team2 : m.team1;
@@ -3300,6 +3297,36 @@ export default function App() {
     if (tournamentToSync) {
       try {
         fetch(apiUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({ action: 'GUARDAR_TORNEO', torneo: tournamentToSync })
+        });
+      } catch (e) {
+        console.error(e);
+      }
+    }
+  };
+
+  // NUEVO: Validación de capitanes persistida en el propio torneo (y por tanto en Sheets),
+  // para que el visto bueno de cada capitán se vea aunque cada uno entre desde su propio móvil.
+  const handleSetCaptainValidation = async (tId, captainNum, value) => {
+    let tournamentToSync = null;
+    const updatedTournaments = activeTournaments.map(t => {
+      if (t.id !== tId) return t;
+      tournamentToSync = {
+        ...t,
+        captain1Validated: captainNum === 1 ? value : Boolean(t.captain1Validated),
+        captain2Validated: captainNum === 2 ? value : Boolean(t.captain2Validated)
+      };
+      return tournamentToSync;
+    });
+
+    setActiveTournaments(updatedTournaments);
+    localStorage.setItem('padel_ctc_tournaments', JSON.stringify(updatedTournaments));
+
+    if (tournamentToSync) {
+      try {
+        await fetch(apiUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'text/plain;charset=utf-8' },
           body: JSON.stringify({ action: 'GUARDAR_TORNEO', torneo: tournamentToSync })
@@ -4624,7 +4651,7 @@ export default function App() {
                       
                       const isMeCaptain1 = currentUser?.id === t.captain1Id;
                       const isMeCaptain2 = currentUser?.id === t.captain2Id;
-                      const bothValidated = draftCap1Validated && draftCap2Validated;
+                      const bothValidated = Boolean(t.captain1Validated) && Boolean(t.captain2Validated);
 
                       // RECUPERADO: Cálculo de estadísticas y equilibrio de equipos en tiempo real
                       const team1Players = (t.participants || []).filter(p => Number(p.assignedTeam || 1) === 1);
@@ -4764,8 +4791,8 @@ export default function App() {
                                   <input 
                                     type="checkbox" 
                                     disabled={!isMeCaptain1 && !isCreatorOrCoOrg}
-                                    checked={draftCap1Validated} 
-                                    onChange={e => setDraftCap1Validated(e.target.checked)} 
+                                    checked={Boolean(t.captain1Validated)}
+                                    onChange={e => handleSetCaptainValidation(t.id, 1, e.target.checked)}
                                     className="w-4 h-4 text-blue-600 accent-blue-600" 
                                   />
                                   <span className="font-bold text-slate-200">Capitán Azul ({cap1?.name || 'Por asignar'}) da el visto bueno</span>
@@ -4775,8 +4802,8 @@ export default function App() {
                                   <input 
                                     type="checkbox" 
                                     disabled={!isMeCaptain2 && !isCreatorOrCoOrg}
-                                    checked={draftCap2Validated} 
-                                    onChange={e => setDraftCap2Validated(e.target.checked)} 
+                                    checked={Boolean(t.captain2Validated)}
+                                    onChange={e => handleSetCaptainValidation(t.id, 2, e.target.checked)}
                                     className="w-4 h-4 text-rose-600 accent-rose-600" 
                                   />
                                   <span className="font-bold text-slate-200">Capitán Rojo ({cap2?.name || 'Por asignar'}) da el visto bueno</span>
@@ -4805,7 +4832,7 @@ export default function App() {
                       const handleGenerateFixtureForDraft = async () => {
                         // Generamos los cruces automáticos de equipo
                         const teamA = (t.participants || []).filter(p => p.assignedTeam === 1);
-                        const teamB = (t.participants || []).filter(p => p.participants || (p.assignedTeam === 2));
+                        const teamB = (t.participants || []).filter(p => p.assignedTeam === 2);
                         const totalRounds = Math.max(1, Math.floor((t.duration || 120) / 20));
                         const rounds = [];
 
@@ -4946,14 +4973,14 @@ export default function App() {
                                 <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Cuadrante Oficial</span>
                               </div>
 
-                              {t.rounds.map(r => (
+                              {(t.rounds || []).map(r => (
                                 <div key={r.round} className="bg-slate-50 p-2.5 rounded-2xl border border-slate-200 space-y-1">
                                   <div className="text-center mb-1.5">
                                     <span className="text-[9px] font-black uppercase text-purple-700 bg-purple-100 px-2 py-0.5 rounded-md">
                                       {r.timeLabel || `Ronda ${r.round}`}
                                     </span>
                                   </div>
-                                  {r.matches.map((m, mIdx) => (
+                                  {(r.matches || []).map((m, mIdx) => (
                                     <div
                                       key={m.id || mIdx}
                                       onClick={() => {
@@ -5148,3 +5175,4 @@ export default function App() {
     </div>
   );
 }
+
