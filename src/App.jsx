@@ -984,7 +984,7 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, allDinn
               </div>
 
               <div className="bg-rose-50/80 border border-rose-200 p-2.5 rounded-2xl">
-                <span className="text-[9px] font-black text-rose-800 uppercase block mb-1">💀 Rival Más Duro</span>
+                <span className="text-[9px] font-black text-rose-800 uppercase block mb-1">💀 Bestia Negra</span>
                 {statsCalculated.hardestRival ? (
                   <div>
                     <span className="font-extrabold text-slate-900 block truncate">{statsCalculated.hardestRival.name}</span>
@@ -1012,7 +1012,7 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, allDinn
               </div>
 
               <div className="bg-amber-50/80 border border-amber-200 p-2.5 rounded-2xl">
-                <span className="text-[9px] font-black text-amber-800 uppercase block mb-1">⚠️ Pareja Complicada</span>
+                <span className="text-[9px] font-black text-amber-800 uppercase block mb-1">⚠️ Pareja Gafe</span>
                 {statsCalculated.worstPartner ? (
                   <div>
                     <span className="font-extrabold text-slate-900 block truncate">{statsCalculated.worstPartner.name}</span>
