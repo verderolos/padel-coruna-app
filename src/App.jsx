@@ -129,6 +129,160 @@ function eliminationRoundLabel(matchesInRound) {
   return `Ronda de ${matchesInRound * 2}`;
 }
 
+// Reparte 4 jugadores en 2 parejas equilibradas evitando que dos zurdos compartan pareja
+// cuando sea posible. Versión "de módulo" (fuera del asistente de creación de torneo) para
+// poder reutilizarla al calcular sobre la marcha la siguiente ronda del Pozo Continuo.
+function pairFourPlayersBalanced(pool4) {
+  const lefties = pool4.filter(p => p.isLeftHanded);
+  const righties = pool4.filter(p => !p.isLeftHanded);
+  if (lefties.length === 2 && righties.length === 2) {
+    return { pair1: [lefties[0], righties[0]], pair2: [lefties[1], righties[1]] };
+  }
+  const sorted = [...pool4].sort((a, b) => (b.level || 3.5) - (a.level || 3.5));
+  return { pair1: [sorted[0], sorted[3]], pair2: [sorted[1], sorted[2]] };
+}
+
+// NUEVO (Pozo Continuo en formato escalera): calcula la ronda siguiente a partir de los
+// resultados de la ronda que se acaba de completar. Regla "sube/baja": en cada pista, los
+// dos ganadores suben una pista (los de la Pista 1 se quedan en la Pista 1, no hay más
+// arriba) y los dos perdedores bajan una pista (los de la última pista se quedan ahí, no
+// hay más abajo). Se recalculan parejas nuevas en cada pista con pairFourPlayersBalanced.
+function computeNextPozoRound(t, updatedRounds, nextRoundNum) {
+  const lastRound = updatedRounds.find(r => r.round === nextRoundNum - 1);
+  if (!lastRound) return null;
+
+  const fixedPairs = Boolean(t.pozoEscalera && t.pozoEscalera.fixedPairs);
+
+  // MODO "PAREJAS FIJAS": la pareja entera sube o baja de pista junta, sin recombinar
+  // jugadores — simplemente movemos las dos parejas de cada pista a su pista nueva y las
+  // enfrentamos directamente entre sí, conservando quién jugaba con quién.
+  if (fixedPairs) {
+    const winnerCoupleByCourt = {};
+    const loserCoupleByCourt = {};
+    (lastRound.matches || []).forEach(m => {
+      if (!m.courtNum || m.winner == null) return;
+      winnerCoupleByCourt[m.courtNum] = {
+        ids: (m.winner === 1 ? m.team1Ids : m.team2Ids) || [],
+        name: m.winner === 1 ? m.team1 : m.team2
+      };
+      loserCoupleByCourt[m.courtNum] = {
+        ids: (m.winner === 1 ? m.team2Ids : m.team1Ids) || [],
+        name: m.winner === 1 ? m.team2 : m.team1
+      };
+    });
+
+    const courtsJugadasFijas = Object.keys(winnerCoupleByCourt).map(Number);
+    if (!courtsJugadasFijas.length) return null;
+    const maxCourtFijas = Math.max(...courtsJugadasFijas);
+
+    const nextCourtCouples = {};
+    for (let c = 1; c <= maxCourtFijas; c++) nextCourtCouples[c] = [];
+    for (let c = 1; c <= maxCourtFijas; c++) {
+      const w = winnerCoupleByCourt[c];
+      const l = loserCoupleByCourt[c];
+      const pistaSubida = c === 1 ? 1 : c - 1;
+      const pistaBajada = c === maxCourtFijas ? maxCourtFijas : c + 1;
+      if (w) nextCourtCouples[pistaSubida].push(w);
+      if (l) nextCourtCouples[pistaBajada].push(l);
+    }
+
+    const matchesListFijas = [];
+    for (let c = 1; c <= maxCourtFijas; c++) {
+      const couples = (nextCourtCouples[c] || []).slice(0, 2);
+      if (couples.length < 2) continue;
+      matchesListFijas.push({
+        id: `POZO_R${nextRoundNum}_P${c}_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+        court: c === 1 ? 'Pista 1 👑 (Pista Reina)' : `Pista ${c}`,
+        team1: couples[0].name, team2: couples[1].name,
+        team1Ids: couples[0].ids || [], team2Ids: couples[1].ids || [],
+        courtNum: c,
+        score: '', winner: null, status: 'PENDIENTE'
+      });
+    }
+    if (!matchesListFijas.length) return null;
+    return { round: nextRoundNum, timeLabel: `Ronda ${nextRoundNum}`, matches: matchesListFijas };
+  }
+
+  // MODO "PAREJAS ROTATIVAS" (por defecto): cada ronda se recombinan los 4 jugadores que
+  // coinciden en cada pista en 2 parejas nuevas y equilibradas.
+  const byId = {};
+  (t.participants || []).forEach(p => { byId[p.id] = p; });
+
+  const winnersByCourt = {};
+  const losersByCourt = {};
+  (lastRound.matches || []).forEach(m => {
+    if (!m.courtNum || m.winner == null) return;
+    winnersByCourt[m.courtNum] = (m.winner === 1 ? m.team1Ids : m.team2Ids) || [];
+    losersByCourt[m.courtNum] = (m.winner === 1 ? m.team2Ids : m.team1Ids) || [];
+  });
+
+  const courtsJugadas = Object.keys(winnersByCourt).map(Number);
+  if (!courtsJugadas.length) return null;
+  const maxCourt = Math.max(...courtsJugadas);
+
+  const nextCourtPlayers = {};
+  for (let c = 1; c <= maxCourt; c++) nextCourtPlayers[c] = [];
+  for (let c = 1; c <= maxCourt; c++) {
+    const winners = winnersByCourt[c] || [];
+    const losers = losersByCourt[c] || [];
+    const pistaSubida = c === 1 ? 1 : c - 1;
+    const pistaBajada = c === maxCourt ? maxCourt : c + 1;
+    nextCourtPlayers[pistaSubida] = nextCourtPlayers[pistaSubida].concat(winners);
+    nextCourtPlayers[pistaBajada] = nextCourtPlayers[pistaBajada].concat(losers);
+  }
+
+  const matchesList = [];
+  for (let c = 1; c <= maxCourt; c++) {
+    const idsInCourt = (nextCourtPlayers[c] || []).slice(0, 4);
+    if (idsInCourt.length < 4) continue;
+    const playersInCourt = idsInCourt.map(id => byId[id]).filter(Boolean);
+    if (playersInCourt.length < 4) continue;
+    const paired = pairFourPlayersBalanced(playersInCourt);
+    matchesList.push({
+      id: `POZO_R${nextRoundNum}_P${c}_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+      court: c === 1 ? 'Pista 1 👑 (Pista Reina)' : `Pista ${c}`,
+      team1: `${paired.pair1[0].name.split(' ')[0]} & ${paired.pair1[1].name.split(' ')[0]}`,
+      team2: `${paired.pair2[0].name.split(' ')[0]} & ${paired.pair2[1].name.split(' ')[0]}`,
+      team1Ids: [paired.pair1[0].id, paired.pair1[1].id],
+      team2Ids: [paired.pair2[0].id, paired.pair2[1].id],
+      courtNum: c,
+      score: '', winner: null, status: 'PENDIENTE'
+    });
+  }
+  if (!matchesList.length) return null;
+  return { round: nextRoundNum, timeLabel: `Ronda ${nextRoundNum}`, matches: matchesList };
+}
+
+// NUEVO (Pozo Continuo): clasificación final una vez jugada la última ronda. Orden:
+// 1) pista final (más baja gana), 2) puestos netos subidos desde la pista de inicio
+// (corrige a quien empezó abajo y ha ido escalando, frente a quien arrancó ya en la
+// Pista 1 y simplemente se mantuvo), 3) partidos ganados en todo el torneo, como último
+// desempate.
+function computePozoStandings(t) {
+  if (!t || t.mode !== 'pozo' || !t.pozoEscalera) return [];
+  const startCourts = t.pozoEscalera.startCourts || {};
+  const byId = {};
+  (t.participants || []).forEach(p => { byId[p.id] = { ...p, finalCourt: startCourts[p.id] || 999, wins: 0 }; });
+
+  (t.rounds || []).forEach(r => {
+    (r.matches || []).forEach(m => {
+      if (m.winner == null || !m.courtNum) return;
+      const winnerIds = (m.winner === 1 ? m.team1Ids : m.team2Ids) || [];
+      const loserIds = (m.winner === 1 ? m.team2Ids : m.team1Ids) || [];
+      winnerIds.forEach(id => {
+        if (byId[id]) { byId[id].finalCourt = Math.max(1, m.courtNum - 1); byId[id].wins += 1; }
+      });
+      loserIds.forEach(id => {
+        if (byId[id]) { byId[id].finalCourt = m.courtNum + 1; }
+      });
+    });
+  });
+
+  return Object.values(byId)
+    .map(p => ({ ...p, subidos: (startCourts[p.id] || 999) - p.finalCourt }))
+    .sort((a, b) => (a.finalCourt - b.finalCourt) || (b.subidos - a.subidos) || (b.wins - a.wins));
+}
+
 function isMatchOfficial(m) {
   if (!m) return false;
   if (m.isOfficial !== undefined) return Boolean(m.isOfficial);
@@ -706,7 +860,116 @@ function PushNotificationsCard({ currentUser, apiUrl }) {
   );
 }
 
-function AlertsScreen({ alerts, onBack, currentUser, apiUrl }) {
+// NUEVO: configuración personal de avisos push "programados" — el recordatorio de los
+// lunes (opt-in, por eso tiene su propio interruptor) y las combinaciones día+hora para
+// las alertas de reserva en Playtomic (puede haber varias por jugador: p.ej. martes 20h
+// y jueves 21h). El envío real de estos avisos lo hace un trigger de Apps Script que
+// corre cada minuto en el servidor — este componente solo guarda la configuración.
+const DIAS_SEMANA_ALERTAS = [
+  { v: 1, l: 'Lunes' }, { v: 2, l: 'Martes' }, { v: 3, l: 'Miércoles' },
+  { v: 4, l: 'Jueves' }, { v: 5, l: 'Viernes' }, { v: 6, l: 'Sábado' }, { v: 7, l: 'Domingo' }
+];
+
+function PushPreferencesCard({ currentUser, apiUrl, alertPreferences, reservationAlerts, onRefresh }) {
+  const [busy, setBusy] = useState(false);
+  const [diaNuevo, setDiaNuevo] = useState(4);
+  const [horaNueva, setHoraNueva] = useState('21:00');
+
+  const miPref = (alertPreferences || []).find(p => p.idJugador === currentUser.id);
+  const lunesActivo = miPref ? String(miPref.avisoLunesPartido).toUpperCase() === 'SI' : false;
+  const misReservas = (reservationAlerts || []).filter(r => r.idJugador === currentUser.id);
+
+  const postAccion = async (payload) => {
+    setBusy(true);
+    try {
+      await fetch(apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify(payload)
+      });
+      await onRefresh();
+    } catch (e) {
+      console.error('Error guardando preferencia de avisos:', e);
+      alert('No se ha podido guardar el cambio. Revisa tu conexión e inténtalo de nuevo.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleToggleLunes = () => {
+    postAccion({ action: 'GUARDAR_PREFERENCIA_LUNES', idJugador: currentUser.id, activo: lunesActivo ? 'NO' : 'SI' });
+  };
+
+  const handleAddReserva = () => {
+    if (misReservas.some(r => Number(r.diaSemana) === Number(diaNuevo) && r.hora === horaNueva)) {
+      alert('Ya tienes un aviso configurado para ese día y esa hora.');
+      return;
+    }
+    postAccion({ action: 'GUARDAR_ALERTA_RESERVA', idJugador: currentUser.id, diaSemana: Number(diaNuevo), hora: horaNueva });
+  };
+
+  const handleDeleteReserva = (id) => {
+    postAccion({ action: 'ELIMINAR_ALERTA_RESERVA', id });
+  };
+
+  return (
+    <div className="bg-white rounded-2xl p-3.5 border border-slate-200 shadow-xs space-y-3">
+      <div className="flex items-center gap-2">
+        <span className="text-xl shrink-0">⚙️</span>
+        <span className="font-black text-slate-900 text-xs">Qué avisos quieres recibir</span>
+      </div>
+
+      <div className="flex items-center justify-between gap-2 bg-slate-50 rounded-xl p-2.5">
+        <div className="min-w-0">
+          <span className="font-bold text-slate-800 text-[11px] block">📋 Aviso de los lunes</span>
+          <span className="text-[10px] text-slate-500 block">Si para esta semana no te localizamos en ningún partido subido a la app</span>
+        </div>
+        <button
+          onClick={handleToggleLunes}
+          disabled={busy}
+          className={`shrink-0 w-11 h-6 rounded-full transition relative disabled:opacity-50 ${lunesActivo ? 'bg-emerald-500' : 'bg-slate-300'}`}
+        >
+          <span className="absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition" style={{ left: lunesActivo ? '22px' : '2px' }} />
+        </button>
+      </div>
+
+      <div className="bg-slate-50 rounded-xl p-2.5 space-y-2">
+        <span className="font-bold text-slate-800 text-[11px] block">🎾 Avisos de reserva en Playtomic</span>
+        <span className="text-[10px] text-slate-500 block">
+          Te avisamos 2 minutos antes de que se abra la reserva (se abre una semana antes, al mismo día y hora que configures aquí)
+        </span>
+
+        {misReservas.length > 0 && (
+          <div className="flex flex-wrap gap-1.5">
+            {misReservas.map(r => (
+              <span key={r.id} className="inline-flex items-center gap-1 bg-amber-100 text-amber-800 text-[10px] font-bold px-2 py-1 rounded-full">
+                {(DIAS_SEMANA_ALERTAS.find(d => d.v === Number(r.diaSemana)) || {}).l || r.diaSemana} {r.hora}
+                <button onClick={() => handleDeleteReserva(r.id)} disabled={busy} className="text-amber-600 hover:text-amber-900 font-black disabled:opacity-50">✕</button>
+              </span>
+            ))}
+          </div>
+        )}
+
+        <div className="flex gap-1.5 items-center">
+          <select value={diaNuevo} onChange={(e) => setDiaNuevo(e.target.value)} className="flex-1 text-[11px] border border-slate-300 rounded-lg px-2 py-1.5 bg-white">
+            {DIAS_SEMANA_ALERTAS.map(d => <option key={d.v} value={d.v}>{d.l}</option>)}
+          </select>
+          <input
+            type="time"
+            value={horaNueva}
+            onChange={(e) => setHoraNueva(e.target.value)}
+            className="w-24 text-[11px] border border-slate-300 rounded-lg px-2 py-1.5 bg-white"
+          />
+          <button onClick={handleAddReserva} disabled={busy} className="shrink-0 px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-lg text-[11px] disabled:opacity-50 transition">
+            + Añadir
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AlertsScreen({ alerts, onBack, currentUser, apiUrl, alertPreferences, reservationAlerts, onRefreshAlertPrefs }) {
   return (
     <div className="space-y-3">
       <button onClick={onBack} className="text-xs font-bold text-blue-600 hover:underline flex items-center gap-1">
@@ -728,6 +991,16 @@ function AlertsScreen({ alerts, onBack, currentUser, apiUrl }) {
       </div>
 
       {currentUser && <PushNotificationsCard currentUser={currentUser} apiUrl={apiUrl} />}
+
+      {currentUser && (
+        <PushPreferencesCard
+          currentUser={currentUser}
+          apiUrl={apiUrl}
+          alertPreferences={alertPreferences}
+          reservationAlerts={reservationAlerts}
+          onRefresh={onRefreshAlertPrefs}
+        />
+      )}
 
       {alerts.length === 0 ? (
         <div className="bg-white rounded-2xl p-8 text-center border border-slate-200">
@@ -757,7 +1030,7 @@ function AlertsScreen({ alerts, onBack, currentUser, apiUrl }) {
 }
 
 // MODAL DE PERFIL DE JUGADOR CON SUBPANEL INTERACTIVO Y DETALLE DE BOTE/PUNTOS
-function UserProfileModal({ isOpen, onClose, user, matches, tournaments, allDinnerGuests, onPhotoUploaded, onUpdateUserData, isCurrentUser, isThursdayMember }) {
+function UserProfileModal({ isOpen, onClose, user, matches, tournaments, allDinnerGuests, onPhotoUploaded, onUpdateUserData, isCurrentUser, isThursdayMember, viewerUser }) {
   const fileInputRef = useRef(null);
   const [uploading, setUploading] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -824,6 +1097,14 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, allDinn
     let puntosDetalle = [], boteDetalle = [];
     const partnerStats = {}, rivalStats = {};
 
+    // NUEVO: "química" cara a cara entre quien consulta (viewerUser) y el perfil que está
+    // viendo (user) — solo tiene sentido cuando son dos personas distintas. Se calcula sobre
+    // los mismos partidos oficiales de liga regular que ya usa el resto de estadísticas.
+    const normViewerName = viewerUser ? normalizeName(viewerUser.name) : null;
+    const headToHead = (viewerUser && viewerUser.id !== user.id)
+      ? { partnerPlayed: 0, partnerWon: 0, partnerLost: 0, rivalPlayed: 0, profileWonVsViewer: 0, viewerWonVsProfile: 0, recent: [] }
+      : null;
+
     matches.forEach(m => {
       if (m.status !== 'FINALIZADO') return;
       if (!isMatchOfficial(m)) return;
@@ -888,6 +1169,20 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, allDinn
           if (!rivalStats[p.name]) rivalStats[p.name] = { played: 0, wonAgainst: 0, lostAgainst: 0 };
           rivalStats[p.name].played++;
           if (mySlot.won === 'SI') rivalStats[p.name].wonAgainst++; else rivalStats[p.name].lostAgainst++;
+        }
+
+        // Si este compañero/rival de la pista es justo quien está consultando el perfil,
+        // acumulamos también el cara a cara específico entre los dos.
+        if (headToHead && (p.id === viewerUser.id || normalizeName(p.name) === normViewerName)) {
+          if (pTeam === myTeam) {
+            headToHead.partnerPlayed++;
+            if (mySlot.won === 'SI') headToHead.partnerWon++; else headToHead.partnerLost++;
+            headToHead.recent.push({ date: m.date, tipo: 'pareja', ganaron: mySlot.won === 'SI' });
+          } else {
+            headToHead.rivalPlayed++;
+            if (mySlot.won === 'SI') headToHead.profileWonVsViewer++; else headToHead.viewerWonVsProfile++;
+            headToHead.recent.push({ date: m.date, tipo: 'rival', ganaProfile: mySlot.won === 'SI' });
+          }
         }
       });
     });
@@ -965,7 +1260,8 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, allDinn
       won: wonList.length,
       lost: lostList.length,
       winRate: playedList.length > 0 ? ((wonList.length / playedList.length) * 100).toFixed(0) : 0,
-      bestPartner, worstPartner, easiestRival, hardestRival
+      bestPartner, worstPartner, easiestRival, hardestRival,
+      headToHead
     };
   })();
 
@@ -1407,6 +1703,83 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, allDinn
           </div>
         )}
 
+        {/* ESTADÍSTICAS DE CRUCE (TÚ vs EL JUGADOR CONSULTADO) */}
+        {statsCalculated.headToHead && (() => {
+          const hh = statsCalculated.headToHead;
+          const totalJuntos = hh.partnerPlayed;
+          const totalRivales = hh.rivalPlayed;
+          const sinDatos = totalJuntos === 0 && totalRivales === 0;
+          return (
+            <div className="space-y-2 pt-2 border-t border-slate-100 text-xs">
+              <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">
+                🔗 Tu Cruce con {user.name}
+              </span>
+
+              {sinDatos ? (
+                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3 text-center">
+                  <span className="text-[11px] text-slate-400 italic">
+                    Todavía no habéis coincidido en ningún partido oficial.
+                  </span>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="bg-indigo-50/80 border border-indigo-200 p-2.5 rounded-2xl">
+                    <span className="text-[9px] font-black text-indigo-800 uppercase block mb-1">🤝 Como Pareja</span>
+                    {totalJuntos > 0 ? (
+                      <div>
+                        <span className="font-extrabold text-slate-900 block">
+                          {hh.partnerWon}V - {hh.partnerLost}D
+                        </span>
+                        <span className="text-[10px] font-bold text-indigo-700">
+                          {totalJuntos} {totalJuntos === 1 ? 'partido jugado' : 'partidos jugados'} juntos
+                        </span>
+                      </div>
+                    ) : (
+                      <span className="text-[10px] text-slate-400 italic">Nunca habéis sido pareja</span>
+                    )}
+                  </div>
+
+                  <div className="bg-orange-50/80 border border-orange-200 p-2.5 rounded-2xl">
+                    <span className="text-[9px] font-black text-orange-800 uppercase block mb-1">⚔️ Como Rivales</span>
+                    {totalRivales > 0 ? (
+                      <div>
+                        <span className="font-extrabold text-slate-900 block">
+                          Tú {hh.viewerWonVsProfile} - {hh.profileWonVsViewer} {user.name?.split(' ')[0] || 'Él/Ella'}
+                        </span>
+                        <span className="text-[10px] font-bold text-orange-700">
+                          {totalRivales} {totalRivales === 1 ? 'enfrentamiento' : 'enfrentamientos'}
+                        </span>
+                      </div>
+                    ) : (
+                      <span className="text-[10px] text-slate-400 italic">Nunca os habéis enfrentado</span>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {hh.recent.length > 0 && (
+                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-2.5 space-y-1 mt-1">
+                  <span className="text-[9px] font-black text-slate-500 uppercase block mb-1">🕑 Últimos cruces</span>
+                  {[...hh.recent].reverse().slice(0, 5).map((r, idx) => (
+                    <div key={idx} className="flex justify-between items-center text-[10px] border-b border-slate-200/70 last:border-0 pb-1 last:pb-0">
+                      <span className="text-slate-500">{r.date}</span>
+                      {r.tipo === 'pareja' ? (
+                        <span className={`font-bold ${r.ganaron ? 'text-emerald-600' : 'text-rose-600'}`}>
+                          🤝 Pareja · {r.ganaron ? 'Victoria' : 'Derrota'}
+                        </span>
+                      ) : (
+                        <span className={`font-bold ${r.ganaProfile ? 'text-rose-600' : 'text-emerald-600'}`}>
+                          ⚔️ Rival · {r.ganaProfile ? `Ganó ${user.name?.split(' ')[0] || 'él/ella'}` : 'Ganaste tú'}
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })()}
+
         {/* SUBPANEL DE DETALLE DE ESTADÍSTICAS */}
         {selectedStatCategory && (
           <div className="bg-slate-900 text-white rounded-2xl p-3 space-y-2 border border-slate-700 animate-fadeIn text-xs">
@@ -1552,6 +1925,10 @@ function TournamentCreatorModal({ isOpen, onClose, allPlayers, tournaments, onTo
   const [step, setStep] = useState(1);
   const [tName, setTName] = useState('Torneo CTC Fin de Semana');
   const [tournamentMode, setTournamentMode] = useState('equipos');
+  // NUEVO: en el Pozo Continuo (formato escalera), el organizador decide si las parejas son
+  // fijas durante todo el torneo (la pareja sube/baja de pista junta) o rotativas (cada ronda
+  // se reparten de nuevo los 4 jugadores de cada pista en parejas nuevas).
+  const [pozoFixedPairs, setPozoFixedPairs] = useState(false);
 
   const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
   const [tDate, setTDate] = useState(todayStr);
@@ -1615,6 +1992,11 @@ function TournamentCreatorModal({ isOpen, onClose, allPlayers, tournaments, onTo
 
   const [generatedFixture, setGeneratedFixture] = useState([]);
   const [generatedTeams, setGeneratedTeams] = useState([]);
+  // NUEVO (Pozo Continuo en formato escalera): guarda, solo para el modo 'pozo', cuántas
+  // rondas en total va a tener el torneo (para saber cuándo parar de generar rondas nuevas)
+  // y en qué pista empezó cada jugador (para la corrección del ranking final, que premia
+  // a quien sube más puestos y no solo a quien termina en la Pista 1).
+  const [pozoMeta, setPozoMeta] = useState(null);
 
   useEffect(() => {
     const selected = participants.filter(p => p.selected);
@@ -1772,30 +2154,36 @@ function TournamentCreatorModal({ isOpen, onClose, allPlayers, tournaments, onTo
       const rounds = [];
 
       if (tournamentMode === 'pozo') {
-        // FIX: antes se partía siempre del mismo "sorted" sin rotar, así que cada ronda
-        // repetía exactamente los mismos 4 jugadores por pista. Con el método del círculo,
-        // cada ronda rota el orden de salida para que las parejas/rivales vayan cambiando.
-        for (let r = 1; r <= totalRounds; r++) {
-          const matchesList = [];
-          const roundPool = rotateArray(sorted, r - 1);
-          for (let c = 1; c <= (Number(tCourts) || 1); c++) {
-            if (roundPool.length >= 4) {
-              const p1 = roundPool.shift(); const p2 = roundPool.shift(); const p3 = roundPool.shift(); const p4 = roundPool.shift();
-              const paired = pairFourPlayersAvoidingDoubleLefties([p1, p2, p3, p4]);
-              matchesList.push({
-                id: `POZO_R${r}_P${c}_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
-                court: c === 1 ? 'Pista 1 👑 (Pista Reina)' : `Pista ${c}`,
-                team1: `${paired.pair1[0].name.split(' ')[0]} & ${paired.pair1[1].name.split(' ')[0]}`,
-                team2: `${paired.pair2[0].name.split(' ')[0]} & ${paired.pair2[1].name.split(' ')[0]}`,
-                team1Ids: [paired.pair1[0].id, paired.pair1[1].id],
-                team2Ids: [paired.pair2[0].id, paired.pair2[1].id],
-                courtNum: c,
-                score: '', winner: null, status: 'PENDIENTE'
-              });
-            }
+        // REDISEÑO "ESCALERA": ya no se generan todas las rondas de golpe con una rotación
+        // fija. Solo se arma la Ronda 1 (seedeada por nivel: los de nivel más alto empiezan
+        // en la Pista 1, bajando por orden), y a partir de ahí cada ronda se calcula sobre la
+        // marcha en handleSaveTournamentScore en cuanto se reportan los 4 resultados de la
+        // ronda anterior: quien gana sube una pista, quien pierde baja una (con tope en la
+        // Pista 1 y en la última pista). Guardamos en qué pista empezó cada jugador
+        // (pozoMeta.startCourts) para poder corregir el ranking final: subir desde abajo vale
+        // más que quedarte quieto en la Pista 1 desde el principio.
+        const startCourts = {};
+        const matchesList = [];
+        const roundPool = [...sorted];
+        for (let c = 1; c <= (Number(tCourts) || 1); c++) {
+          if (roundPool.length >= 4) {
+            const p1 = roundPool.shift(); const p2 = roundPool.shift(); const p3 = roundPool.shift(); const p4 = roundPool.shift();
+            [p1, p2, p3, p4].forEach(p => { startCourts[p.id] = c; });
+            const paired = pairFourPlayersAvoidingDoubleLefties([p1, p2, p3, p4]);
+            matchesList.push({
+              id: `POZO_R1_P${c}_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+              court: c === 1 ? 'Pista 1 👑 (Pista Reina)' : `Pista ${c}`,
+              team1: `${paired.pair1[0].name.split(' ')[0]} & ${paired.pair1[1].name.split(' ')[0]}`,
+              team2: `${paired.pair2[0].name.split(' ')[0]} & ${paired.pair2[1].name.split(' ')[0]}`,
+              team1Ids: [paired.pair1[0].id, paired.pair1[1].id],
+              team2Ids: [paired.pair2[0].id, paired.pair2[1].id],
+              courtNum: c,
+              score: '', winner: null, status: 'PENDIENTE'
+            });
           }
-          rounds.push({ round: r, timeLabel: `Ronda ${r}`, matches: matchesList });
         }
+        rounds.push({ round: 1, timeLabel: 'Ronda 1', matches: matchesList });
+        setPozoMeta({ startCourts, totalRounds, totalCourts: Number(tCourts) || 1, fixedPairs: pozoFixedPairs });
       } else if (tournamentMode === 'americano') {
         for (let r = 1; r <= totalRounds; r++) {
           const matchesList = [];
@@ -1849,6 +2237,7 @@ function TournamentCreatorModal({ isOpen, onClose, allPlayers, tournaments, onTo
 
           let roundNum = 1;
           let semifinalMatchIds = [];
+          let round1MatchIds = [];
 
           while (currentSlots.length > 1) {
             const matchesThisRound = currentSlots.length / 2;
@@ -1881,6 +2270,9 @@ function TournamentCreatorModal({ isOpen, onClose, allPlayers, tournaments, onTo
               }
             }
 
+            if (roundNum === 1) {
+              round1MatchIds = matchesList.map(m => m.id);
+            }
             if (matchesThisRound === 2) {
               semifinalMatchIds = matchesList.map(m => m.id);
             }
@@ -1907,6 +2299,58 @@ function TournamentCreatorModal({ isOpen, onClose, allPlayers, tournaments, onTo
                 score: '', winner: null, status: 'PENDIENTE'
               }]
             });
+          }
+
+          // NUEVO: cuadro de consolación completo para quienes pierden en la Ronda 1 — así
+          // casi todo el mundo juega al menos 2 partidos aunque pierda el primero. Reutiliza
+          // el mismo mecanismo de "huecos pendientes" del cuadro principal (team1Source /
+          // team1LoserFrom), que handleSaveTournamentScore ya sabe resolver de forma genérica
+          // en cuanto se reporta el resultado del partido del que depende cada hueco — no hace
+          // falta tocar esa función para que este cuadro se vaya rellenando solo.
+          if (round1MatchIds.length >= 2) {
+            let consolSlots = round1MatchIds.map(mid => ({ name: 'Perdedor Ronda 1', ids: [], pendingLoserFrom: mid }));
+            let consolBracketSize = 2;
+            while (consolBracketSize < consolSlots.length) consolBracketSize *= 2;
+            while (consolSlots.length < consolBracketSize) consolSlots.push(null);
+
+            let consolRoundNum = 1;
+            while (consolSlots.length > 1) {
+              const matchesThisConsolRound = consolSlots.length / 2;
+              const consolLabel = matchesThisConsolRound === 1
+                ? '🥈 Final de Consolación'
+                : `🥈 Consolación (${eliminationRoundLabel(matchesThisConsolRound)})`;
+              const matchesList = [];
+              const nextConsolSlots = [];
+
+              for (let i = 0; i < consolSlots.length; i += 2) {
+                const a = consolSlots[i];
+                const b = consolSlots[i + 1];
+                const matchId = `CONSOL_R${consolRoundNum}_M${i / 2}`;
+
+                if (a && b) {
+                  matchesList.push({
+                    id: matchId,
+                    court: `Pista ${((i / 2) % (Number(tCourts) || 1)) + 1}`,
+                    team1: a.name, team2: b.name,
+                    team1Ids: a.ids || [], team2Ids: b.ids || [],
+                    team1Source: a.pendingFrom || null,
+                    team2Source: b.pendingFrom || null,
+                    team1LoserFrom: a.pendingLoserFrom || null,
+                    team2LoserFrom: b.pendingLoserFrom || null,
+                    score: '', winner: null, status: 'PENDIENTE'
+                  });
+                  nextConsolSlots.push({ name: `Ganador (${consolLabel})`, ids: [], pendingFrom: matchId });
+                } else {
+                  nextConsolSlots.push(a || b || null);
+                }
+              }
+
+              if (matchesList.length > 0) {
+                rounds.push({ round: 100 + consolRoundNum, timeLabel: consolLabel, matches: matchesList, isConsolation: true });
+              }
+              consolSlots = nextConsolSlots;
+              consolRoundNum++;
+            }
           }
         }
       } else if (tournamentMode === 'equipos') {
@@ -1989,7 +2433,10 @@ function TournamentCreatorModal({ isOpen, onClose, allPlayers, tournaments, onTo
       teams: generatedTeams,
       status: finalStatus,
       captain1Id: captain1Id || null,
-      captain2Id: captain2Id || null
+      captain2Id: captain2Id || null,
+      // NUEVO: metadatos del formato escalera del Pozo Continuo (ver comentario en
+      // handleGenerateWithGemini). Solo se rellena cuando tournamentMode === 'pozo'.
+      pozoEscalera: tournamentMode === 'pozo' ? pozoMeta : null
     });
     onClose();
   };
@@ -2045,6 +2492,30 @@ function TournamentCreatorModal({ isOpen, onClose, allPlayers, tournaments, onTo
                 </button>
               </div>
             </div>
+
+            {tournamentMode === 'pozo' && (
+              <div>
+                <label className="block text-[11px] font-bold text-slate-600 mb-1.5">¿Parejas fijas o rotativas?</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setPozoFixedPairs(false)}
+                    className={`p-2.5 rounded-2xl border text-left transition ${!pozoFixedPairs ? 'bg-blue-50 border-blue-600 text-blue-950 ring-2 ring-blue-500' : 'bg-slate-50 border-slate-200 text-slate-600'}`}
+                  >
+                    <span className="font-black block text-xs">🔀 Rotativas</span>
+                    <span className="text-[9px] opacity-80 block">Cada ronda se forman parejas nuevas en cada pista</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPozoFixedPairs(true)}
+                    className={`p-2.5 rounded-2xl border text-left transition ${pozoFixedPairs ? 'bg-blue-50 border-blue-600 text-blue-950 ring-2 ring-blue-500' : 'bg-slate-50 border-slate-200 text-slate-600'}`}
+                  >
+                    <span className="font-black block text-xs">🤝 Fijas</span>
+                    <span className="text-[9px] opacity-80 block">La misma pareja sube o baja de pista junta todo el torneo</span>
+                  </button>
+                </div>
+              </div>
+            )}
 
             <div className="grid grid-cols-2 gap-2">
               <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200">
@@ -2924,6 +3395,25 @@ export default function App() {
   const [inviteTournamentId, setInviteTournamentId] = useState(null);
   const [invitePlayerId, setInvitePlayerId] = useState(null);
 
+  // NUEVO: preferencias de avisos push personalizables por usuario — el aviso de los
+  // lunes (opt-in) y las combinaciones día+hora para los avisos de reserva en Playtomic.
+  const [alertPreferences, setAlertPreferences] = useState(() => {
+    try {
+      const cached = localStorage.getItem('padel_cached_alert_prefs');
+      return cached ? JSON.parse(cached) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [reservationAlerts, setReservationAlerts] = useState(() => {
+    try {
+      const cached = localStorage.getItem('padel_cached_reservation_alerts');
+      return cached ? JSON.parse(cached) : [];
+    } catch {
+      return [];
+    }
+  });
+
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const torneoParam = params.get('torneo');
@@ -2998,6 +3488,14 @@ export default function App() {
         if (json.invitadosCena) {
           setAllDinnerGuests(json.invitadosCena);
           localStorage.setItem('padel_cached_dinners', JSON.stringify(json.invitadosCena));
+        }
+        if (json.preferenciasAlertas) {
+          setAlertPreferences(json.preferenciasAlertas);
+          localStorage.setItem('padel_cached_alert_prefs', JSON.stringify(json.preferenciasAlertas));
+        }
+        if (json.alertasReserva) {
+          setReservationAlerts(json.alertasReserva);
+          localStorage.setItem('padel_cached_reservation_alerts', JSON.stringify(json.alertasReserva));
         }
       }
     } catch (e) {
@@ -3694,9 +4192,29 @@ export default function App() {
         ];
       }
 
+      // NUEVO (Pozo Continuo en formato escalera): en cuanto los 4 partidos de una ronda
+      // tienen ya resultado, calculamos y añadimos la ronda siguiente (quién sube, quién
+      // baja de pista), en vez de tenerlas todas generadas desde el principio.
+      let finalRounds = updatedRounds;
+      if (t.mode === 'pozo' && t.pozoEscalera) {
+        const matchRound = updatedRounds.find(r => (r.matches || []).some(m => m.id === matchId));
+        if (matchRound) {
+          const allDone = (matchRound.matches || []).length > 0 && (matchRound.matches || []).every(m => m.status !== 'PENDIENTE');
+          const nextRoundNum = matchRound.round + 1;
+          const yaExisteSiguiente = updatedRounds.some(r => r.round === nextRoundNum);
+          const totalRounds = t.pozoEscalera.totalRounds || updatedRounds.length;
+          if (allDone && !yaExisteSiguiente && matchRound.round < totalRounds) {
+            const nuevaRonda = computeNextPozoRound(t, updatedRounds, nextRoundNum);
+            if (nuevaRonda) {
+              finalRounds = [...updatedRounds, nuevaRonda];
+            }
+          }
+        }
+      }
+
       tournamentToSync = {
         ...t,
-        rounds: updatedRounds,
+        rounds: finalRounds,
         teams: updatedTeams
       };
 
@@ -4083,35 +4601,11 @@ export default function App() {
       }
     });
 
-    // 4b. Partido de torneo ya jugado (por horario) sin resultado
-    (activeTournaments || []).forEach(t => {
-      if (t.status !== 'ACTIVO' || !t.startDate || !myFirstName) return;
-      const start = new Date(`${t.startDate}T${t.startTime || '00:00'}`);
-      if (isNaN(start.getTime())) return;
-      const end = new Date(start.getTime() + (Number(t.duration) || 120) * 60000);
-      if (new Date() <= end) return;
-
-      (t.rounds || []).forEach(r => {
-        (r.matches || []).forEach(m => {
-          if (m.status !== 'PENDIENTE') return;
-          // Preferimos comparar por ID (fiable al 100%); solo si el partido es de un torneo
-          // antiguo sin IDs guardados, caemos de vuelta a comparar por primer nombre.
-          const hasIds = (m.team1Ids && m.team1Ids.length) || (m.team2Ids && m.team2Ids.length);
-          const amInMatch = hasIds
-            ? (m.team1Ids || []).includes(currentUser.id) || (m.team2Ids || []).includes(currentUser.id)
-            : normalizeName(`${m.team1 || ''} ${m.team2 || ''}`).split(' ').includes(myFirstName);
-          if (amInMatch) {
-            alerts.push({
-              id: `torneo-resultado-${t.id}-${m.id}`,
-              icon: '🏆',
-              title: 'Falta el resultado de un partido de torneo',
-              description: `${t.name} · ${m.court}: ${m.team1} vs ${m.team2}`,
-              action: () => { setActiveTab('torneos'); setActiveTournamentId(t.id); setReportingTournamentMatch(m); }
-            });
-          }
-        });
-      });
-    });
+    // 4b. DESACTIVADA A PETICIÓN DEL USUARIO: la alerta de "falta el resultado de un
+    // partido de torneo" resultaba demasiado intrusiva (se dispara por cada partido de cada
+    // ronda, en torneos de varias rondas puede ser muchas veces seguidas). El aviso
+    // equivalente para la liga regular de los jueves (bloque 4a, arriba) se mantiene, ya que
+    // ahí es un único partido a la semana.
 
     return alerts;
   }, [matches, activeTournaments, currentUser]);
@@ -4542,7 +5036,15 @@ export default function App() {
 
       <main className="max-w-xl mx-auto px-4 py-4">
         {activeTab === 'avisos' ? (
-          <AlertsScreen alerts={pendingAlerts} onBack={() => setActiveTab(isThursdayMember ? 'partidos' : 'torneos')} currentUser={currentUser} apiUrl={apiUrl} />
+          <AlertsScreen
+            alerts={pendingAlerts}
+            onBack={() => setActiveTab(isThursdayMember ? 'partidos' : 'torneos')}
+            currentUser={currentUser}
+            apiUrl={apiUrl}
+            alertPreferences={alertPreferences}
+            reservationAlerts={reservationAlerts}
+            onRefreshAlertPrefs={() => fetchData(true)}
+          />
         ) : selectedMatchId && currentMatch && isThursdayMember ? (
           /* DETALLE DEL PARTIDO REGULAR */
           <div className="space-y-4">
@@ -5661,6 +6163,26 @@ export default function App() {
 
                         {curSubTab === 'partidos' && (
                           <div className="space-y-2">
+                            {t.mode === 'pozo' && t.pozoEscalera && (() => {
+                              const standings = computePozoStandings(t);
+                              if (!standings.length) return null;
+                              return (
+                                <div className="bg-white rounded-2xl border border-slate-200 p-3 space-y-1.5">
+                                  <span className="font-black text-slate-800 text-xs block mb-1">🪜 Clasificación en vivo</span>
+                                  {standings.map((p, idx) => (
+                                    <div key={p.id} className="flex items-center justify-between text-[11px] py-1 border-b border-slate-50 last:border-0">
+                                      <span className="font-bold text-slate-700">{idx + 1}. {p.name}</span>
+                                      <span className="text-slate-500">
+                                        Pista {p.finalCourt === 999 ? '–' : p.finalCourt}
+                                        {p.subidos > 0 && <span className="text-emerald-600 font-bold"> ▲{p.subidos}</span>}
+                                        {p.subidos < 0 && <span className="text-rose-500 font-bold"> ▼{Math.abs(p.subidos)}</span>}
+                                      </span>
+                                    </div>
+                                  ))}
+                                  <span className="text-[9px] text-slate-400 block pt-0.5">Quien termina en la Pista 1 gana; a igualdad de pista, decide cuánto has subido desde donde empezaste.</span>
+                                </div>
+                              );
+                            })()}
                             <button
                               id={`share-btn-${t.id}`}
                               onClick={() => handleShareTournamentImage(t.id, t.name)}
@@ -5916,6 +6438,7 @@ export default function App() {
         onUpdateUserData={handleUpdateUserData}
         isCurrentUser={inspectedUser?.id === currentUser?.id}
         isThursdayMember={isThursdayMember}
+        viewerUser={currentUser}
       />
 
       {/* MODAL: REGLAS OFICIALES */}
@@ -5926,6 +6449,7 @@ export default function App() {
     </div>
   );
 }
+
 
 
 
