@@ -969,6 +969,132 @@ function PushPreferencesCard({ currentUser, apiUrl, alertPreferences, reservatio
   );
 }
 
+// NUEVO: pantalla de "Inicio" — lo primero que se ve al entrar en la app (antes se caía
+// directo en la lista de Partidos). Da un vistazo rápido a lo importante de la semana (si ya
+// hay partido subido, cuánta gente ha confirmado cena o se está haciendo la remolona), a los
+// torneos activos, y accesos directos al resto de secciones.
+function HomeScreen({ currentUser, matches, activeTournaments, pendingAlerts, onNavigate, onOpenMatch }) {
+  const resumen = useMemo(() => {
+    const ahora = new Date();
+    const finSemana = new Date(ahora.getTime());
+    finSemana.setDate(finSemana.getDate() + 6);
+    finSemana.setHours(23, 59, 59, 999);
+
+    const partidosSemana = (matches || [])
+      .filter(m => isMatchOfficial(m) && m.status !== 'CANCELADO')
+      .map(m => ({ m, fecha: parseMatchDateObject(m.date) }))
+      .filter(x => x.fecha && x.fecha >= ahora && x.fecha <= finSemana)
+      .sort((a, b) => a.fecha - b.fecha)
+      .map(x => {
+        const jugadores = x.m.players || [];
+        const cenaSi = jugadores.filter(p => String(p.dinner || '').toUpperCase() === 'SI').length;
+        const cenaPendiente = jugadores.filter(p => String(p.dinner || '').toUpperCase() === 'PENDIENTE').length;
+        return { match: x.m, cenaSi, cenaPendiente, totalJugadores: jugadores.length };
+      });
+
+    const myNameNorm = normalizeName(currentUser?.name || '');
+    const misTorneos = (activeTournaments || []).filter(t => (
+      (t.participants || []).some(p => p.id === currentUser?.id || normalizeName(p.name) === myNameNorm) ||
+      t.creatorId === currentUser?.id ||
+      (t.coOrganizerIds || []).includes(currentUser?.id)
+    ));
+
+    return { partidosSemana, misTorneos };
+  }, [matches, activeTournaments, currentUser]);
+
+  const saludo = (() => {
+    const h = new Date().getHours();
+    if (h < 13) return 'Buenos días';
+    if (h < 20) return 'Buenas tardes';
+    return 'Buenas noches';
+  })();
+
+  return (
+    <div className="space-y-3">
+      <div className="bg-gradient-to-r from-blue-600 to-indigo-700 rounded-3xl p-5 text-white shadow-md">
+        <p className="text-xs font-bold opacity-80">{saludo},</p>
+        <h2 className="text-xl font-black">{(currentUser?.name || 'Jugador').split(' ')[0]} 👋</h2>
+      </div>
+
+      <div className="bg-white rounded-2xl p-3.5 border border-slate-200 shadow-xs space-y-2.5">
+        <div className="flex items-center justify-between">
+          <span className="font-black text-slate-900 text-xs">🎾 Esta semana</span>
+          <button onClick={() => onNavigate('partidos')} className="text-[10px] font-bold text-blue-600 hover:underline">Ver todo →</button>
+        </div>
+
+        {resumen.partidosSemana.length === 0 ? (
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-center space-y-1.5">
+            <span className="text-[11px] font-bold text-amber-800 block">Todavía no hay partido subido para esta semana</span>
+            <button onClick={() => onNavigate('partidos')} className="text-[10px] font-black text-amber-700 underline">Subir partido</button>
+          </div>
+        ) : (
+          resumen.partidosSemana.map(({ match, cenaSi, cenaPendiente, totalJugadores }) => (
+            <button
+              key={match.id}
+              onClick={() => onOpenMatch(match.id)}
+              className="w-full text-left bg-slate-50 hover:bg-slate-100 transition rounded-xl p-2.5 flex items-center justify-between gap-2"
+            >
+              <div className="min-w-0">
+                <span className="font-bold text-slate-800 text-[11px] block truncate">{match.date}</span>
+                <span className="text-[10px] text-slate-500">
+                  {totalJugadores}/4 apuntados
+                  {cenaPendiente > 0
+                    ? ` · 🍻 ${cenaPendiente} sin confirmar cena (gente remolona 🐌)`
+                    : (cenaSi > 0 ? ` · 🍻 ${cenaSi} confirmados para cenar` : '')}
+                </span>
+              </div>
+              <span className="text-slate-400 text-xs shrink-0">→</span>
+            </button>
+          ))
+        )}
+      </div>
+
+      {resumen.misTorneos.length > 0 && (
+        <div className="bg-white rounded-2xl p-3.5 border border-slate-200 shadow-xs space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="font-black text-slate-900 text-xs">⚔️ Tus torneos activos</span>
+            <button onClick={() => onNavigate('torneos')} className="text-[10px] font-bold text-purple-600 hover:underline">Ver todo →</button>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {resumen.misTorneos.map(t => (
+              <span key={t.id} className="bg-purple-100 text-purple-800 text-[10px] font-bold px-2 py-1 rounded-full">{t.name}</span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {pendingAlerts.length > 0 && (
+        <button
+          onClick={() => onNavigate('avisos')}
+          className="w-full bg-amber-50 border border-amber-200 text-amber-900 rounded-2xl p-3 flex items-center justify-between gap-2"
+        >
+          <span className="text-xs font-bold">🔔 Tienes {pendingAlerts.length} {pendingAlerts.length === 1 ? 'aviso pendiente' : 'avisos pendientes'}</span>
+          <span className="text-amber-500">→</span>
+        </button>
+      )}
+
+      <div className="grid grid-cols-2 gap-2">
+        <button onClick={() => onNavigate('cenas')} className="bg-white border border-slate-200 rounded-2xl p-3 text-center hover:bg-slate-50 transition">
+          <span className="text-xl block mb-0.5">🍻</span>
+          <span className="text-[11px] font-bold text-slate-700">Cena & Club</span>
+        </button>
+        <button onClick={() => onNavigate('rankings')} className="bg-white border border-slate-200 rounded-2xl p-3 text-center hover:bg-slate-50 transition">
+          <span className="text-xl block mb-0.5">🏆</span>
+          <span className="text-[11px] font-bold text-slate-700">Rankings</span>
+        </button>
+        <button onClick={() => onNavigate('bote')} className="bg-white border border-slate-200 rounded-2xl p-3 text-center hover:bg-slate-50 transition">
+          <span className="text-xl block mb-0.5">💶</span>
+          <span className="text-[11px] font-bold text-slate-700">Bote</span>
+        </button>
+        <button onClick={() => onNavigate('torneos')} className="bg-purple-600 text-white rounded-2xl p-3 text-center hover:bg-purple-700 transition">
+          <span className="text-xl block mb-0.5">⚔️</span>
+          <span className="text-[11px] font-bold">Torneos</span>
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function AlertsScreen({ alerts, onBack, currentUser, apiUrl, alertPreferences, reservationAlerts, onRefreshAlertPrefs }) {
   return (
     <div className="space-y-3">
@@ -3226,6 +3352,7 @@ function AddPlaytomicMatchModal({ isOpen, onClose, onAddMatch, syncing }) {
   const [manualP2, setManualP2] = useState('');
   const [manualP3, setManualP3] = useState('');
   const [manualP4, setManualP4] = useState('');
+  const [formError, setFormError] = useState('');
 
 const isOnlyPlaytomicLink = useMemo(() => {
     const trimmed = playtomicText.trim();
@@ -3235,18 +3362,39 @@ const isOnlyPlaytomicLink = useMemo(() => {
     const hasDateIcons = trimmed.includes('📅') || trimmed.includes('🗓️') || trimmed.toLowerCase().includes('jueves') || trimmed.toLowerCase().includes('martes');
     return isUrl && !hasPlayerCheckmarks && !hasDateIcons;
   }, [playtomicText]);
-  
+
   useEffect(() => {
     if (!isOpen) {
-      setPlaytomicText(''); setManualDate(''); setManualP1(''); setManualP2(''); setManualP3(''); setManualP4('');
+      setPlaytomicText(''); setManualDate(''); setManualP1(''); setManualP2(''); setManualP3(''); setManualP4(''); setFormError('');
     }
   }, [isOpen]);
 
   if (!isOpen) return null;
 
+  // Cuántos de los 4 huecos de jugador manual se han rellenado.
+  const jugadoresManualesRellenos = [manualP1, manualP2, manualP3, manualP4].filter(p => p.trim()).length;
+
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!playtomicText.trim()) return;
+
+    // Si solo se ha pegado el enlace (sin el texto plano con fecha/jugadores de Playtomic),
+    // antes creábamos igualmente el partido con una fecha de relleno ("Jueves 21:00") y sin
+    // jugadores en cuanto se pulsaba "Crear Partido", aunque el usuario no hubiera rellenado
+    // nada en el bloque de "Datos adicionales requeridos". Ahora lo bloqueamos: si faltan la
+    // fecha/hora o al menos 2 jugadores, no se envía nada y se explica qué falta.
+    if (isOnlyPlaytomicLink) {
+      if (!manualDate.trim()) {
+        setFormError('Indica la fecha y hora del partido (el enlace que has pegado no las trae).');
+        return;
+      }
+      if (jugadoresManualesRellenos < 2) {
+        setFormError('Añade al menos 2 jugadores (el enlace que has pegado no los trae).');
+        return;
+      }
+    }
+
+    setFormError('');
     onAddMatch({ playtomicText, isOnlyPlaytomicLink, manualDate, manualLocation, manualP1, manualP2, manualP3, manualP4 });
   };
 
@@ -3255,17 +3403,25 @@ const isOnlyPlaytomicLink = useMemo(() => {
       <div className="bg-white rounded-3xl max-w-sm w-full p-5 shadow-2xl space-y-3">
         <h3 className="text-base font-black text-slate-900">Añadir Partido Playtomic</h3>
         <form onSubmit={handleSubmit} className="space-y-3">
-          <textarea rows={4} required value={playtomicText} onChange={e => setPlaytomicText(e.target.value)} placeholder="Pega el texto copiado de Playtomic o el enlace..." className="w-full border rounded-xl p-2.5 text-xs font-semibold" />
+          <textarea rows={4} required value={playtomicText} onChange={e => { setPlaytomicText(e.target.value); setFormError(''); }} placeholder="Pega el texto copiado de Playtomic o el enlace..." className="w-full border rounded-xl p-2.5 text-xs font-semibold" />
           {isOnlyPlaytomicLink && (
             <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200 space-y-2">
               <span className="text-[10px] font-black uppercase text-blue-600 block">Datos adicionales requeridos</span>
-              <input type="text" value={manualDate} onChange={e => setManualDate(e.target.value)} placeholder="Fecha y Hora (Ej: Jueves 21:00)" className="w-full border rounded-lg p-1.5 text-xs font-semibold" />
+              <span className="text-[10px] text-slate-500 block -mt-1">
+                Has pegado solo un enlace, sin los detalles del partido. Rellena esto a mano o no se creará el partido.
+              </span>
+              <input type="text" value={manualDate} onChange={e => { setManualDate(e.target.value); setFormError(''); }} placeholder="Fecha y Hora (Ej: Jueves 21:00)" className="w-full border rounded-lg p-1.5 text-xs font-semibold" />
               <div className="grid grid-cols-2 gap-1.5">
-                <input type="text" value={manualP1} onChange={e => setManualP1(e.target.value)} placeholder="Jugador 1" className="border rounded-lg p-1.5 text-xs" />
-                <input type="text" value={manualP2} onChange={e => setManualP2(e.target.value)} placeholder="Jugador 2" className="border rounded-lg p-1.5 text-xs" />
-                <input type="text" value={manualP3} onChange={e => setManualP3(e.target.value)} placeholder="Jugador 3" className="border rounded-lg p-1.5 text-xs" />
-                <input type="text" value={manualP4} onChange={e => setManualP4(e.target.value)} placeholder="Jugador 4" className="border rounded-lg p-1.5 text-xs" />
+                <input type="text" value={manualP1} onChange={e => { setManualP1(e.target.value); setFormError(''); }} placeholder="Jugador 1" className="border rounded-lg p-1.5 text-xs" />
+                <input type="text" value={manualP2} onChange={e => { setManualP2(e.target.value); setFormError(''); }} placeholder="Jugador 2" className="border rounded-lg p-1.5 text-xs" />
+                <input type="text" value={manualP3} onChange={e => { setManualP3(e.target.value); setFormError(''); }} placeholder="Jugador 3" className="border rounded-lg p-1.5 text-xs" />
+                <input type="text" value={manualP4} onChange={e => { setManualP4(e.target.value); setFormError(''); }} placeholder="Jugador 4" className="border rounded-lg p-1.5 text-xs" />
               </div>
+            </div>
+          )}
+          {formError && (
+            <div className="bg-rose-50 border border-rose-200 text-rose-700 text-[11px] font-bold rounded-xl p-2">
+              ⚠️ {formError}
             </div>
           )}
           <div className="flex gap-2">
@@ -3314,7 +3470,9 @@ function usePadelApi(apiUrl) {
 export default function App() {
   const [apiUrl] = useState(() => localStorage.getItem('padel_api_url') || DEFAULT_API_URL);
   const { syncing, setSyncing, fetchWithTimeout } = usePadelApi(apiUrl);
-  const [activeTab, setActiveTab] = useState('partidos');
+  // NUEVO: la app arranca en la pantalla de "Inicio" (resumen + accesos directos) en vez de
+  // caer directo en la lista de Partidos sin contexto.
+  const [activeTab, setActiveTab] = useState('inicio');
   const [rankingType, setRankingType] = useState('hibrido');
 
   const [players, setPlayers] = useState(() => {
@@ -3680,7 +3838,10 @@ export default function App() {
     let payloadText = data.playtomicText.trim();
 
     if (data.isOnlyPlaytomicLink) {
-      const d = data.manualDate.trim() || 'Jueves 21:00';
+      // El modal ya valida que manualDate y al menos 2 jugadores estén rellenos antes de
+      // llegar aquí, así que ya no hace falta (ni conviene) un valor de relleno tipo
+      // "Jueves 21:00" que antes se colaba en silencio cuando el usuario dejaba esto vacío.
+      const d = data.manualDate.trim();
       const loc = data.manualLocation.trim() || 'Real Club de Tenis de La Coruña';
       const p1 = data.manualP1.trim() ? `✅ ${data.manualP1.trim()}` : '';
       const p2 = data.manualP2.trim() ? `✅ ${data.manualP2.trim()}` : '';
@@ -4996,6 +5157,15 @@ export default function App() {
             </div>
           </div>
           <div className="flex items-center gap-1.5">
+            {isThursdayMember && (
+              <button
+                onClick={() => setActiveTab('inicio')}
+                className={`px-2.5 py-1.5 text-sm font-bold rounded-lg transition ${activeTab === 'inicio' ? 'bg-blue-600 text-white' : 'bg-slate-100 hover:bg-blue-50 text-slate-700'}`}
+                title="Inicio"
+              >
+                🏠
+              </button>
+            )}
             <button
               onClick={() => setActiveTab('avisos')}
               className="relative px-2.5 py-1.5 text-sm font-bold bg-slate-100 hover:bg-amber-50 text-slate-700 rounded-lg transition"
@@ -5038,12 +5208,21 @@ export default function App() {
         {activeTab === 'avisos' ? (
           <AlertsScreen
             alerts={pendingAlerts}
-            onBack={() => setActiveTab(isThursdayMember ? 'partidos' : 'torneos')}
+            onBack={() => setActiveTab(isThursdayMember ? 'inicio' : 'torneos')}
             currentUser={currentUser}
             apiUrl={apiUrl}
             alertPreferences={alertPreferences}
             reservationAlerts={reservationAlerts}
             onRefreshAlertPrefs={() => fetchData(true)}
+          />
+        ) : activeTab === 'inicio' && isThursdayMember ? (
+          <HomeScreen
+            currentUser={currentUser}
+            matches={matches}
+            activeTournaments={activeTournaments}
+            pendingAlerts={pendingAlerts}
+            onNavigate={(tab) => setActiveTab(tab)}
+            onOpenMatch={(id) => { setActiveTab('partidos'); setSelectedMatchId(id); }}
           />
         ) : selectedMatchId && currentMatch && isThursdayMember ? (
           /* DETALLE DEL PARTIDO REGULAR */
@@ -6292,6 +6471,41 @@ export default function App() {
                                 </div>
                               </div>
 
+                              {/* NUEVO: desglose por nombre — antes solo se veían los contadores y no
+                                  había forma de saber QUIÉN faltaba por confirmar o quién se rajaba. */}
+                              <div className="space-y-2">
+                                {siList.length > 0 && (
+                                  <div>
+                                    <span className="text-[9px] font-black text-emerald-700 uppercase block mb-1">🍻 Cenan</span>
+                                    <div className="flex flex-wrap gap-1">
+                                      {siList.map(p => (
+                                        <span key={p.id} className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-full">{p.name}</span>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                                {pendList.length > 0 && (
+                                  <div>
+                                    <span className="text-[9px] font-black text-amber-700 uppercase block mb-1">⏳ Pendientes de confirmar</span>
+                                    <div className="flex flex-wrap gap-1">
+                                      {pendList.map(p => (
+                                        <span key={p.id} className="bg-amber-100 text-amber-800 text-[10px] font-bold px-2 py-0.5 rounded-full">{p.name}</span>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                                {noList.length > 0 && (
+                                  <div>
+                                    <span className="text-[9px] font-black text-rose-700 uppercase block mb-1">🏃‍♂️ Se rajan</span>
+                                    <div className="flex flex-wrap gap-1">
+                                      {noList.map(p => (
+                                        <span key={p.id} className="bg-rose-100 text-rose-800 text-[10px] font-bold px-2 py-0.5 rounded-full">{p.name}</span>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+
                               <button
                                 onClick={() => handleShareTournamentDinnerWhatsapp(t)}
                                 className="w-full py-2 bg-emerald-600 text-white font-bold rounded-xl"
@@ -6449,6 +6663,7 @@ export default function App() {
     </div>
   );
 }
+
 
 
 
