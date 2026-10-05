@@ -35,21 +35,29 @@ self.addEventListener('push', (event) => {
 });
 
 // Al tocar la notificación, llevamos al usuario a la app (reutilizando una pestaña ya
-// abierta si existe, en vez de abrir una nueva cada vez).
+// abierta si existe, en vez de abrir una nueva cada vez) — EXCEPTO cuando el aviso apunta a
+// una web externa (p.ej. el aviso de reserva en Playtomic), en cuyo caso navegamos siempre
+// a esa URL. Si no distinguiéramos este caso, un aviso de Playtomic con la app CTC Padel ya
+// abierta en segundo plano simplemente traería al frente esa pestaña en vez de llevar a
+// Playtomic, que es justo lo que no queremos.
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   const targetUrl = (event.notification.data && event.notification.data.url) || '/';
+  const esExterna = /^https?:\/\//i.test(targetUrl) && !targetUrl.startsWith(self.location.origin);
 
   event.waitUntil(
-    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
-      for (const client of clientList) {
-        if (client.url.includes(self.location.origin) && 'focus' in client) {
-          return client.focus();
+    (async () => {
+      if (!esExterna) {
+        const clientList = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+        for (const client of clientList) {
+          if (client.url.includes(self.location.origin) && 'focus' in client) {
+            return client.focus();
+          }
         }
       }
       if (self.clients.openWindow) {
         return self.clients.openWindow(targetUrl);
       }
-    })
+    })()
   );
 });
