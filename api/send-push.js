@@ -4,8 +4,12 @@
 //
 // Ruta del archivo en el proyecto: /api/send-push.js
 // Vercel la publica automáticamente en: https://tu-dominio.vercel.app/api/send-push
+//
+// Nota: usamos sintaxis de módulos ES (import/export) porque el package.json del
+// proyecto tiene "type": "module" — con require()/module.exports aquí, Vercel falla
+// al ejecutar la función.
 
-const webpush = require('web-push');
+import webpush from 'web-push';
 
 webpush.setVapidDetails(
   process.env.VAPID_SUBJECT || 'mailto:tu-email@ejemplo.com',
@@ -13,7 +17,7 @@ webpush.setVapidDetails(
   process.env.VAPID_PRIVATE_KEY
 );
 
-module.exports = async (req, res) => {
+export default async function handler(req, res) {
   // CORS: permitimos que la app (servida desde el mismo dominio de Vercel, pero por
   // si acaso) pueda llamar a esta función sin problemas.
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -55,4 +59,4 @@ module.exports = async (req, res) => {
   } catch (e) {
     return res.status(500).json({ ok: false, error: e.message });
   }
-};
+}
