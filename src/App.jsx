@@ -864,7 +864,7 @@ function PushNotificationsCard({ currentUser, apiUrl }) {
 // lunes (opt-in, por eso tiene su propio interruptor) y las combinaciones día+hora para
 // las alertas de reserva en Playtomic (puede haber varias por jugador: p.ej. martes 20h
 // y jueves 21h). El envío real de estos avisos lo hace un trigger de Apps Script que
-// corre cada minuto en el servidor — este componente solo guarda la configuración.
+// corre cada 5 minutos en el servidor — este componente solo guarda la configuración.
 const DIAS_SEMANA_ALERTAS = [
   { v: 1, l: 'Lunes' }, { v: 2, l: 'Martes' }, { v: 3, l: 'Miércoles' },
   { v: 4, l: 'Jueves' }, { v: 5, l: 'Viernes' }, { v: 6, l: 'Sábado' }, { v: 7, l: 'Domingo' }
@@ -936,7 +936,7 @@ function PushPreferencesCard({ currentUser, apiUrl, alertPreferences, reservatio
       <div className="bg-slate-50 rounded-xl p-2.5 space-y-2">
         <span className="font-bold text-slate-800 text-[11px] block">🎾 Avisos de reserva en Playtomic</span>
         <span className="text-[10px] text-slate-500 block">
-          Te avisamos 2 minutos antes de que se abra la reserva (se abre una semana antes, al mismo día y hora que configures aquí)
+          Te avisamos unos minutos antes de que se abra la reserva (se abre una semana antes, al mismo día y hora que configures aquí)
         </span>
 
         {misReservas.length > 0 && (
@@ -6449,6 +6449,7 @@ export default function App() {
     </div>
   );
 }
+
 
 
 
