@@ -3,6 +3,24 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 // URL REAL DE TU BACKEND
 const DEFAULT_API_URL = 'https://script.google.com/macros/s/AKfycbxkd-BmLpYxmLtev5wcxwsyda94bG1mFW9gtDpEAgsmhV1HCfDwn2-syPDEvBUPwiiiGw/exec';
 
+// NUEVO: notificaciones push (Web Push). La clave pública VAPID es segura de tener aquí,
+// en el propio código del navegador — identifica a esta app ante los servicios de
+// notificaciones (Google/Apple/Mozilla), no permite enviar nada por sí sola. La clave
+// PRIVADA (la que sí firma los envíos) vive solo como variable de entorno en Vercel,
+// dentro de la función /api/send-push — nunca aquí.
+const VAPID_PUBLIC_KEY = 'BI0T3sC418hVf-mhKf9bE9dVxl39r-0y4G19UadW50HGC10GFyc9kXHxvTJ2YRPV2cU9OOB0Jlul2w1TI6pqARg';
+
+// Conversión estándar de la clave VAPID (texto base64url) al formato de bytes que pide
+// PushManager.subscribe(). Es el mismo snippet que usa la documentación oficial de Web Push.
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const rawData = window.atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; i++) outputArray[i] = rawData.charCodeAt(i);
+  return outputArray;
+}
+
 const FALLBACK_USERS = [];
 const FALLBACK_MATCHES = [];
 
@@ -555,7 +573,140 @@ function PinModal({ isOpen, onClose, targetUser, onPinSuccess, apiUrl }) {
 }
 
 // NUEVO: PANTALLA DE AVISOS / PENDIENTES DEL JUGADOR
-function AlertsScreen({ alerts, onBack }) {
+// NUEVO: tarjeta de notificaciones push. Vive aparte de AlertsScreen porque tiene su
+// propio estado (si están activadas en ESTE dispositivo concreto) y su propia lógica de
+// red, que no tiene nada que ver con la lista de avisos pendientes.
+function PushNotificationsCard({ currentUser, apiUrl }) {
+  const [status, setStatus] = useState('checking'); // checking | unsupported | denied | off | on
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
+      setStatus('unsupported');
+      return;
+    }
+    if (Notification.permission === 'denied') {
+      setStatus('denied');
+      return;
+    }
+    navigator.serviceWorker.getRegistration()
+      .then(reg => {
+        if (!reg) { setStatus('off'); return; }
+        return reg.pushManager.getSubscription().then(sub => setStatus(sub ? 'on' : 'off'));
+      })
+      .catch(() => setStatus('off'));
+  }, []);
+
+  const handleEnable = async () => {
+    setBusy(true);
+    try {
+      const permission = await Notification.requestPermission();
+      if (permission !== 'granted') {
+        setStatus(permission === 'denied' ? 'denied' : 'off');
+        return;
+      }
+      const registration = await navigator.serviceWorker.register('/sw.js');
+      await navigator.serviceWorker.ready;
+      let subscription = await registration.pushManager.getSubscription();
+      if (!subscription) {
+        subscription = await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
+        });
+      }
+      await fetch(apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ action: 'GUARDAR_SUSCRIPCION_PUSH', idJugador: currentUser.id, subscription: subscription.toJSON() })
+      });
+      setStatus('on');
+    } catch (e) {
+      console.error('Error activando notificaciones push:', e);
+      alert('No se han podido activar las notificaciones en este dispositivo.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleTestPush = async () => {
+    setBusy(true);
+    try {
+      const resSubs = await fetch(apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ action: 'OBTENER_SUSCRIPCIONES_PUSH', idsJugadores: [currentUser.id] })
+      });
+      const dataSubs = await resSubs.json();
+      if (!dataSubs.ok || !(dataSubs.suscripciones || []).length) {
+        alert('Todavía no hay ninguna suscripción guardada para este dispositivo. Pulsa primero "Activar notificaciones".');
+        return;
+      }
+      const resSend = await fetch('/api/send-push', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          subscriptions: dataSubs.suscripciones.map(s => ({ endpoint: s.endpoint, keys: s.keys })),
+          title: 'Pádel CTC 🎾',
+          body: `¡Hola ${currentUser.name}! Así se verá un aviso cuando te toque confirmar algo.`,
+          url: '/'
+        })
+      });
+      const dataSend = await resSend.json();
+      if (dataSend.ok && dataSend.enviados > 0) {
+        alert('✅ Notificación de prueba enviada. Debería llegarte en unos segundos.');
+      } else {
+        console.log('Respuesta de /api/send-push:', dataSend);
+        alert('No se ha podido enviar la notificación de prueba. Mira la consola para más detalle.');
+      }
+    } catch (e) {
+      console.error(e);
+      alert('Error al enviar la notificación de prueba (¿está desplegada la función /api/send-push en Vercel?).');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (status === 'unsupported') {
+    return (
+      <div className="bg-slate-100 rounded-2xl p-3.5 border border-slate-200 text-[11px] text-slate-500">
+        🔕 Este navegador no soporta notificaciones push. En iPhone: añade la app a la pantalla de inicio desde Safari (compartir → "Añadir a pantalla de inicio") y ábrela desde ahí para poder activarlas.
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-white rounded-2xl p-3.5 border border-slate-200 shadow-xs space-y-2">
+      <div className="flex items-center gap-2">
+        <span className="text-xl shrink-0">{status === 'on' ? '🔔' : '🔕'}</span>
+        <div className="flex-1 min-w-0">
+          <span className="font-black text-slate-900 text-xs block">Notificaciones en este dispositivo</span>
+          <span className="text-[10px] text-slate-500 block">
+            {status === 'on'
+              ? 'Activadas — te avisaremos aquí de lo importante, aunque tengas la app cerrada.'
+              : status === 'denied'
+                ? 'Las bloqueaste en el navegador; actívalas desde los ajustes del sitio para volver a usarlas.'
+                : 'Actívalas para enterarte de lo importante sin tener que abrir la app.'}
+          </span>
+        </div>
+      </div>
+      {status !== 'denied' && (
+        <div className="flex gap-2">
+          {status !== 'on' ? (
+            <button onClick={handleEnable} disabled={busy} className="flex-1 py-2 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl text-[11px] disabled:opacity-50 transition">
+              {busy ? 'Activando...' : '🔔 Activar notificaciones'}
+            </button>
+          ) : (
+            <button onClick={handleTestPush} disabled={busy} className="flex-1 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-[11px] disabled:opacity-50 transition">
+              {busy ? 'Enviando...' : '🧪 Enviar notificación de prueba'}
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AlertsScreen({ alerts, onBack, currentUser, apiUrl }) {
   return (
     <div className="space-y-3">
       <button onClick={onBack} className="text-xs font-bold text-blue-600 hover:underline flex items-center gap-1">
@@ -575,6 +726,8 @@ function AlertsScreen({ alerts, onBack }) {
           </div>
         </div>
       </div>
+
+      {currentUser && <PushNotificationsCard currentUser={currentUser} apiUrl={apiUrl} />}
 
       {alerts.length === 0 ? (
         <div className="bg-white rounded-2xl p-8 text-center border border-slate-200">
@@ -4389,7 +4542,7 @@ export default function App() {
 
       <main className="max-w-xl mx-auto px-4 py-4">
         {activeTab === 'avisos' ? (
-          <AlertsScreen alerts={pendingAlerts} onBack={() => setActiveTab(isThursdayMember ? 'partidos' : 'torneos')} />
+          <AlertsScreen alerts={pendingAlerts} onBack={() => setActiveTab(isThursdayMember ? 'partidos' : 'torneos')} currentUser={currentUser} apiUrl={apiUrl} />
         ) : selectedMatchId && currentMatch && isThursdayMember ? (
           /* DETALLE DEL PARTIDO REGULAR */
           <div className="space-y-4">
