@@ -42,8 +42,15 @@ export default async function handler(req, res) {
       url: url || '/'
     });
 
+    // "urgency: high" le pide al servicio de push (FCM, en el caso de Chrome/Android) que entregue
+    // el aviso cuanto antes incluso si el móvil lleva un rato en reposo (Doze/App Standby), en vez
+    // de dejarlo esperando a la siguiente ventana de mantenimiento del sistema. Sin esto, por
+    // defecto se envía con urgencia "normal", que es precisamente el caso que puede explicar que
+    // una alerta tarde en llegar o solo aparezca al abrir la app manualmente.
+    const opcionesEnvio = { urgency: 'high' };
+
     const resultados = await Promise.allSettled(
-      subscriptions.map((sub) => webpush.sendNotification(sub, payload))
+      subscriptions.map((sub) => webpush.sendNotification(sub, payload, opcionesEnvio))
     );
 
     const enviados = resultados.filter((r) => r.status === 'fulfilled').length;
