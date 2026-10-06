@@ -902,7 +902,7 @@ const DIAS_SEMANA_ALERTAS = [
 const HORAS_SELECTOR_ALERTA = Array.from({ length: 24 }, (_, h) => String(h).padStart(2, '0'));
 const MINUTOS_SELECTOR_ALERTA = ['00', '30'];
 
-function PushPreferencesCard({ currentUser, apiUrl, alertPreferences, reservationAlerts, onRefresh }) {
+function PushPreferencesCard({ currentUser, apiUrl, alertPreferences, reservationAlerts, onRefresh, onUpdateAlertPreferences, onUpdateReservationAlerts }) {
   const [busy, setBusy] = useState(false);
   const [diaNuevo, setDiaNuevo] = useState(4);
   const [horaNueva, setHoraNueva] = useState('21:00');
@@ -915,37 +915,85 @@ function PushPreferencesCard({ currentUser, apiUrl, alertPreferences, reservatio
   // pintar los dos selectores de hora/minuto en formato 24h.
   const [horaSelActual, minSelActual] = horaNueva.split(':');
 
+  // ANTES, cada acción de aquí (activar/desactivar el aviso de lunes, añadir o borrar una
+  // alerta de reserva) esperaba, antes de "soltar" el botón, a un refresco COMPLETO de todos
+  // los datos de la app (jugadores, partidos, torneos, invitados...) — ver fetchData() más
+  // abajo en el componente principal. Esa recarga completa es lo más pesado que hace el
+  // backend, así que por una simple preferencia de notificaciones la pantalla se quedaba
+  // "colgada" varios segundos, dando la sensación de que no había pasado nada (y a veces
+  // invitando a volver a pulsar, generando duplicados).
+  //
+  // Ahora aplicamos el cambio en pantalla al instante (actualización optimista, vía los
+  // setters que nos pasa el componente principal) en cuanto el POST responde, sin esperar a
+  // la recarga completa. Esa recarga se sigue lanzando después, pero en segundo plano y sin
+  // bloquear nada — solo sirve para que, con el tiempo, la pantalla quede perfectamente
+  // sincronizada con la hoja, no para que el usuario tenga que esperarla.
   const postAccion = async (payload) => {
     setBusy(true);
+    let json = null;
     try {
-      await fetch(apiUrl, {
+      const res = await fetch(apiUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify(payload)
       });
-      await onRefresh();
+      json = await res.json().catch(() => ({ ok: true }));
     } catch (e) {
       console.error('Error guardando preferencia de avisos:', e);
       alert('No se ha podido guardar el cambio. Revisa tu conexión e inténtalo de nuevo.');
+      json = null;
     } finally {
       setBusy(false);
     }
+    // Sincronización de fondo: no se espera (sin await) para no retrasar la respuesta al
+    // usuario, esté esta acción como esté.
+    onRefresh();
+    return json;
   };
 
-  const handleToggleLunes = () => {
-    postAccion({ action: 'GUARDAR_PREFERENCIA_LUNES', idJugador: currentUser.id, activo: lunesActivo ? 'NO' : 'SI' });
+  const handleToggleLunes = async () => {
+    const nuevoValor = lunesActivo ? 'NO' : 'SI';
+    onUpdateAlertPreferences(prev => {
+      const lista = prev || [];
+      const yaExiste = lista.some(p => p.idJugador === currentUser.id);
+      if (yaExiste) {
+        return lista.map(p => p.idJugador === currentUser.id ? { ...p, avisoLunesPartido: nuevoValor } : p);
+      }
+      return [...lista, { idJugador: currentUser.id, avisoLunesPartido: nuevoValor }];
+    });
+    const json = await postAccion({ action: 'GUARDAR_PREFERENCIA_LUNES', idJugador: currentUser.id, activo: nuevoValor });
+    if (!json || json.ok === false) {
+      // Si de verdad falló, deshacemos el cambio optimista.
+      onUpdateAlertPreferences(prev => (prev || []).map(p => p.idJugador === currentUser.id ? { ...p, avisoLunesPartido: lunesActivo ? 'SI' : 'NO' } : p));
+    }
   };
 
-  const handleAddReserva = () => {
+  const handleAddReserva = async () => {
     if (misReservas.some(r => Number(r.diaSemana) === Number(diaNuevo) && r.hora === horaNueva)) {
       alert('Ya tienes un aviso configurado para ese día y esa hora.');
       return;
     }
-    postAccion({ action: 'GUARDAR_ALERTA_RESERVA', idJugador: currentUser.id, diaSemana: Number(diaNuevo), hora: horaNueva });
+    const idTemporal = 'tmp-' + Date.now();
+    onUpdateReservationAlerts(prev => [...(prev || []), { id: idTemporal, idJugador: currentUser.id, diaSemana: Number(diaNuevo), hora: horaNueva }]);
+    const json = await postAccion({ action: 'GUARDAR_ALERTA_RESERVA', idJugador: currentUser.id, diaSemana: Number(diaNuevo), hora: horaNueva });
+    if (json && json.ok && json.id) {
+      // Sustituimos el id temporal por el id real asignado por el servidor, para que un
+      // borrado inmediato después de crearla apunte a la fila correcta.
+      onUpdateReservationAlerts(prev => (prev || []).map(r => r.id === idTemporal ? { ...r, id: json.id } : r));
+    } else {
+      // No se pudo guardar de verdad: quitamos la entrada optimista.
+      onUpdateReservationAlerts(prev => (prev || []).filter(r => r.id !== idTemporal));
+    }
   };
 
-  const handleDeleteReserva = (id) => {
-    postAccion({ action: 'ELIMINAR_ALERTA_RESERVA', id });
+  const handleDeleteReserva = async (id) => {
+    const alertaBorrada = misReservas.find(r => r.id === id);
+    onUpdateReservationAlerts(prev => (prev || []).filter(r => r.id !== id));
+    const json = await postAccion({ action: 'ELIMINAR_ALERTA_RESERVA', id });
+    if ((!json || json.ok === false) && alertaBorrada) {
+      // Si de verdad falló, la devolvemos a la lista.
+      onUpdateReservationAlerts(prev => [...(prev || []), alertaBorrada]);
+    }
   };
 
   return (
@@ -1142,7 +1190,7 @@ function HomeScreen({ currentUser, matches, activeTournaments, pendingAlerts, on
   );
 }
 
-function AlertsScreen({ alerts, onBack, currentUser, apiUrl, alertPreferences, reservationAlerts, onRefreshAlertPrefs }) {
+function AlertsScreen({ alerts, onBack, currentUser, apiUrl, alertPreferences, reservationAlerts, onRefreshAlertPrefs, onUpdateAlertPreferences, onUpdateReservationAlerts }) {
   return (
     <div className="space-y-3">
       <button onClick={onBack} className="text-xs font-bold text-[#2c4a66] hover:underline flex items-center gap-1">
@@ -1172,6 +1220,8 @@ function AlertsScreen({ alerts, onBack, currentUser, apiUrl, alertPreferences, r
           alertPreferences={alertPreferences}
           reservationAlerts={reservationAlerts}
           onRefresh={onRefreshAlertPrefs}
+          onUpdateAlertPreferences={onUpdateAlertPreferences}
+          onUpdateReservationAlerts={onUpdateReservationAlerts}
         />
       )}
 
@@ -5291,6 +5341,8 @@ export default function App() {
             alertPreferences={alertPreferences}
             reservationAlerts={reservationAlerts}
             onRefreshAlertPrefs={() => fetchData(true)}
+            onUpdateAlertPreferences={setAlertPreferences}
+            onUpdateReservationAlerts={setReservationAlerts}
           />
         ) : activeTab === 'inicio' && isThursdayMember ? (
           <HomeScreen
