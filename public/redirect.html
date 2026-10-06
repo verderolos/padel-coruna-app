@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<!--
+  Página puente para los avisos push que deben abrir una app externa (por ejemplo, Playtomic)
+  mediante un esquema de URL personalizado como "playtomic://...".
+
+  Por qué existe: el Service Worker, al procesar el toque en una notificación, no puede navegar
+  de forma fiable a un esquema que no sea http(s) usando clients.openWindow() — esa API está
+  pensada para abrir pestañas de navegador normales, no para lanzar apps nativas por su cuenta.
+  Lo que sí sabe hacer bien es abrir una página de nuestro propio dominio. Así que el Service
+  Worker abre ESTA página (pasándole la URL real como parámetro "to"), y es esta página —ya
+  cargada en un contexto de navegador normal, con el gesto del usuario de haber tocado el aviso—
+  la que hace el salto final con window.location.href, que Android sí reconoce para abrir la app.
+
+  Debe vivir en la carpeta "public" del proyecto, junto a sw.js, para quedar accesible en
+  https://tu-dominio/redirect.html — el propio sw.js la referencia con esa ruta.
+-->
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Abriendo…</title>
+<style>
+  body {
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #1c1917;
+    color: #f5f5f4;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    text-align: center;
+    padding: 24px;
+    box-sizing: border-box;
+  }
+  .caja { max-width: 320px; }
+  .spinner {
+    width: 32px;
+    height: 32px;
+    margin: 0 auto 16px;
+    border: 3px solid rgba(245, 245, 244, 0.25);
+    border-top-color: #f5f5f4;
+    border-radius: 50%;
+    animation: girar 0.8s linear infinite;
+  }
+  @keyframes girar { to { transform: rotate(360deg); } }
+  p { font-size: 14px; color: #d6d3d1; line-height: 1.5; }
+  a {
+    display: inline-block;
+    margin-top: 12px;
+    color: #fde047;
+    font-weight: 600;
+    text-decoration: none;
+  }
+</style>
+</head>
+<body>
+  <div class="caja">
+    <div class="spinner"></div>
+    <p id="mensaje">Abriendo…</p>
+    <a id="enlaceManual" href="#" style="display:none;">Tocar aquí si no se abre automáticamente</a>
+  </div>
+
+  <script>
+    (function () {
+      var params = new URLSearchParams(window.location.search);
+      var destino = params.get('to');
+
+      if (!destino) {
+        document.getElementById('mensaje').textContent = 'Falta la URL de destino.';
+        return;
+      }
+
+      try {
+        destino = decodeURIComponent(destino);
+      } catch (e) {
+        // Si no estaba codificada, la usamos tal cual.
+      }
+
+      var enlace = document.getElementById('enlaceManual');
+      enlace.href = destino;
+      enlace.style.display = 'inline-block';
+
+      // Algunos navegadores bloquean una redirección automática a un esquema desconocido si no
+      // detectan un gesto de usuario "fresco" (el toque en la notificación puede no contar según
+      // el dispositivo/navegador). Por eso dejamos siempre visible el enlace manual como respaldo,
+      // además de intentar la redirección automática.
+      window.location.href = destino;
+    })();
+  </script>
+</body>
+</html>
