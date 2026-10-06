@@ -419,14 +419,14 @@ function UserAvatar({ name, photo, size = 'md', className = '' }) {
       <img
         src={photo}
         alt={name}
-        className={`${sizeClasses[size]} rounded-full object-cover border border-slate-200 shadow-xs shrink-0 ${className}`}
+        className={`${sizeClasses[size]} rounded-full object-cover border border-stone-200 shadow-xs shrink-0 ${className}`}
       />
     );
   }
 
   return (
     <div
-      className={`${sizeClasses[size]} rounded-full bg-gradient-to-br from-blue-600 to-indigo-700 text-white font-black flex items-center justify-center border border-white/50 shadow-xs shrink-0 ${className}`}
+      className={`${sizeClasses[size]} rounded-full bg-gradient-to-br from-[#2c4a66] to-[#2c4a66] text-white font-black flex items-center justify-center border border-white/50 shadow-xs shrink-0 ${className}`}
     >
       {initials}
     </div>
@@ -439,7 +439,7 @@ function UserAvatar({ name, photo, size = 'md', className = '' }) {
 function MiniBarChart({ data, height = 90 }) {
   if (!data || data.length === 0 || data.every(d => d.played === 0)) {
     return (
-      <div className="text-center py-4 text-[10px] text-slate-400 italic">
+      <div className="text-center py-4 text-[10px] text-stone-400 italic">
         Todavía no hay partidos registrados en los últimos meses.
       </div>
     );
@@ -452,12 +452,12 @@ function MiniBarChart({ data, height = 90 }) {
 
   return (
     <div>
-      <div className="flex items-center gap-3 text-[9px] font-bold text-slate-500 mb-1.5">
+      <div className="flex items-center gap-3 text-[9px] font-bold text-stone-500 mb-1.5">
         <span className="flex items-center gap-1">
-          <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" /> Victorias
+          <span className="w-2 h-2 rounded-full bg-[#a9c4ad] inline-block" /> Victorias
         </span>
         <span className="flex items-center gap-1">
-          <span className="w-2 h-2 rounded-full bg-rose-500 inline-block" /> Derrotas
+          <span className="w-2 h-2 rounded-full bg-[#d9a582] inline-block" /> Derrotas
         </span>
       </div>
       <svg viewBox={`0 0 ${width} ${height + 18}`} width="100%" height={height + 18} role="img" aria-label="Partidos y victorias por mes">
@@ -505,7 +505,7 @@ function StarRating({ value, onChange }) {
             key={s}
             onClick={() => onChange(s)}
             className={`text-xl leading-none transition-transform active:scale-125 ${
-              active ? 'text-amber-400 drop-shadow-xs' : 'text-slate-200'
+              active ? 'text-[#d9b97c] drop-shadow-xs' : 'text-stone-200'
             }`}
             title={`Nivel ${s}`}
           >
@@ -513,7 +513,7 @@ function StarRating({ value, onChange }) {
           </button>
         );
       })}
-      <span className="text-[11px] font-black text-slate-700 ml-1.5 w-6 text-right">
+      <span className="text-[11px] font-black text-stone-700 ml-1.5 w-6 text-right">
         {Number(value).toFixed(1)}
       </span>
     </div>
@@ -592,44 +592,44 @@ function CriteriosModal({ isOpen, onClose }) {
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-3xl max-w-lg w-full max-h-[90vh] overflow-y-auto shadow-2xl p-6 text-left space-y-4">
         <div className="flex items-center justify-between border-b pb-3">
-          <h3 className="text-lg font-black text-slate-900 flex items-center gap-2">
+          <h3 className="text-lg font-black text-stone-900 flex items-center gap-2">
             📖 Sistema Oficial de Puntuación CTC
           </h3>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-700 text-2xl font-bold leading-none">&times;</button>
+          <button onClick={onClose} className="text-stone-400 hover:text-stone-700 text-2xl font-bold leading-none">&times;</button>
         </div>
 
-        <section className="bg-blue-50 border border-blue-200 rounded-2xl p-4 space-y-2">
-          <h4 className="font-extrabold text-blue-950 text-xs uppercase tracking-wide">🏆 1. Ranking Deportivo</h4>
-          <ul className="text-xs text-blue-900 space-y-1 list-disc list-inside">
+        <section className="bg-[#eef2f6] border border-[#c3d3e0] rounded-2xl p-4 space-y-2">
+          <h4 className="font-extrabold text-[#2c4a66] text-xs uppercase tracking-wide">🏆 1. Ranking Deportivo</h4>
+          <ul className="text-xs text-[#2c4a66] space-y-1 list-disc list-inside">
             <li><strong>Victoria:</strong> +5 puntos.</li>
             <li><strong>Derrota:</strong> 0 puntos.</li>
           </ul>
         </section>
 
-        <section className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 space-y-2">
-          <h4 className="font-extrabold text-emerald-950 text-xs uppercase tracking-wide">🍻 2. Ranking Barandas (3º Tiempo)</h4>
-          <ul className="text-xs text-emerald-900 space-y-1 list-disc list-inside">
+        <section className="bg-[#eef4f0] border border-[#c7ddc9] rounded-2xl p-4 space-y-2">
+          <h4 className="font-extrabold text-[#2f5d50] text-xs uppercase tracking-wide">🍻 2. Ranking Barandas (3º Tiempo)</h4>
+          <ul className="text-xs text-[#2f5d50] space-y-1 list-disc list-inside">
             <li><strong>Quedarse a la cena:</strong> +5 puntos (computables tras las 09:00 AM del día siguiente).</li>
             <li><strong>Jugar el partido:</strong> +1 punto (por compromiso y asistencia).</li>
             <li><strong>Rajarse de la cena habiendo jugado:</strong> -1 punto de penalización.</li>
           </ul>
         </section>
 
-        <section className="bg-purple-50 border border-purple-200 rounded-2xl p-4 space-y-1.5">
-          <h4 className="font-extrabold text-purple-950 text-xs uppercase tracking-wide">⚡ 3. Ranking Híbrido (Corona General)</h4>
-          <p className="text-xs text-purple-900">Suma directa del <strong>Ranking Deportivo + Ranking Barandas</strong>.</p>
+        <section className="bg-[#f2eef2] border border-[#ddc9de] rounded-2xl p-4 space-y-1.5">
+          <h4 className="font-extrabold text-[#4a3350] text-xs uppercase tracking-wide">⚡ 3. Ranking Híbrido (Corona General)</h4>
+          <p className="text-xs text-[#4a3350]">Suma directa del <strong>Ranking Deportivo + Ranking Barandas</strong>.</p>
         </section>
 
-        <section className="bg-amber-50 border border-amber-200 rounded-2xl p-4 space-y-1.5">
-          <h4 className="font-extrabold text-amber-950 text-xs uppercase tracking-wide">💶 4. El Bote</h4>
-          <ul className="text-xs text-amber-900 space-y-1 list-disc list-inside">
+        <section className="bg-[#faf3e7] border border-[#efd9a9] rounded-2xl p-4 space-y-1.5">
+          <h4 className="font-extrabold text-[#6b4d1c] text-xs uppercase tracking-wide">💶 4. El Bote</h4>
+          <ul className="text-xs text-[#6b4d1c] space-y-1 list-disc list-inside">
             <li><strong>Derrota en pista:</strong> +1 € de bote.</li>
             <li><strong>Rajarse de la cena:</strong> +1 € de bote.</li>
             <li><strong>Victoria:</strong> 0 € (el ganador no paga bote).</li>
           </ul>
         </section>
 
-        <button onClick={onClose} className="w-full mt-2 bg-slate-900 text-white font-bold py-2.5 rounded-xl text-xs">
+        <button onClick={onClose} className="w-full mt-2 bg-stone-900 text-white font-bold py-2.5 rounded-xl text-xs">
           Cerrar
         </button>
       </div>
@@ -684,11 +684,11 @@ function PinModal({ isOpen, onClose, targetUser, onPinSuccess, apiUrl }) {
 
   return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-slate-800 rounded-3xl max-w-xs w-full p-6 text-white border border-slate-700 shadow-2xl text-center space-y-4">
+      <div className="bg-stone-800 rounded-3xl max-w-xs w-full p-6 text-white border border-stone-700 shadow-2xl text-center space-y-4">
         <UserAvatar name={targetUser.name} photo={targetUser.photo} size="lg" className="mx-auto" />
         <div>
           <h3 className="text-base font-black">{targetUser.name}</h3>
-          <p className="text-xs text-slate-400">Introduce tu PIN de 4 dígitos</p>
+          <p className="text-xs text-stone-400">Introduce tu PIN de 4 dígitos</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-3">
@@ -699,23 +699,23 @@ function PinModal({ isOpen, onClose, targetUser, onPinSuccess, apiUrl }) {
             value={pin}
             onChange={e => setPin(e.target.value.replace(/\D/g, ''))}
             placeholder="••••"
-            className="w-full bg-slate-900 border border-slate-700 rounded-2xl py-3 text-center text-2xl tracking-[0.5em] font-black text-white focus:outline-none focus:border-blue-500"
+            className="w-full bg-stone-900 border border-stone-700 rounded-2xl py-3 text-center text-2xl tracking-[0.5em] font-black text-white focus:outline-none focus:border-[#9fb4c7]"
           />
 
-          {error && <p className="text-xs text-rose-400 font-bold">{error}</p>}
+          {error && <p className="text-xs text-[#d9a582] font-bold">{error}</p>}
 
           <div className="flex gap-2">
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 py-2.5 bg-slate-700 text-slate-300 rounded-xl text-xs font-bold"
+              className="flex-1 py-2.5 bg-stone-700 text-stone-300 rounded-xl text-xs font-bold"
             >
               Cancelar
             </button>
             <button
               type="submit"
               disabled={loading}
-              className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold shadow-lg"
+              className="flex-1 py-2.5 bg-[#2c4a66] hover:bg-[#9fb4c7] text-white rounded-xl text-xs font-bold shadow-lg"
             >
               {loading ? 'Entrando...' : 'Entrar'}
             </button>
@@ -822,19 +822,19 @@ function PushNotificationsCard({ currentUser, apiUrl }) {
 
   if (status === 'unsupported') {
     return (
-      <div className="bg-slate-100 rounded-2xl p-3.5 border border-slate-200 text-[11px] text-slate-500">
+      <div className="bg-stone-100 rounded-2xl p-3.5 border border-stone-200 text-[11px] text-stone-500">
         🔕 Este navegador no soporta notificaciones push. En iPhone: añade la app a la pantalla de inicio desde Safari (compartir → "Añadir a pantalla de inicio") y ábrela desde ahí para poder activarlas.
       </div>
     );
   }
 
   return (
-    <div className="bg-white rounded-2xl p-3.5 border border-slate-200 shadow-xs space-y-2">
+    <div className="bg-white rounded-2xl p-3.5 border border-stone-200 shadow-xs space-y-2">
       <div className="flex items-center gap-2">
         <span className="text-xl shrink-0">{status === 'on' ? '🔔' : '🔕'}</span>
         <div className="flex-1 min-w-0">
-          <span className="font-black text-slate-900 text-xs block">Notificaciones en este dispositivo</span>
-          <span className="text-[10px] text-slate-500 block">
+          <span className="font-black text-stone-900 text-xs block">Notificaciones en este dispositivo</span>
+          <span className="text-[10px] text-stone-500 block">
             {status === 'on'
               ? 'Activadas — te avisaremos aquí de lo importante, aunque tengas la app cerrada.'
               : status === 'denied'
@@ -846,11 +846,11 @@ function PushNotificationsCard({ currentUser, apiUrl }) {
       {status !== 'denied' && (
         <div className="flex gap-2">
           {status !== 'on' ? (
-            <button onClick={handleEnable} disabled={busy} className="flex-1 py-2 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl text-[11px] disabled:opacity-50 transition">
+            <button onClick={handleEnable} disabled={busy} className="flex-1 py-2 bg-[#d9b97c] hover:bg-[#6b4d1c] text-white font-bold rounded-xl text-[11px] disabled:opacity-50 transition">
               {busy ? 'Activando...' : '🔔 Activar notificaciones'}
             </button>
           ) : (
-            <button onClick={handleTestPush} disabled={busy} className="flex-1 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-[11px] disabled:opacity-50 transition">
+            <button onClick={handleTestPush} disabled={busy} className="flex-1 py-2 bg-stone-100 hover:bg-stone-200 text-stone-700 font-bold rounded-xl text-[11px] disabled:opacity-50 transition">
               {busy ? 'Enviando...' : '🧪 Enviar notificación de prueba'}
             </button>
           )}
@@ -913,54 +913,54 @@ function PushPreferencesCard({ currentUser, apiUrl, alertPreferences, reservatio
   };
 
   return (
-    <div className="bg-white rounded-2xl p-3.5 border border-slate-200 shadow-xs space-y-3">
+    <div className="bg-white rounded-2xl p-3.5 border border-stone-200 shadow-xs space-y-3">
       <div className="flex items-center gap-2">
         <span className="text-xl shrink-0">⚙️</span>
-        <span className="font-black text-slate-900 text-xs">Qué avisos quieres recibir</span>
+        <span className="font-black text-stone-900 text-xs">Qué avisos quieres recibir</span>
       </div>
 
-      <div className="flex items-center justify-between gap-2 bg-slate-50 rounded-xl p-2.5">
+      <div className="flex items-center justify-between gap-2 bg-stone-50 rounded-xl p-2.5">
         <div className="min-w-0">
-          <span className="font-bold text-slate-800 text-[11px] block">📋 Aviso de los lunes</span>
-          <span className="text-[10px] text-slate-500 block">Si para esta semana no te localizamos en ningún partido subido a la app</span>
+          <span className="font-bold text-stone-800 text-[11px] block">📋 Aviso de los lunes</span>
+          <span className="text-[10px] text-stone-500 block">Si para esta semana no te localizamos en ningún partido subido a la app</span>
         </div>
         <button
           onClick={handleToggleLunes}
           disabled={busy}
-          className={`shrink-0 w-11 h-6 rounded-full transition relative disabled:opacity-50 ${lunesActivo ? 'bg-emerald-500' : 'bg-slate-300'}`}
+          className={`shrink-0 w-11 h-6 rounded-full transition relative disabled:opacity-50 ${lunesActivo ? 'bg-[#a9c4ad]' : 'bg-stone-300'}`}
         >
-          <span className="absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition" style={{ left: lunesActivo ? '22px' : '2px' }} />
+          <span className="absolute top-0.5 w-5 h-5 bg-white rounded-full shadow-sm transition" style={{ left: lunesActivo ? '22px' : '2px' }} />
         </button>
       </div>
 
-      <div className="bg-slate-50 rounded-xl p-2.5 space-y-2">
-        <span className="font-bold text-slate-800 text-[11px] block">🎾 Avisos de reserva en Playtomic</span>
-        <span className="text-[10px] text-slate-500 block">
+      <div className="bg-stone-50 rounded-xl p-2.5 space-y-2">
+        <span className="font-bold text-stone-800 text-[11px] block">🎾 Avisos de reserva en Playtomic</span>
+        <span className="text-[10px] text-stone-500 block">
           Te avisamos unos minutos antes de que se abra la reserva (se abre una semana antes, al mismo día y hora que configures aquí)
         </span>
 
         {misReservas.length > 0 && (
           <div className="flex flex-wrap gap-1.5">
             {misReservas.map(r => (
-              <span key={r.id} className="inline-flex items-center gap-1 bg-amber-100 text-amber-800 text-[10px] font-bold px-2 py-1 rounded-full">
+              <span key={r.id} className="inline-flex items-center gap-1 bg-[#faf3e7] text-[#6b4d1c] text-[10px] font-bold px-2 py-1 rounded-full">
                 {(DIAS_SEMANA_ALERTAS.find(d => d.v === Number(r.diaSemana)) || {}).l || r.diaSemana} {r.hora}
-                <button onClick={() => handleDeleteReserva(r.id)} disabled={busy} className="text-amber-600 hover:text-amber-900 font-black disabled:opacity-50">✕</button>
+                <button onClick={() => handleDeleteReserva(r.id)} disabled={busy} className="text-[#6b4d1c] hover:text-[#6b4d1c] font-black disabled:opacity-50">✕</button>
               </span>
             ))}
           </div>
         )}
 
         <div className="flex gap-1.5 items-center">
-          <select value={diaNuevo} onChange={(e) => setDiaNuevo(e.target.value)} className="flex-1 text-[11px] border border-slate-300 rounded-lg px-2 py-1.5 bg-white">
+          <select value={diaNuevo} onChange={(e) => setDiaNuevo(e.target.value)} className="flex-1 text-[11px] border border-stone-300 rounded-lg px-2 py-1.5 bg-white">
             {DIAS_SEMANA_ALERTAS.map(d => <option key={d.v} value={d.v}>{d.l}</option>)}
           </select>
           <input
             type="time"
             value={horaNueva}
             onChange={(e) => setHoraNueva(e.target.value)}
-            className="w-24 text-[11px] border border-slate-300 rounded-lg px-2 py-1.5 bg-white"
+            className="w-24 text-[11px] border border-stone-300 rounded-lg px-2 py-1.5 bg-white"
           />
-          <button onClick={handleAddReserva} disabled={busy} className="shrink-0 px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-lg text-[11px] disabled:opacity-50 transition">
+          <button onClick={handleAddReserva} disabled={busy} className="shrink-0 px-3 py-1.5 bg-[#d9b97c] hover:bg-[#6b4d1c] text-white font-bold rounded-lg text-[11px] disabled:opacity-50 transition">
             + Añadir
           </button>
         </div>
@@ -1011,53 +1011,53 @@ function HomeScreen({ currentUser, matches, activeTournaments, pendingAlerts, on
 
   return (
     <div className="space-y-3">
-      <div className="bg-gradient-to-r from-blue-600 to-indigo-700 rounded-3xl p-5 text-white shadow-md">
+      <div className="bg-gradient-to-r from-[#2c4a66] to-[#2c4a66] rounded-3xl p-5 text-white shadow-md">
         <p className="text-xs font-bold opacity-80">{saludo},</p>
         <h2 className="text-xl font-black">{(currentUser?.name || 'Jugador').split(' ')[0]} 👋</h2>
       </div>
 
-      <div className="bg-white rounded-2xl p-3.5 border border-slate-200 shadow-xs space-y-2.5">
+      <div className="bg-white rounded-2xl p-3.5 border border-stone-200 shadow-xs space-y-2.5">
         <div className="flex items-center justify-between">
-          <span className="font-black text-slate-900 text-xs">🎾 Esta semana</span>
-          <button onClick={() => onNavigate('partidos')} className="text-[10px] font-bold text-blue-600 hover:underline">Ver todo →</button>
+          <span className="font-black text-stone-900 text-xs">🎾 Esta semana</span>
+          <button onClick={() => onNavigate('partidos')} className="text-[10px] font-bold text-[#2c4a66] hover:underline">Ver todo →</button>
         </div>
 
         {resumen.partidosSemana.length === 0 ? (
-          <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-center space-y-1.5">
-            <span className="text-[11px] font-bold text-amber-800 block">Todavía no hay partido subido para esta semana</span>
-            <button onClick={() => onNavigate('partidos')} className="text-[10px] font-black text-amber-700 underline">Subir partido</button>
+          <div className="bg-[#faf3e7] border border-[#efd9a9] rounded-xl p-3 text-center space-y-1.5">
+            <span className="text-[11px] font-bold text-[#6b4d1c] block">Todavía no hay partido subido para esta semana</span>
+            <button onClick={() => onNavigate('partidos')} className="text-[10px] font-black text-[#6b4d1c] underline">Subir partido</button>
           </div>
         ) : (
           resumen.partidosSemana.map(({ match, cenaSi, cenaPendiente, totalJugadores }) => (
             <button
               key={match.id}
               onClick={() => onOpenMatch(match.id)}
-              className="w-full text-left bg-slate-50 hover:bg-slate-100 transition rounded-xl p-2.5 flex items-center justify-between gap-2"
+              className="w-full text-left bg-stone-50 hover:bg-stone-100 transition rounded-xl p-2.5 flex items-center justify-between gap-2"
             >
               <div className="min-w-0">
-                <span className="font-bold text-slate-800 text-[11px] block truncate">{match.date}</span>
-                <span className="text-[10px] text-slate-500">
+                <span className="font-bold text-stone-800 text-[11px] block truncate">{match.date}</span>
+                <span className="text-[10px] text-stone-500">
                   {totalJugadores}/4 apuntados
                   {cenaPendiente > 0
                     ? ` · 🍻 ${cenaPendiente} sin confirmar cena (gente remolona 🐌)`
                     : (cenaSi > 0 ? ` · 🍻 ${cenaSi} confirmados para cenar` : '')}
                 </span>
               </div>
-              <span className="text-slate-400 text-xs shrink-0">→</span>
+              <span className="text-stone-400 text-xs shrink-0">→</span>
             </button>
           ))
         )}
       </div>
 
       {resumen.misTorneos.length > 0 && (
-        <div className="bg-white rounded-2xl p-3.5 border border-slate-200 shadow-xs space-y-2">
+        <div className="bg-white rounded-2xl p-3.5 border border-stone-200 shadow-xs space-y-2">
           <div className="flex items-center justify-between">
-            <span className="font-black text-slate-900 text-xs">⚔️ Tus torneos activos</span>
-            <button onClick={() => onNavigate('torneos')} className="text-[10px] font-bold text-purple-600 hover:underline">Ver todo →</button>
+            <span className="font-black text-stone-900 text-xs">⚔️ Tus torneos activos</span>
+            <button onClick={() => onNavigate('torneos')} className="text-[10px] font-bold text-[#4a3350] hover:underline">Ver todo →</button>
           </div>
           <div className="flex flex-wrap gap-1.5">
             {resumen.misTorneos.map(t => (
-              <span key={t.id} className="bg-purple-100 text-purple-800 text-[10px] font-bold px-2 py-1 rounded-full">{t.name}</span>
+              <span key={t.id} className="bg-[#f2eef2] text-[#4a3350] text-[10px] font-bold px-2 py-1 rounded-full">{t.name}</span>
             ))}
           </div>
         </div>
@@ -1066,27 +1066,27 @@ function HomeScreen({ currentUser, matches, activeTournaments, pendingAlerts, on
       {pendingAlerts.length > 0 && (
         <button
           onClick={() => onNavigate('avisos')}
-          className="w-full bg-amber-50 border border-amber-200 text-amber-900 rounded-2xl p-3 flex items-center justify-between gap-2"
+          className="w-full bg-[#faf3e7] border border-[#efd9a9] text-[#6b4d1c] rounded-2xl p-3 flex items-center justify-between gap-2"
         >
           <span className="text-xs font-bold">🔔 Tienes {pendingAlerts.length} {pendingAlerts.length === 1 ? 'aviso pendiente' : 'avisos pendientes'}</span>
-          <span className="text-amber-500">→</span>
+          <span className="text-[#d9b97c]">→</span>
         </button>
       )}
 
       <div className="grid grid-cols-2 gap-2">
-        <button onClick={() => onNavigate('cenas')} className="bg-white border border-slate-200 rounded-2xl p-3 text-center hover:bg-slate-50 transition">
+        <button onClick={() => onNavigate('cenas')} className="bg-white border border-stone-200 rounded-2xl p-3 text-center hover:bg-stone-50 transition">
           <span className="text-xl block mb-0.5">🍻</span>
-          <span className="text-[11px] font-bold text-slate-700">Cena & Club</span>
+          <span className="text-[11px] font-bold text-stone-700">Cena & Club</span>
         </button>
-        <button onClick={() => onNavigate('rankings')} className="bg-white border border-slate-200 rounded-2xl p-3 text-center hover:bg-slate-50 transition">
+        <button onClick={() => onNavigate('rankings')} className="bg-white border border-stone-200 rounded-2xl p-3 text-center hover:bg-stone-50 transition">
           <span className="text-xl block mb-0.5">🏆</span>
-          <span className="text-[11px] font-bold text-slate-700">Rankings</span>
+          <span className="text-[11px] font-bold text-stone-700">Rankings</span>
         </button>
-        <button onClick={() => onNavigate('bote')} className="bg-white border border-slate-200 rounded-2xl p-3 text-center hover:bg-slate-50 transition">
+        <button onClick={() => onNavigate('bote')} className="bg-white border border-stone-200 rounded-2xl p-3 text-center hover:bg-stone-50 transition">
           <span className="text-xl block mb-0.5">💶</span>
-          <span className="text-[11px] font-bold text-slate-700">Bote</span>
+          <span className="text-[11px] font-bold text-stone-700">Bote</span>
         </button>
-        <button onClick={() => onNavigate('torneos')} className="bg-purple-600 text-white rounded-2xl p-3 text-center hover:bg-purple-700 transition">
+        <button onClick={() => onNavigate('torneos')} className="bg-[#4a3350] text-white rounded-2xl p-3 text-center hover:bg-[#4a3350] transition">
           <span className="text-xl block mb-0.5">⚔️</span>
           <span className="text-[11px] font-bold">Torneos</span>
         </button>
@@ -1098,11 +1098,11 @@ function HomeScreen({ currentUser, matches, activeTournaments, pendingAlerts, on
 function AlertsScreen({ alerts, onBack, currentUser, apiUrl, alertPreferences, reservationAlerts, onRefreshAlertPrefs }) {
   return (
     <div className="space-y-3">
-      <button onClick={onBack} className="text-xs font-bold text-blue-600 hover:underline flex items-center gap-1">
+      <button onClick={onBack} className="text-xs font-bold text-[#2c4a66] hover:underline flex items-center gap-1">
         ← Volver
       </button>
 
-      <div className="bg-gradient-to-r from-amber-500 to-orange-600 rounded-3xl p-5 text-white shadow-md">
+      <div className="bg-gradient-to-r from-[#d9b97c] to-[#6b4d1c] rounded-3xl p-5 text-white shadow-md">
         <div className="flex items-center gap-2.5">
           <span className="text-3xl">🔔</span>
           <div>
@@ -1129,9 +1129,9 @@ function AlertsScreen({ alerts, onBack, currentUser, apiUrl, alertPreferences, r
       )}
 
       {alerts.length === 0 ? (
-        <div className="bg-white rounded-2xl p-8 text-center border border-slate-200">
+        <div className="bg-white rounded-2xl p-8 text-center border border-stone-200">
           <p className="text-3xl mb-1">✅</p>
-          <p className="text-sm font-bold text-slate-700">¡Estás al día! No tienes ninguna acción pendiente.</p>
+          <p className="text-sm font-bold text-stone-700">¡Estás al día! No tienes ninguna acción pendiente.</p>
         </div>
       ) : (
         <div className="space-y-2">
@@ -1139,14 +1139,14 @@ function AlertsScreen({ alerts, onBack, currentUser, apiUrl, alertPreferences, r
             <button
               key={a.id}
               onClick={a.action}
-              className="w-full text-left bg-white rounded-2xl p-3.5 border border-slate-200 shadow-xs hover:border-amber-400 transition flex items-center gap-3"
+              className="w-full text-left bg-white rounded-2xl p-3.5 border border-stone-200 shadow-xs hover:border-[#d9b97c] transition flex items-center gap-3"
             >
               <span className="text-2xl shrink-0">{a.icon}</span>
               <div className="min-w-0 flex-1">
-                <span className="font-black text-slate-900 text-xs block truncate">{a.title}</span>
-                <span className="text-[11px] text-slate-500 truncate block">{a.description}</span>
+                <span className="font-black text-stone-900 text-xs block truncate">{a.title}</span>
+                <span className="text-[11px] text-stone-500 truncate block">{a.description}</span>
               </div>
-              <span className="text-slate-300 text-lg shrink-0">→</span>
+              <span className="text-stone-300 text-lg shrink-0">→</span>
             </button>
           ))}
         </div>
@@ -1590,26 +1590,26 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, allDinn
             </div>
             <div>
               <div className="flex items-center gap-1.5">
-                <h3 className="text-base font-black text-slate-900">{user.name}</h3>
+                <h3 className="text-base font-black text-stone-900">{user.name}</h3>
                 {user.isLeftHanded && (
-                  <span className="text-[9px] bg-blue-100 text-blue-800 font-extrabold px-1.5 py-0.5 rounded-full border border-blue-300">
+                  <span className="text-[9px] bg-[#eef2f6] text-[#2c4a66] font-extrabold px-1.5 py-0.5 rounded-full border border-[#9fb4c7]">
                     👈 Zurdo
                   </span>
                 )}
               </div>
-              <p className="text-xs text-blue-600 font-bold">{user.titulo}</p>
+              <p className="text-xs text-[#2c4a66] font-bold">{user.titulo}</p>
               {isCurrentUser && (
                 <div className="flex gap-2 mt-0.5">
                   <button
                     onClick={() => fileInputRef.current && fileInputRef.current.click()}
                     disabled={uploading}
-                    className="text-[10px] text-slate-500 underline font-semibold hover:text-blue-600"
+                    className="text-[10px] text-stone-500 underline font-semibold hover:text-[#2c4a66]"
                   >
                     {uploading ? 'Guardando foto...' : 'Cambiar foto'}
                   </button>
                   <button
                     onClick={() => setEditing(!editing)}
-                    className="text-[10px] text-blue-600 underline font-semibold"
+                    className="text-[10px] text-[#2c4a66] underline font-semibold"
                   >
                     {editing ? 'Cancelar edición' : '✏️ Editar mis datos'}
                   </button>
@@ -1617,45 +1617,45 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, allDinn
               )}
             </div>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-700 text-2xl font-bold">&times;</button>
+          <button onClick={onClose} className="text-stone-400 hover:text-stone-700 text-2xl font-bold">&times;</button>
         </div>
 
         {isCurrentUser && editing && (
-          <form onSubmit={handleSaveProfileData} className="bg-slate-50 p-3 rounded-2xl border border-slate-200 space-y-2 text-xs">
+          <form onSubmit={handleSaveProfileData} className="bg-stone-50 p-3 rounded-2xl border border-stone-200 space-y-2 text-xs">
             <div>
-              <label className="block text-[10px] font-bold text-slate-600 mb-0.5">Nombre completo</label>
+              <label className="block text-[10px] font-bold text-stone-600 mb-0.5">Nombre completo</label>
               <input
                 type="text"
                 required
                 value={editName}
                 onChange={e => setEditName(e.target.value)}
-                className="w-full bg-white border border-slate-300 rounded-xl p-2 font-semibold"
+                className="w-full bg-white border border-stone-300 rounded-xl p-2 font-semibold"
               />
             </div>
             <div>
-              <label className="block text-[10px] font-bold text-slate-600 mb-0.5">Teléfono móvil (WhatsApp)</label>
+              <label className="block text-[10px] font-bold text-stone-600 mb-0.5">Teléfono móvil (WhatsApp)</label>
               <input
                 type="tel"
                 value={editPhone}
                 onChange={e => setEditPhone(e.target.value)}
                 placeholder="Ej: 600123456"
-                className="w-full bg-white border border-slate-300 rounded-xl p-2 font-semibold"
+                className="w-full bg-white border border-stone-300 rounded-xl p-2 font-semibold"
               />
             </div>
             <div>
-              <label className="block text-[10px] font-bold text-slate-600 mb-0.5">Mano de Juego</label>
-              <label className="flex items-center gap-2 bg-white border border-slate-300 rounded-xl p-2 cursor-pointer">
+              <label className="block text-[10px] font-bold text-stone-600 mb-0.5">Mano de Juego</label>
+              <label className="flex items-center gap-2 bg-white border border-stone-300 rounded-xl p-2 cursor-pointer">
                 <input
                   type="checkbox"
                   checked={editIsLeftHanded}
                   onChange={e => setEditIsLeftHanded(e.target.checked)}
-                  className="w-4 h-4 text-blue-600 rounded accent-blue-600"
+                  className="w-4 h-4 text-[#2c4a66] rounded accent-[#2c4a66]"
                 />
-                <span className="font-bold text-xs text-slate-800">Soy jugador Zurdo 👈</span>
+                <span className="font-bold text-xs text-stone-800">Soy jugador Zurdo 👈</span>
               </label>
             </div>
             <div>
-              <label className="block text-[10px] font-bold text-slate-600 mb-0.5">Grupo / Rol</label>
+              <label className="block text-[10px] font-bold text-stone-600 mb-0.5">Grupo / Rol</label>
               <div className="flex gap-1.5">
                 {['Chicos', 'Solo Torneo'].map(g => (
                   <button
@@ -1663,7 +1663,7 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, allDinn
                     key={g}
                     onClick={() => setEditGroup(g)}
                     className={`flex-1 py-1 rounded-lg font-bold border text-[11px] ${
-                      editGroup === g ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-700 border-slate-200'
+                      editGroup === g ? 'bg-[#2c4a66] text-white border-[#2c4a66]' : 'bg-white text-stone-700 border-stone-200'
                     }`}
                   >
                     {g}
@@ -1672,19 +1672,19 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, allDinn
               </div>
             </div>
             <div>
-              <label className="block text-[10px] font-bold text-slate-600 mb-0.5">Usuario de Playtomic</label>
+              <label className="block text-[10px] font-bold text-stone-600 mb-0.5">Usuario de Playtomic</label>
               <input
                 type="text"
                 value={editPlaytomic}
                 onChange={e => setEditPlaytomic(e.target.value)}
                 placeholder="Ej: marcos-padel"
-                className="w-full bg-white border border-slate-300 rounded-xl p-2 font-semibold"
+                className="w-full bg-white border border-stone-300 rounded-xl p-2 font-semibold"
               />
             </div>
             <button
               type="submit"
               disabled={savingData}
-              className="w-full py-2 bg-blue-600 text-white rounded-xl font-bold shadow-xs transition"
+              className="w-full py-2 bg-[#2c4a66] text-white rounded-xl font-bold shadow-xs transition"
             >
               {savingData ? 'Guardando...' : 'Guardar Cambios'}
             </button>
@@ -1693,14 +1693,14 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, allDinn
 
         {isThursdayMember && (
           <div className="space-y-2">
-            <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">
+            <span className="text-[10px] font-black text-stone-400 uppercase tracking-wider block">
               Estadísticas Liga Regular
             </span>
             <div className="grid grid-cols-4 gap-2 text-center">
               <button
                 type="button"
                 onClick={() => setSelectedStatCategory(selectedStatCategory === 'pj' ? null : 'pj')}
-                className={`border rounded-xl p-2 transition ${selectedStatCategory === 'pj' ? 'bg-blue-600 text-white border-blue-600' : 'bg-slate-50 border-slate-200 hover:bg-slate-100'}`}
+                className={`border rounded-xl p-2 transition ${selectedStatCategory === 'pj' ? 'bg-[#2c4a66] text-white border-[#2c4a66]' : 'bg-stone-50 border-stone-200 hover:bg-stone-100'}`}
               >
                 <span className="text-base font-black block">{statsCalculated.played}</span>
                 <span className="text-[9px] uppercase font-bold opacity-80">PJ</span>
@@ -1709,7 +1709,7 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, allDinn
               <button
                 type="button"
                 onClick={() => setSelectedStatCategory(selectedStatCategory === 'victorias' ? null : 'victorias')}
-                className={`border rounded-xl p-2 transition ${selectedStatCategory === 'victorias' ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-emerald-50 border-emerald-200 text-emerald-900 hover:bg-emerald-100'}`}
+                className={`border rounded-xl p-2 transition ${selectedStatCategory === 'victorias' ? 'bg-[#2f5d50] text-white border-[#2f5d50]' : 'bg-[#eef4f0] border-[#c7ddc9] text-[#2f5d50] hover:bg-[#eef4f0]'}`}
               >
                 <span className="text-base font-black block">{statsCalculated.won}</span>
                 <span className="text-[9px] uppercase font-bold opacity-80">Ganados</span>
@@ -1718,13 +1718,13 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, allDinn
               <button
                 type="button"
                 onClick={() => setSelectedStatCategory(selectedStatCategory === 'derrotas' ? null : 'derrotas')}
-                className={`border rounded-xl p-2 transition ${selectedStatCategory === 'derrotas' ? 'bg-rose-600 text-white border-rose-600' : 'bg-rose-50 border-rose-200 text-rose-900 hover:bg-rose-100'}`}
+                className={`border rounded-xl p-2 transition ${selectedStatCategory === 'derrotas' ? 'bg-[#6b3f29] text-white border-[#6b3f29]' : 'bg-[#f6ede6] border-[#ead3bf] text-[#6b3f29] hover:bg-[#f6ede6]'}`}
               >
                 <span className="text-base font-black block">{statsCalculated.lost}</span>
                 <span className="text-[9px] uppercase font-bold opacity-80">Perdidos</span>
               </button>
 
-              <div className="bg-blue-50 border border-blue-200 rounded-xl p-2 text-blue-900">
+              <div className="bg-[#eef2f6] border border-[#c3d3e0] rounded-xl p-2 text-[#2c4a66]">
                 <span className="text-base font-black block">{statsCalculated.winRate}%</span>
                 <span className="text-[9px] uppercase font-bold opacity-80">% Éxito</span>
               </div>
@@ -1734,7 +1734,7 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, allDinn
               <button
                 type="button"
                 onClick={() => setSelectedStatCategory(selectedStatCategory === 'cenas' ? null : 'cenas')}
-                className={`border rounded-xl p-2.5 transition ${selectedStatCategory === 'cenas' ? 'bg-amber-600 text-white border-amber-600' : 'bg-amber-50 border-amber-200 text-amber-900 hover:bg-amber-100'}`}
+                className={`border rounded-xl p-2.5 transition ${selectedStatCategory === 'cenas' ? 'bg-[#6b4d1c] text-white border-[#6b4d1c]' : 'bg-[#faf3e7] border-[#efd9a9] text-[#6b4d1c] hover:bg-[#faf3e7]'}`}
               >
                 <span className="text-base font-black block">{statsCalculated.dinnerYesList.length}</span>
                 <span className="text-[10px] font-bold uppercase">Cenas 🍻</span>
@@ -1743,7 +1743,7 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, allDinn
               <button
                 type="button"
                 onClick={() => setSelectedStatCategory(selectedStatCategory === 'rajadas' ? null : 'rajadas')}
-                className={`border rounded-xl p-2.5 transition ${selectedStatCategory === 'rajadas' ? 'bg-purple-600 text-white border-purple-600' : 'bg-purple-50 border-purple-200 text-purple-900 hover:bg-purple-100'}`}
+                className={`border rounded-xl p-2.5 transition ${selectedStatCategory === 'rajadas' ? 'bg-[#4a3350] text-white border-[#4a3350]' : 'bg-[#f2eef2] border-[#ddc9de] text-[#4a3350] hover:bg-[#f2eef2]'}`}
               >
                 <span className="text-base font-black block">{statsCalculated.dinnerNoList.length}</span>
                 <span className="text-[10px] font-bold uppercase">Rajadas 🏃‍♂️</span>
@@ -1751,12 +1751,12 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, allDinn
             </div>
 
             <div className="grid grid-cols-2 gap-2 text-center pt-2">
-              <button onClick={() => setSelectedStatCategory(selectedStatCategory === 'puntos' ? null : 'puntos')} className={`border rounded-xl p-2.5 transition flex flex-col items-center justify-center ${selectedStatCategory === 'puntos' ? 'bg-blue-900 text-white border-blue-900' : 'bg-slate-900 text-white border-slate-700 hover:bg-slate-800'}`}>
-                <span className="text-lg font-black block text-blue-400">{user.hibrido || 0} pts</span>
+              <button onClick={() => setSelectedStatCategory(selectedStatCategory === 'puntos' ? null : 'puntos')} className={`border rounded-xl p-2.5 transition flex flex-col items-center justify-center ${selectedStatCategory === 'puntos' ? 'bg-[#2c4a66] text-white border-[#2c4a66]' : 'bg-stone-900 text-white border-stone-700 hover:bg-stone-800'}`}>
+                <span className="text-lg font-black block text-[#9fb4c7]">{user.hibrido || 0} pts</span>
                 <span className="text-[10px] font-bold uppercase">Historial Puntos 🏅</span>
               </button>
-              <button onClick={() => setSelectedStatCategory(selectedStatCategory === 'bote' ? null : 'bote')} className={`border rounded-xl p-2.5 transition flex flex-col items-center justify-center ${selectedStatCategory === 'bote' ? 'bg-rose-900 text-white border-rose-900' : 'bg-slate-900 text-white border-slate-700 hover:bg-slate-800'}`}>
-                <span className="text-lg font-black block text-rose-400">{user.deuda || 0} €</span>
+              <button onClick={() => setSelectedStatCategory(selectedStatCategory === 'bote' ? null : 'bote')} className={`border rounded-xl p-2.5 transition flex flex-col items-center justify-center ${selectedStatCategory === 'bote' ? 'bg-[#6b3f29] text-white border-[#6b3f29]' : 'bg-stone-900 text-white border-stone-700 hover:bg-stone-800'}`}>
+                <span className="text-lg font-black block text-[#d9a582]">{user.deuda || 0} €</span>
                 <span className="text-[10px] font-bold uppercase">Desglose Bote 💶</span>
               </button>
             </div>
@@ -1765,64 +1765,64 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, allDinn
 
         {/* ANÁLISIS DE PAREJAS Y RIVALES */}
         {isThursdayMember && (
-          <div className="space-y-2 pt-2 border-t border-slate-100 text-xs">
-            <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">
+          <div className="space-y-2 pt-2 border-t border-stone-100 text-xs">
+            <span className="text-[10px] font-black text-stone-400 uppercase tracking-wider block">
               🤝 Química de Parejas & Rivales
             </span>
             <div className="grid grid-cols-2 gap-2">
-              <div className="bg-emerald-50/80 border border-emerald-200 p-2.5 rounded-2xl">
-                <span className="text-[9px] font-black text-emerald-800 uppercase block mb-1">👑 Mejor Compañero</span>
+              <div className="bg-[#eef4f0]/80 border border-[#c7ddc9] p-2.5 rounded-2xl">
+                <span className="text-[9px] font-black text-[#2f5d50] uppercase block mb-1">👑 Mejor Compañero</span>
                 {statsCalculated.bestPartner ? (
                   <div>
-                    <span className="font-extrabold text-slate-900 block truncate">{statsCalculated.bestPartner.name}</span>
-                    <span className="text-[10px] font-bold text-emerald-700">
+                    <span className="font-extrabold text-stone-900 block truncate">{statsCalculated.bestPartner.name}</span>
+                    <span className="text-[10px] font-bold text-[#2f5d50]">
                       {statsCalculated.bestPartner.pct}% Victorias ({statsCalculated.bestPartner.won}/{statsCalculated.bestPartner.played})
                     </span>
                   </div>
                 ) : (
-                  <span className="text-[10px] text-slate-400 italic">Sin registros</span>
+                  <span className="text-[10px] text-stone-400 italic">Sin registros</span>
                 )}
               </div>
 
-              <div className="bg-rose-50/80 border border-rose-200 p-2.5 rounded-2xl">
-                <span className="text-[9px] font-black text-rose-800 uppercase block mb-1">💀 Bestia Negra</span>
+              <div className="bg-[#f6ede6]/80 border border-[#ead3bf] p-2.5 rounded-2xl">
+                <span className="text-[9px] font-black text-[#6b3f29] uppercase block mb-1">💀 Bestia Negra</span>
                 {statsCalculated.hardestRival ? (
                   <div>
-                    <span className="font-extrabold text-slate-900 block truncate">{statsCalculated.hardestRival.name}</span>
-                    <span className="text-[10px] font-bold text-rose-700">
+                    <span className="font-extrabold text-stone-900 block truncate">{statsCalculated.hardestRival.name}</span>
+                    <span className="text-[10px] font-bold text-[#6b3f29]">
                       {statsCalculated.hardestRival.pct}% Derrotas ({statsCalculated.hardestRival.lostAgainst}/{statsCalculated.hardestRival.played})
                     </span>
                   </div>
                 ) : (
-                  <span className="text-[10px] text-slate-400 italic">Sin registros</span>
+                  <span className="text-[10px] text-stone-400 italic">Sin registros</span>
                 )}
               </div>
 
-              <div className="bg-blue-50/80 border border-blue-200 p-2.5 rounded-2xl">
-                <span className="text-[9px] font-black text-blue-800 uppercase block mb-1">🎯 Rival Fetiche</span>
+              <div className="bg-[#eef2f6]/80 border border-[#c3d3e0] p-2.5 rounded-2xl">
+                <span className="text-[9px] font-black text-[#2c4a66] uppercase block mb-1">🎯 Rival Fetiche</span>
                 {statsCalculated.easiestRival ? (
                   <div>
-                    <span className="font-extrabold text-slate-900 block truncate">{statsCalculated.easiestRival.name}</span>
-                    <span className="text-[10px] font-bold text-blue-700">
+                    <span className="font-extrabold text-stone-900 block truncate">{statsCalculated.easiestRival.name}</span>
+                    <span className="text-[10px] font-bold text-[#2c4a66]">
                       {statsCalculated.easiestRival.pct}% Ganados ({statsCalculated.easiestRival.wonAgainst}/{statsCalculated.easiestRival.played})
                     </span>
                   </div>
                 ) : (
-                  <span className="text-[10px] text-slate-400 italic">Sin registros</span>
+                  <span className="text-[10px] text-stone-400 italic">Sin registros</span>
                 )}
               </div>
 
-              <div className="bg-amber-50/80 border border-amber-200 p-2.5 rounded-2xl">
-                <span className="text-[9px] font-black text-amber-800 uppercase block mb-1">⚠️ Pareja Gafe</span>
+              <div className="bg-[#faf3e7]/80 border border-[#efd9a9] p-2.5 rounded-2xl">
+                <span className="text-[9px] font-black text-[#6b4d1c] uppercase block mb-1">⚠️ Pareja Gafe</span>
                 {statsCalculated.worstPartner ? (
                   <div>
-                    <span className="font-extrabold text-slate-900 block truncate">{statsCalculated.worstPartner.name}</span>
-                    <span className="text-[10px] font-bold text-amber-700">
+                    <span className="font-extrabold text-stone-900 block truncate">{statsCalculated.worstPartner.name}</span>
+                    <span className="text-[10px] font-bold text-[#6b4d1c]">
                       {statsCalculated.worstPartner.pct}% Derrotas ({statsCalculated.worstPartner.lost}/{statsCalculated.worstPartner.played})
                     </span>
                   </div>
                 ) : (
-                  <span className="text-[10px] text-slate-400 italic">Sin registros</span>
+                  <span className="text-[10px] text-stone-400 italic">Sin registros</span>
                 )}
               </div>
             </div>
@@ -1836,65 +1836,65 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, allDinn
           const totalRivales = hh.rivalPlayed;
           const sinDatos = totalJuntos === 0 && totalRivales === 0;
           return (
-            <div className="space-y-2 pt-2 border-t border-slate-100 text-xs">
-              <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">
+            <div className="space-y-2 pt-2 border-t border-stone-100 text-xs">
+              <span className="text-[10px] font-black text-stone-400 uppercase tracking-wider block">
                 🔗 Tu Cruce con {user.name}
               </span>
 
               {sinDatos ? (
-                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3 text-center">
-                  <span className="text-[11px] text-slate-400 italic">
+                <div className="bg-stone-50 border border-stone-200 rounded-2xl p-3 text-center">
+                  <span className="text-[11px] text-stone-400 italic">
                     Todavía no habéis coincidido en ningún partido oficial.
                   </span>
                 </div>
               ) : (
                 <div className="grid grid-cols-2 gap-2">
-                  <div className="bg-indigo-50/80 border border-indigo-200 p-2.5 rounded-2xl">
-                    <span className="text-[9px] font-black text-indigo-800 uppercase block mb-1">🤝 Como Pareja</span>
+                  <div className="bg-[#eef2f6]/80 border border-[#c3d3e0] p-2.5 rounded-2xl">
+                    <span className="text-[9px] font-black text-[#2c4a66] uppercase block mb-1">🤝 Como Pareja</span>
                     {totalJuntos > 0 ? (
                       <div>
-                        <span className="font-extrabold text-slate-900 block">
+                        <span className="font-extrabold text-stone-900 block">
                           {hh.partnerWon}V - {hh.partnerLost}D
                         </span>
-                        <span className="text-[10px] font-bold text-indigo-700">
+                        <span className="text-[10px] font-bold text-[#2c4a66]">
                           {totalJuntos} {totalJuntos === 1 ? 'partido jugado' : 'partidos jugados'} juntos
                         </span>
                       </div>
                     ) : (
-                      <span className="text-[10px] text-slate-400 italic">Nunca habéis sido pareja</span>
+                      <span className="text-[10px] text-stone-400 italic">Nunca habéis sido pareja</span>
                     )}
                   </div>
 
-                  <div className="bg-orange-50/80 border border-orange-200 p-2.5 rounded-2xl">
-                    <span className="text-[9px] font-black text-orange-800 uppercase block mb-1">⚔️ Como Rivales</span>
+                  <div className="bg-[#faf3e7]/80 border border-[#efd9a9] p-2.5 rounded-2xl">
+                    <span className="text-[9px] font-black text-[#6b4d1c] uppercase block mb-1">⚔️ Como Rivales</span>
                     {totalRivales > 0 ? (
                       <div>
-                        <span className="font-extrabold text-slate-900 block">
+                        <span className="font-extrabold text-stone-900 block">
                           Tú {hh.viewerWonVsProfile} - {hh.profileWonVsViewer} {user.name?.split(' ')[0] || 'Él/Ella'}
                         </span>
-                        <span className="text-[10px] font-bold text-orange-700">
+                        <span className="text-[10px] font-bold text-[#6b4d1c]">
                           {totalRivales} {totalRivales === 1 ? 'enfrentamiento' : 'enfrentamientos'}
                         </span>
                       </div>
                     ) : (
-                      <span className="text-[10px] text-slate-400 italic">Nunca os habéis enfrentado</span>
+                      <span className="text-[10px] text-stone-400 italic">Nunca os habéis enfrentado</span>
                     )}
                   </div>
                 </div>
               )}
 
               {hh.recent.length > 0 && (
-                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-2.5 space-y-1 mt-1">
-                  <span className="text-[9px] font-black text-slate-500 uppercase block mb-1">🕑 Últimos cruces</span>
+                <div className="bg-stone-50 border border-stone-200 rounded-2xl p-2.5 space-y-1 mt-1">
+                  <span className="text-[9px] font-black text-stone-500 uppercase block mb-1">🕑 Últimos cruces</span>
                   {[...hh.recent].reverse().slice(0, 5).map((r, idx) => (
-                    <div key={idx} className="flex justify-between items-center text-[10px] border-b border-slate-200/70 last:border-0 pb-1 last:pb-0">
-                      <span className="text-slate-500">{r.date}</span>
+                    <div key={idx} className="flex justify-between items-center text-[10px] border-b border-stone-200/70 last:border-0 pb-1 last:pb-0">
+                      <span className="text-stone-500">{r.date}</span>
                       {r.tipo === 'pareja' ? (
-                        <span className={`font-bold ${r.ganaron ? 'text-emerald-600' : 'text-rose-600'}`}>
+                        <span className={`font-bold ${r.ganaron ? 'text-[#2f5d50]' : 'text-[#6b3f29]'}`}>
                           🤝 Pareja · {r.ganaron ? 'Victoria' : 'Derrota'}
                         </span>
                       ) : (
-                        <span className={`font-bold ${r.ganaProfile ? 'text-rose-600' : 'text-emerald-600'}`}>
+                        <span className={`font-bold ${r.ganaProfile ? 'text-[#6b3f29]' : 'text-[#2f5d50]'}`}>
                           ⚔️ Rival · {r.ganaProfile ? `Ganó ${user.name?.split(' ')[0] || 'él/ella'}` : 'Ganaste tú'}
                         </span>
                       )}
@@ -1908,15 +1908,15 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, allDinn
 
         {/* SUBPANEL DE DETALLE DE ESTADÍSTICAS */}
         {selectedStatCategory && (
-          <div className="bg-slate-900 text-white rounded-2xl p-3 space-y-2 border border-slate-700 animate-fadeIn text-xs">
-            <div className="flex justify-between items-center border-b border-slate-800 pb-1.5">
-              <span className="font-black text-blue-300 text-[11px] uppercase tracking-wide">
+          <div className="bg-stone-900 text-white rounded-2xl p-3 space-y-2 border border-stone-700 animate-fadeIn text-xs">
+            <div className="flex justify-between items-center border-b border-stone-800 pb-1.5">
+              <span className="font-black text-[#9fb4c7] text-[11px] uppercase tracking-wide">
                 📋 {getDetailTitle()} ({getDetailItems().length})
               </span>
               <button
                 type="button"
                 onClick={() => setSelectedStatCategory(null)}
-                className="text-slate-400 hover:text-white font-bold text-sm"
+                className="text-stone-400 hover:text-white font-bold text-sm"
               >
                 ✕
               </button>
@@ -1924,45 +1924,45 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, allDinn
 
             <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
               {getDetailItems().length === 0 ? (
-                <p className="text-slate-400 italic text-[10px] text-center py-2">Sin registros en este apartado</p>
+                <p className="text-stone-400 italic text-[10px] text-center py-2">Sin registros en este apartado</p>
               ) : (
                 getDetailItems().map((item, idx) => (
-                  <div key={idx} className="bg-slate-800 p-2 rounded-xl border border-slate-700/80 space-y-0.5">
+                  <div key={idx} className="bg-stone-800 p-2 rounded-xl border border-stone-700/80 space-y-0.5">
                     {'pts' in item || 'bote' in item ? (
                       <>
-                        <div className="flex justify-between text-[10px] font-bold text-slate-300">
+                        <div className="flex justify-between text-[10px] font-bold text-stone-300">
                           <span>📅 {item.date}</span>
-                          <span className={'pts' in item ? 'text-blue-400' : 'text-rose-400'}>
+                          <span className={'pts' in item ? 'text-[#9fb4c7]' : 'text-[#d9a582]'}>
                             {'pts' in item ? `Suma: ${item.pts > 0 ? '+'+item.pts : item.pts} pts` : `Añade: +${item.bote} €`}
                           </span>
                         </div>
-                        <p className="text-[11px] text-slate-100 font-semibold truncate">{item.title}</p>
-                        <p className="text-[9px] text-slate-400 font-mono mt-0.5">{item.desc}</p>
+                        <p className="text-[11px] text-stone-100 font-semibold truncate">{item.title}</p>
+                        <p className="text-[9px] text-stone-400 font-mono mt-0.5">{item.desc}</p>
                       </>
                     ) : 'date' in item ? (
                       <>
-                        <div className="flex justify-between text-[10px] font-bold text-slate-300">
+                        <div className="flex justify-between text-[10px] font-bold text-stone-300">
                           <span>📅 {item.date}</span>
                           {item.partner !== 'Solo Cena' && (
-                            <span className={item.won ? 'text-emerald-400' : 'text-rose-400'}>{item.won ? 'Victoria 🏆' : 'Derrota ❌'}</span>
+                            <span className={item.won ? 'text-[#a9c4ad]' : 'text-[#d9a582]'}>{item.won ? 'Victoria 🏆' : 'Derrota ❌'}</span>
                           )}
                         </div>
-                        <p className="text-[11px] text-slate-100 font-semibold truncate">
+                        <p className="text-[11px] text-stone-100 font-semibold truncate">
                           {item.partner === 'Solo Cena' ? 'Sin partido jugado' : <>Pareja con <strong>{item.partner}</strong> vs <span>{item.rivals}</span></>}
                         </p>
-                        <p className="text-[9px] text-slate-400">
+                        <p className="text-[9px] text-stone-400">
                           {item.partner !== 'Solo Cena' && `Marcador: ${item.score} · `} Cena: {item.dinner === 'SI' ? '🍻 Sí' : item.dinner === 'NO' ? '🏃‍♂️ No' : '🟡 Pendiente'}
                         </p>
                       </>
                     ) : (
                       <>
-                        <div className="flex justify-between text-[10px] font-bold text-slate-300">
+                        <div className="flex justify-between text-[10px] font-bold text-stone-300">
                           <span>🏆 {item.tournamentName}</span>
-                          <span className={item.won ? 'text-emerald-400' : 'text-rose-400'}>
+                          <span className={item.won ? 'text-[#a9c4ad]' : 'text-[#d9a582]'}>
                             {item.won ? 'Ganado' : 'Perdido'}
                           </span>
                         </div>
-                        <p className="text-[10px] text-slate-200">
+                        <p className="text-[10px] text-stone-200">
                           {item.court}: {item.team1} vs {item.team2} ({item.score})
                         </p>
                       </>
@@ -1975,21 +1975,21 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, allDinn
         )}
 
         {/* NUEVO (Paso 4): RACHA DE VICTORIAS Y EVOLUCIÓN DE PUNTOS DEL MES */}
-        <div className="space-y-2 pt-1 border-t border-slate-100">
+        <div className="space-y-2 pt-1 border-t border-stone-100">
           <div className="flex items-center justify-between gap-2">
-            <div className={`flex-1 rounded-2xl p-3 border ${streakAndTrend.winStreak >= 2 ? 'bg-gradient-to-br from-orange-50 to-amber-50 border-amber-300' : 'bg-slate-50 border-slate-200'}`}>
-              <span className="text-[9px] font-black text-slate-500 uppercase tracking-wide block">Racha actual</span>
-              <span className="text-xl font-black text-slate-900 block mt-0.5">
+            <div className={`flex-1 rounded-2xl p-3 border ${streakAndTrend.winStreak >= 2 ? 'bg-gradient-to-br from-[#faf3e7] to-[#faf3e7] border-[#d9b97c]' : 'bg-stone-50 border-stone-200'}`}>
+              <span className="text-[9px] font-black text-stone-500 uppercase tracking-wide block">Racha actual</span>
+              <span className="text-xl font-black text-stone-900 block mt-0.5">
                 {streakAndTrend.winStreak >= 2 ? `🔥 Racha: ${streakAndTrend.winStreak}` : streakAndTrend.winStreak === 1 ? '✅ 1 victoria seguida' : '—'}
               </span>
               {streakAndTrend.winStreak < 1 && (
-                <span className="text-[10px] text-slate-400">Gana tu próximo partido para empezar racha</span>
+                <span className="text-[10px] text-stone-400">Gana tu próximo partido para empezar racha</span>
               )}
             </div>
           </div>
 
-          <div className="bg-white rounded-2xl p-3 border border-slate-200">
-            <span className="text-[10px] font-black text-slate-600 uppercase tracking-wide block mb-1">
+          <div className="bg-white rounded-2xl p-3 border border-stone-200">
+            <span className="text-[10px] font-black text-stone-600 uppercase tracking-wide block mb-1">
               📊 Partidos y victorias (últimos 6 meses) · Liga + Torneos
             </span>
             <MiniBarChart data={streakAndTrend.monthlyTrend} />
@@ -1997,52 +1997,52 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, allDinn
         </div>
 
         {/* RENDIMIENTO Y MODALIDAD EN TORNEOS */}
-        <div className="space-y-2 pt-1 border-t border-slate-100">
+        <div className="space-y-2 pt-1 border-t border-stone-100">
           <div className="flex justify-between items-center">
-            <span className="text-[10px] font-black text-purple-900 uppercase tracking-wider block">
+            <span className="text-[10px] font-black text-[#4a3350] uppercase tracking-wider block">
               ⚔️ Rendimiento en Torneos
             </span>
             <button
               type="button"
               onClick={() => setSelectedStatCategory(selectedStatCategory === 'torneos' ? null : 'torneos')}
-              className="text-[10px] font-bold text-purple-700 bg-purple-50 hover:bg-purple-100 px-2 py-0.5 rounded-md transition"
+              className="text-[10px] font-bold text-[#4a3350] bg-[#f2eef2] hover:bg-[#f2eef2] px-2 py-0.5 rounded-md transition"
             >
               {tournamentStats.tPlayed} partidos (Ver todo)
             </button>
           </div>
 
           <div className="grid grid-cols-2 gap-2 text-xs">
-            <div className="bg-purple-50/80 border border-purple-200 p-2.5 rounded-2xl">
-              <span className="text-[9px] font-black text-purple-800 uppercase block mb-1">🥇 Mejor Modalidad</span>
+            <div className="bg-[#f2eef2]/80 border border-[#ddc9de] p-2.5 rounded-2xl">
+              <span className="text-[9px] font-black text-[#4a3350] uppercase block mb-1">🥇 Mejor Modalidad</span>
               {tournamentStats.bestMode ? (
                 <div>
-                  <span className="font-extrabold text-slate-900 block truncate">{tournamentStats.bestMode.name}</span>
-                  <span className="text-[10px] font-bold text-purple-700">
+                  <span className="font-extrabold text-stone-900 block truncate">{tournamentStats.bestMode.name}</span>
+                  <span className="text-[10px] font-bold text-[#4a3350]">
                     {tournamentStats.bestMode.winRate}% Éxito ({tournamentStats.bestMode.won}/{tournamentStats.bestMode.played})
                   </span>
                 </div>
               ) : (
-                <span className="text-[10px] text-slate-400 italic">Sin datos suficientes</span>
+                <span className="text-[10px] text-stone-400 italic">Sin datos suficientes</span>
               )}
             </div>
 
-            <div className="bg-amber-50/80 border border-amber-200 p-2.5 rounded-2xl">
-              <span className="text-[9px] font-black text-amber-800 uppercase block mb-1">📉 Peor Modalidad</span>
+            <div className="bg-[#faf3e7]/80 border border-[#efd9a9] p-2.5 rounded-2xl">
+              <span className="text-[9px] font-black text-[#6b4d1c] uppercase block mb-1">📉 Peor Modalidad</span>
               {tournamentStats.worstMode ? (
                 <div>
-                  <span className="font-extrabold text-slate-900 block truncate">{tournamentStats.worstMode.name}</span>
-                  <span className="text-[10px] font-bold text-amber-700">
+                  <span className="font-extrabold text-stone-900 block truncate">{tournamentStats.worstMode.name}</span>
+                  <span className="text-[10px] font-bold text-[#6b4d1c]">
                     {tournamentStats.worstMode.winRate}% Éxito ({tournamentStats.worstMode.won}/{tournamentStats.worstMode.played})
                   </span>
                 </div>
               ) : (
-                <span className="text-[10px] text-slate-400 italic">Sin datos suficientes</span>
+                <span className="text-[10px] text-stone-400 italic">Sin datos suficientes</span>
               )}
             </div>
           </div>
         </div>
 
-        <button onClick={onClose} className="w-full py-2.5 bg-slate-900 text-white font-bold rounded-xl text-xs">Cerrar</button>
+        <button onClick={onClose} className="w-full py-2.5 bg-stone-900 text-white font-bold rounded-xl text-xs">Cerrar</button>
       </div>
     </div>
   );
@@ -2573,47 +2573,47 @@ function TournamentCreatorModal({ isOpen, onClose, allPlayers, tournaments, onTo
           <div>
             <div className="flex items-center gap-1.5">
               <span className="text-base">🏆</span>
-              <h3 className="text-base font-black text-slate-900">Modo Torneo CTC</h3>
+              <h3 className="text-base font-black text-stone-900">Modo Torneo CTC</h3>
             </div>
-            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wide">
+            <p className="text-[10px] text-stone-400 font-bold uppercase tracking-wide">
               Paso {step} de {tournamentMode === 'equipos' ? 5 : 4} · Aislado de liga regular
             </p>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-700 text-2xl font-bold">&times;</button>
+          <button onClick={onClose} className="text-stone-400 hover:text-stone-700 text-2xl font-bold">&times;</button>
         </div>
 
         {/* PASO 1: CONFIGURACIÓN BÁSICA */}
         {step === 1 && (
           <div className="space-y-3.5 text-xs">
             <div>
-              <label className="block text-[11px] font-bold text-slate-600 mb-1">Nombre del Torneo</label>
-              <input type="text" value={tName} onChange={e => setTName(e.target.value)} className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 font-bold text-slate-900" />
+              <label className="block text-[11px] font-bold text-stone-600 mb-1">Nombre del Torneo</label>
+              <input type="text" value={tName} onChange={e => setTName(e.target.value)} className="w-full bg-stone-50 border border-stone-300 rounded-xl p-2.5 font-bold text-stone-900" />
             </div>
 
-            <div className="grid grid-cols-2 gap-2 bg-purple-50/70 p-3 rounded-2xl border border-purple-200">
+            <div className="grid grid-cols-2 gap-2 bg-[#f2eef2]/70 p-3 rounded-2xl border border-[#ddc9de]">
               <div>
-                <label className="block text-[10px] font-black text-purple-950 uppercase tracking-wide mb-1">📅 Fecha Inicio *</label>
-                <input type="date" required value={tDate} onChange={e => setTDate(e.target.value)} className="w-full bg-white border border-purple-300 rounded-xl p-2 font-bold text-slate-800 text-xs" />
+                <label className="block text-[10px] font-black text-[#4a3350] uppercase tracking-wide mb-1">📅 Fecha Inicio *</label>
+                <input type="date" required value={tDate} onChange={e => setTDate(e.target.value)} className="w-full bg-white border border-[#b893ba] rounded-xl p-2 font-bold text-stone-800 text-xs" />
               </div>
               <div>
-                <label className="block text-[10px] font-black text-purple-950 uppercase tracking-wide mb-1">⏰ Hora Inicio *</label>
-                <input type="time" required value={tStartTime} onChange={e => setTStartTime(e.target.value)} className="w-full bg-white border border-purple-300 rounded-xl p-2 font-bold text-slate-800 text-xs" />
+                <label className="block text-[10px] font-black text-[#4a3350] uppercase tracking-wide mb-1">⏰ Hora Inicio *</label>
+                <input type="time" required value={tStartTime} onChange={e => setTStartTime(e.target.value)} className="w-full bg-white border border-[#b893ba] rounded-xl p-2 font-bold text-stone-800 text-xs" />
               </div>
             </div>
 
             <div>
-              <label className="block text-[11px] font-bold text-slate-600 mb-1.5">Formato de Competición</label>
+              <label className="block text-[11px] font-bold text-stone-600 mb-1.5">Formato de Competición</label>
               <div className="grid grid-cols-2 gap-2">
-                <button type="button" onClick={() => setTournamentMode('pozo')} className={`p-3 rounded-2xl border text-left transition ${tournamentMode === 'pozo' ? 'bg-blue-50 border-blue-600 text-blue-950 ring-2 ring-blue-500' : 'bg-slate-50 border-slate-200 text-slate-600'}`}>
+                <button type="button" onClick={() => setTournamentMode('pozo')} className={`p-3 rounded-2xl border text-left transition ${tournamentMode === 'pozo' ? 'bg-[#eef2f6] border-[#2c4a66] text-[#2c4a66] ring-2 ring-[#9fb4c7]' : 'bg-stone-50 border-stone-200 text-stone-600'}`}>
                   <span className="font-black block text-xs">🔄 Pozo Continuo</span>
                 </button>
-                <button type="button" onClick={() => setTournamentMode('americano')} className={`p-3 rounded-2xl border text-left transition ${tournamentMode === 'americano' ? 'bg-blue-50 border-blue-600 text-blue-950 ring-2 ring-blue-500' : 'bg-slate-50 border-slate-200 text-slate-600'}`}>
+                <button type="button" onClick={() => setTournamentMode('americano')} className={`p-3 rounded-2xl border text-left transition ${tournamentMode === 'americano' ? 'bg-[#eef2f6] border-[#2c4a66] text-[#2c4a66] ring-2 ring-[#9fb4c7]' : 'bg-stone-50 border-stone-200 text-stone-600'}`}>
                   <span className="font-black block text-xs">🇺🇸 Americano</span>
                 </button>
-                <button type="button" onClick={() => setTournamentMode('eliminatorio')} className={`p-3 rounded-2xl border text-left transition ${tournamentMode === 'eliminatorio' ? 'bg-blue-50 border-blue-600 text-blue-950 ring-2 ring-blue-500' : 'bg-slate-50 border-slate-200 text-slate-600'}`}>
+                <button type="button" onClick={() => setTournamentMode('eliminatorio')} className={`p-3 rounded-2xl border text-left transition ${tournamentMode === 'eliminatorio' ? 'bg-[#eef2f6] border-[#2c4a66] text-[#2c4a66] ring-2 ring-[#9fb4c7]' : 'bg-stone-50 border-stone-200 text-stone-600'}`}>
                   <span className="font-black block text-xs">🥇 Fases Finales</span>
                 </button>
-                <button type="button" onClick={() => setTournamentMode('equipos')} className={`p-3 rounded-2xl border text-left transition ${tournamentMode === 'equipos' ? 'bg-blue-600 text-white border-blue-600 ring-2 ring-blue-500' : 'bg-slate-50 border-slate-200 text-slate-600'}`}>
+                <button type="button" onClick={() => setTournamentMode('equipos')} className={`p-3 rounded-2xl border text-left transition ${tournamentMode === 'equipos' ? 'bg-[#2c4a66] text-white border-[#2c4a66] ring-2 ring-[#9fb4c7]' : 'bg-stone-50 border-stone-200 text-stone-600'}`}>
                   <span className="font-black block text-xs">🛡️ Por Equipos (Ryder)</span>
                 </button>
               </div>
@@ -2621,12 +2621,12 @@ function TournamentCreatorModal({ isOpen, onClose, allPlayers, tournaments, onTo
 
             {tournamentMode === 'pozo' && (
               <div>
-                <label className="block text-[11px] font-bold text-slate-600 mb-1.5">¿Parejas fijas o rotativas?</label>
+                <label className="block text-[11px] font-bold text-stone-600 mb-1.5">¿Parejas fijas o rotativas?</label>
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     type="button"
                     onClick={() => setPozoFixedPairs(false)}
-                    className={`p-2.5 rounded-2xl border text-left transition ${!pozoFixedPairs ? 'bg-blue-50 border-blue-600 text-blue-950 ring-2 ring-blue-500' : 'bg-slate-50 border-slate-200 text-slate-600'}`}
+                    className={`p-2.5 rounded-2xl border text-left transition ${!pozoFixedPairs ? 'bg-[#eef2f6] border-[#2c4a66] text-[#2c4a66] ring-2 ring-[#9fb4c7]' : 'bg-stone-50 border-stone-200 text-stone-600'}`}
                   >
                     <span className="font-black block text-xs">🔀 Rotativas</span>
                     <span className="text-[9px] opacity-80 block">Cada ronda se forman parejas nuevas en cada pista</span>
@@ -2634,7 +2634,7 @@ function TournamentCreatorModal({ isOpen, onClose, allPlayers, tournaments, onTo
                   <button
                     type="button"
                     onClick={() => setPozoFixedPairs(true)}
-                    className={`p-2.5 rounded-2xl border text-left transition ${pozoFixedPairs ? 'bg-blue-50 border-blue-600 text-blue-950 ring-2 ring-blue-500' : 'bg-slate-50 border-slate-200 text-slate-600'}`}
+                    className={`p-2.5 rounded-2xl border text-left transition ${pozoFixedPairs ? 'bg-[#eef2f6] border-[#2c4a66] text-[#2c4a66] ring-2 ring-[#9fb4c7]' : 'bg-stone-50 border-stone-200 text-stone-600'}`}
                   >
                     <span className="font-black block text-xs">🤝 Fijas</span>
                     <span className="text-[9px] opacity-80 block">La misma pareja sube o baja de pista junta todo el torneo</span>
@@ -2644,25 +2644,25 @@ function TournamentCreatorModal({ isOpen, onClose, allPlayers, tournaments, onTo
             )}
 
             <div className="grid grid-cols-2 gap-2">
-              <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200">
-                <label className="block text-[10px] font-bold text-slate-500 mb-1">Pistas CTC</label>
+              <div className="bg-stone-50 p-2.5 rounded-xl border border-stone-200">
+                <label className="block text-[10px] font-bold text-stone-500 mb-1">Pistas CTC</label>
                 <div className="flex items-center justify-center gap-1.5 mt-0.5">
-                  <button type="button" onClick={() => handleCourtsChange((Number(tCourts) || 1) - 1)} className="w-7 h-7 bg-white border border-slate-300 hover:bg-slate-100 rounded-lg font-black text-slate-700 flex items-center justify-center">-</button>
-                  <input type="text" inputMode="numeric" value={tCourts} onChange={e => { const val = e.target.value.replace(/\D/g, ''); handleCourtsChange(val === '' ? '' : parseInt(val, 10)); }} className="w-12 bg-white border border-slate-300 rounded-lg p-1 font-black text-center text-sm" />
-                  <button type="button" onClick={() => handleCourtsChange((Number(tCourts) || 1) + 1)} className="w-7 h-7 bg-white border border-slate-300 hover:bg-slate-100 rounded-lg font-black text-slate-700 flex items-center justify-center">+</button>
+                  <button type="button" onClick={() => handleCourtsChange((Number(tCourts) || 1) - 1)} className="w-7 h-7 bg-white border border-stone-300 hover:bg-stone-100 rounded-lg font-black text-stone-700 flex items-center justify-center">-</button>
+                  <input type="text" inputMode="numeric" value={tCourts} onChange={e => { const val = e.target.value.replace(/\D/g, ''); handleCourtsChange(val === '' ? '' : parseInt(val, 10)); }} className="w-12 bg-white border border-stone-300 rounded-lg p-1 font-black text-center text-sm" />
+                  <button type="button" onClick={() => handleCourtsChange((Number(tCourts) || 1) + 1)} className="w-7 h-7 bg-white border border-stone-300 hover:bg-stone-100 rounded-lg font-black text-stone-700 flex items-center justify-center">+</button>
                 </div>
               </div>
-              <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200">
-                <label className="block text-[10px] font-bold text-slate-500 mb-1">Jugadores Esperados</label>
+              <div className="bg-stone-50 p-2.5 rounded-xl border border-stone-200">
+                <label className="block text-[10px] font-bold text-stone-500 mb-1">Jugadores Esperados</label>
                 <div className="flex items-center justify-center gap-1.5 mt-0.5">
-                  <button type="button" onClick={() => { setHasManuallyEditedTarget(true); setTargetPlayers(prev => Math.max(4, (Number(prev) || 4) - 1)); }} className="w-7 h-7 bg-white border border-slate-300 hover:bg-slate-100 rounded-lg font-black text-slate-700 flex items-center justify-center">-</button>
-                  <input type="text" inputMode="numeric" value={targetPlayers} onChange={e => { setHasManuallyEditedTarget(true); const val = e.target.value.replace(/\D/g, ''); setTargetPlayers(val === '' ? '' : Math.max(4, parseInt(val, 10))); }} className="w-12 bg-white border border-slate-300 rounded-lg p-1 font-black text-center text-sm" />
-                  <button type="button" onClick={() => { setHasManuallyEditedTarget(true); setTargetPlayers(prev => Math.min(64, (Number(prev) || 4) + 1)); }} className="w-7 h-7 bg-white border border-slate-300 hover:bg-slate-100 rounded-lg font-black text-slate-700 flex items-center justify-center">+</button>
+                  <button type="button" onClick={() => { setHasManuallyEditedTarget(true); setTargetPlayers(prev => Math.max(4, (Number(prev) || 4) - 1)); }} className="w-7 h-7 bg-white border border-stone-300 hover:bg-stone-100 rounded-lg font-black text-stone-700 flex items-center justify-center">-</button>
+                  <input type="text" inputMode="numeric" value={targetPlayers} onChange={e => { setHasManuallyEditedTarget(true); const val = e.target.value.replace(/\D/g, ''); setTargetPlayers(val === '' ? '' : Math.max(4, parseInt(val, 10))); }} className="w-12 bg-white border border-stone-300 rounded-lg p-1 font-black text-center text-sm" />
+                  <button type="button" onClick={() => { setHasManuallyEditedTarget(true); setTargetPlayers(prev => Math.min(64, (Number(prev) || 4) + 1)); }} className="w-7 h-7 bg-white border border-stone-300 hover:bg-stone-100 rounded-lg font-black text-stone-700 flex items-center justify-center">+</button>
                 </div>
               </div>
             </div>
 
-            <button onClick={() => setStep(2)} className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-xs transition mt-2">
+            <button onClick={() => setStep(2)} className="w-full py-2.5 bg-[#2c4a66] hover:bg-[#2c4a66] text-white font-bold rounded-xl shadow-xs transition mt-2">
               Siguiente: Convocatoria →
             </button>
           </div>
@@ -2671,7 +2671,7 @@ function TournamentCreatorModal({ isOpen, onClose, allPlayers, tournaments, onTo
         {/* PASO 2: CONVOCATORIA DE JUGADORES Y VALORACIÓN (SIN EQUIPOS) */}
         {step === 2 && (
           <div className="space-y-3.5 text-xs">
-            <div className={`p-3 rounded-2xl border text-center transition flex justify-between items-center ${selectedCount < neededForCourts ? 'bg-amber-50 border-amber-300 text-amber-950' : 'bg-emerald-50 border-emerald-300 text-emerald-950'}`}>
+            <div className={`p-3 rounded-2xl border text-center transition flex justify-between items-center ${selectedCount < neededForCourts ? 'bg-[#faf3e7] border-[#d9b97c] text-[#6b4d1c]' : 'bg-[#eef4f0] border-[#a9c4ad] text-[#2f5d50]'}`}>
               <div className="text-left">
                 <span className="font-black text-sm block">{selectedCount} / {targetPlayers} convocados</span>
                 <span className="text-[10px] font-semibold opacity-85">
@@ -2681,40 +2681,40 @@ function TournamentCreatorModal({ isOpen, onClose, allPlayers, tournaments, onTo
               <span className="text-2xl">{selectedCount >= neededForCourts ? '🎾' : '⏳'}</span>
             </div>
 
-            <form onSubmit={handleAddGuest} className="bg-blue-50/80 p-3 rounded-2xl border border-blue-200 space-y-2">
-              <label className="font-extrabold text-blue-950 block text-[11px]">➕ Añadir Participante Invitado</label>
+            <form onSubmit={handleAddGuest} className="bg-[#eef2f6]/80 p-3 rounded-2xl border border-[#c3d3e0] space-y-2">
+              <label className="font-extrabold text-[#2c4a66] block text-[11px]">➕ Añadir Participante Invitado</label>
               <div className="flex items-center gap-2">
-                <input type="text" placeholder="Nombre" value={guestName} onChange={e => setGuestName(e.target.value)} className="flex-1 bg-white border border-blue-300 rounded-xl p-2 text-xs font-semibold" />
-                <label className="flex items-center gap-1 cursor-pointer bg-white border border-blue-300 px-2 py-1 rounded-xl">
-                  <input type="checkbox" checked={guestIsLeftHanded} onChange={e => setGuestIsLeftHanded(e.target.checked)} className="w-3.5 h-3.5 text-blue-600 accent-blue-600" />
-                  <span className="text-[10px] font-bold text-blue-900">👈 Zurdo</span>
+                <input type="text" placeholder="Nombre" value={guestName} onChange={e => setGuestName(e.target.value)} className="flex-1 bg-white border border-[#9fb4c7] rounded-xl p-2 text-xs font-semibold" />
+                <label className="flex items-center gap-1 cursor-pointer bg-white border border-[#9fb4c7] px-2 py-1 rounded-xl">
+                  <input type="checkbox" checked={guestIsLeftHanded} onChange={e => setGuestIsLeftHanded(e.target.checked)} className="w-3.5 h-3.5 text-[#2c4a66] accent-[#2c4a66]" />
+                  <span className="text-[10px] font-bold text-[#2c4a66]">👈 Zurdo</span>
                 </label>
-                <button type="submit" className="bg-blue-600 text-white font-bold px-3 py-2 rounded-xl text-xs">Añadir</button>
+                <button type="submit" className="bg-[#2c4a66] text-white font-bold px-3 py-2 rounded-xl text-xs">Añadir</button>
               </div>
             </form>
 
             <div className="relative">
-              <span className="absolute left-3 top-2.5 text-slate-400">🔍</span>
+              <span className="absolute left-3 top-2.5 text-stone-400">🔍</span>
               <input 
                 type="text" 
                 placeholder="Buscar jugador por nombre..." 
                 value={playerSearch}
                 onChange={e => setPlayerSearch(e.target.value)}
-                className="w-full bg-white border border-slate-300 rounded-xl py-2 pl-8 pr-3 font-semibold text-xs" 
+                className="w-full bg-white border border-stone-300 rounded-xl py-2 pl-8 pr-3 font-semibold text-xs" 
               />
             </div>
 
             <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
               {filteredParticipants.map(p => (
-                <div key={p.id} className={`p-2 rounded-xl border flex items-center justify-between transition ${p.selected ? 'bg-white border-blue-400 ring-1 ring-blue-200' : 'bg-slate-50 border-slate-200 opacity-70'}`}>
+                <div key={p.id} className={`p-2 rounded-xl border flex items-center justify-between transition ${p.selected ? 'bg-white border-[#9fb4c7] ring-1 ring-[#c3d3e0]' : 'bg-stone-50 border-stone-200 opacity-70'}`}>
                   <div className="flex items-center gap-2.5 flex-1 min-w-0">
-                    <input type="checkbox" checked={p.selected} onChange={() => handleTogglePlayer(p.id)} className="w-4 h-4 rounded text-blue-600 accent-blue-600 cursor-pointer shrink-0" />
+                    <input type="checkbox" checked={p.selected} onChange={() => handleTogglePlayer(p.id)} className="w-4 h-4 rounded text-[#2c4a66] accent-[#2c4a66] cursor-pointer shrink-0" />
                     <UserAvatar name={p.name} photo={p.photo} size="xs" />
-                    <span className="font-bold text-slate-800 text-[11px] truncate block">{p.name}</span>
+                    <span className="font-bold text-stone-800 text-[11px] truncate block">{p.name}</span>
                   </div>
                   {p.selected && (
                     <div className="flex items-center gap-2 shrink-0">
-                      <button type="button" onClick={() => handleToggleLeftHanded(p.id)} className={`text-[9px] px-1.5 py-0.5 rounded-md font-extrabold border transition ${p.isLeftHanded ? 'bg-blue-100 text-blue-800 border-blue-300' : 'bg-slate-100 text-slate-400 border-slate-200'}`}>
+                      <button type="button" onClick={() => handleToggleLeftHanded(p.id)} className={`text-[9px] px-1.5 py-0.5 rounded-md font-extrabold border transition ${p.isLeftHanded ? 'bg-[#eef2f6] text-[#2c4a66] border-[#9fb4c7]' : 'bg-stone-100 text-stone-400 border-stone-200'}`}>
                         👈 {p.isLeftHanded ? 'Zurdo' : 'Diestro'}
                       </button>
                       <StarRating value={p.level} onChange={(lvl) => handleLevelChange(p.id, lvl)} />
@@ -2723,25 +2723,25 @@ function TournamentCreatorModal({ isOpen, onClose, allPlayers, tournaments, onTo
                 </div>
               ))}
               {filteredParticipants.length === 0 && (
-                <p className="text-center text-slate-400 py-4 text-[10px]">No se encontraron jugadores.</p>
+                <p className="text-center text-stone-400 py-4 text-[10px]">No se encontraron jugadores.</p>
               )}
             </div>
 
             {/* NUEVO: Selección rápida de capitanes y guardado de borrador si es Ryder */}
             {tournamentMode === 'equipos' && selectedCount >= 4 && (
-              <div className="bg-slate-900 text-white p-3 rounded-2xl border border-slate-700 mt-4 space-y-3">
-                <span className="text-[10px] font-black text-blue-400 uppercase block">Delegar en Capitanes</span>
+              <div className="bg-stone-900 text-white p-3 rounded-2xl border border-stone-700 mt-4 space-y-3">
+                <span className="text-[10px] font-black text-[#9fb4c7] uppercase block">Delegar en Capitanes</span>
                 <div className="grid grid-cols-2 gap-2">
                   <div>
-                    <label className="block text-[9px] font-bold text-slate-400 mb-1">Capitán Azul 🔵</label>
-                    <select value={captain1Id} onChange={e => setCaptain1Id(e.target.value)} className="w-full bg-slate-800 border border-slate-600 rounded-lg p-1.5 text-xs">
+                    <label className="block text-[9px] font-bold text-stone-400 mb-1">Capitán Azul 🔵</label>
+                    <select value={captain1Id} onChange={e => setCaptain1Id(e.target.value)} className="w-full bg-stone-800 border border-stone-600 rounded-lg p-1.5 text-xs">
                       <option value="">Seleccionar...</option>
                       {selectedPlayers.map(p => <option key={p.id} value={p.id} disabled={p.id === captain2Id}>{p.name}</option>)}
                     </select>
                   </div>
                   <div>
-                    <label className="block text-[9px] font-bold text-slate-400 mb-1">Capitán Rojo 🔴</label>
-                    <select value={captain2Id} onChange={e => setCaptain2Id(e.target.value)} className="w-full bg-slate-800 border border-slate-600 rounded-lg p-1.5 text-xs">
+                    <label className="block text-[9px] font-bold text-stone-400 mb-1">Capitán Rojo 🔴</label>
+                    <select value={captain2Id} onChange={e => setCaptain2Id(e.target.value)} className="w-full bg-stone-800 border border-stone-600 rounded-lg p-1.5 text-xs">
                       <option value="">Seleccionar...</option>
                       {selectedPlayers.map(p => <option key={p.id} value={p.id} disabled={p.id === captain1Id}>{p.name}</option>)}
                     </select>
@@ -2751,18 +2751,18 @@ function TournamentCreatorModal({ isOpen, onClose, allPlayers, tournaments, onTo
             )}
 
             <div className="flex gap-2 pt-2">
-              <button onClick={() => setStep(1)} className="flex-1 py-2 bg-slate-100 text-slate-600 font-bold rounded-xl shadow-sm">← Volver</button>
+              <button onClick={() => setStep(1)} className="flex-1 py-2 bg-stone-100 text-stone-600 font-bold rounded-xl shadow-sm">← Volver</button>
               
               {tournamentMode === 'equipos' ? (
                 <button 
                   onClick={() => handleLaunchTournament('BOCETO_EQUIPOS')} 
                   disabled={selectedCount < 4 || !captain1Id || !captain2Id} 
-                  className="flex-1 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold rounded-xl shadow-xs disabled:opacity-50"
+                  className="flex-1 py-2 bg-gradient-to-r from-[#2c4a66] to-[#2c4a66] text-white font-bold rounded-xl shadow-xs disabled:opacity-50"
                 >
                   Guardar y Avisar Capitanes
                 </button>
               ) : (
-                <button onClick={() => setStep(4)} disabled={selectedCount < 4} className="flex-1 py-2 bg-blue-600 text-white font-bold rounded-xl shadow-xs disabled:opacity-50">
+                <button onClick={() => setStep(4)} disabled={selectedCount < 4} className="flex-1 py-2 bg-[#2c4a66] text-white font-bold rounded-xl shadow-xs disabled:opacity-50">
                   Siguiente →
                 </button>
               )}
@@ -2773,30 +2773,30 @@ function TournamentCreatorModal({ isOpen, onClose, allPlayers, tournaments, onTo
         {/* PASO 3: CONFIGURACIÓN DE EQUIPOS (SOLO RYDER) */}
         {step === 3 && tournamentMode === 'equipos' && (
           <div className="space-y-3.5 text-xs">
-            <div className="bg-slate-900 text-white rounded-2xl p-3.5 space-y-3 border border-slate-700 shadow-sm">
-              <div className="flex justify-between items-center border-b border-slate-800 pb-2">
-                <span className="font-black text-xs text-blue-300 uppercase tracking-wide">🛡️ Configuración Ryder</span>
-                <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${teamStats.isBalanced ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40' : 'bg-amber-500/20 text-amber-300 border border-amber-500/40'}`}>
+            <div className="bg-stone-900 text-white rounded-2xl p-3.5 space-y-3 border border-stone-700 shadow-sm">
+              <div className="flex justify-between items-center border-b border-stone-800 pb-2">
+                <span className="font-black text-xs text-[#9fb4c7] uppercase tracking-wide">🛡️ Configuración Ryder</span>
+                <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${teamStats.isBalanced ? 'bg-[#a9c4ad]/20 text-[#a9c4ad] border border-[#a9c4ad]/40' : 'bg-[#d9b97c]/20 text-[#d9b97c] border border-[#d9b97c]/40'}`}>
                   {teamStats.isBalanced ? '✓ Equilibrado' : '⚠️ Desnivelado'} (Δ {teamStats.delta})
                 </span>
               </div>
 
               <div className="grid grid-cols-2 gap-2">
-                <div className="bg-slate-800/80 p-2 rounded-xl border border-blue-500/40">
-                  <label className="block text-[10px] font-black text-blue-400 uppercase tracking-wider mb-1">Capitán Azul 🔵</label>
-                  <select value={captain1Id} onChange={e => setCaptain1Id(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded-lg p-1.5 font-bold text-white text-xs truncate">
+                <div className="bg-stone-800/80 p-2 rounded-xl border border-[#9fb4c7]/40">
+                  <label className="block text-[10px] font-black text-[#9fb4c7] uppercase tracking-wider mb-1">Capitán Azul 🔵</label>
+                  <select value={captain1Id} onChange={e => setCaptain1Id(e.target.value)} className="w-full bg-stone-900 border border-stone-700 rounded-lg p-1.5 font-bold text-white text-xs truncate">
                     {selectedPlayers.map(p => <option key={p.id} value={p.id} disabled={p.id === captain2Id}>{p.name}</option>)}
                   </select>
                 </div>
-                <div className="bg-slate-800/80 p-2 rounded-xl border border-rose-500/40">
-                  <label className="block text-[10px] font-black text-rose-400 uppercase tracking-wider mb-1">Capitán Rojo 🔴</label>
-                  <select value={captain2Id} onChange={e => setCaptain2Id(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded-lg p-1.5 font-bold text-white text-xs truncate">
+                <div className="bg-stone-800/80 p-2 rounded-xl border border-[#d9a582]/40">
+                  <label className="block text-[10px] font-black text-[#d9a582] uppercase tracking-wider mb-1">Capitán Rojo 🔴</label>
+                  <select value={captain2Id} onChange={e => setCaptain2Id(e.target.value)} className="w-full bg-stone-900 border border-stone-700 rounded-lg p-1.5 font-bold text-white text-xs truncate">
                     {selectedPlayers.map(p => <option key={p.id} value={p.id} disabled={p.id === captain1Id}>{p.name}</option>)}
                   </select>
                 </div>
               </div>
 
-              <button type="button" onClick={handleAutoBalanceTeams} className="w-full py-2 bg-gradient-to-r from-blue-600 to-rose-600 hover:from-blue-500 text-white font-black rounded-xl text-xs shadow-md transition">
+              <button type="button" onClick={handleAutoBalanceTeams} className="w-full py-2 bg-gradient-to-r from-[#2c4a66] to-[#6b3f29] hover:from-[#9fb4c7] text-white font-black rounded-xl text-xs shadow-md transition">
                 ⚡ Auto-Equilibrar Escuadras
               </button>
             </div>
@@ -2806,13 +2806,13 @@ function TournamentCreatorModal({ isOpen, onClose, allPlayers, tournaments, onTo
                 <div key={p.id} className="p-2 rounded-xl border bg-white flex items-center justify-between">
                   <div className="flex items-center gap-2 truncate">
                     <UserAvatar name={p.name} photo={p.photo} size="xs" />
-                    <span className="font-bold text-slate-800 text-[11px] truncate">{p.name}</span>
+                    <span className="font-bold text-stone-800 text-[11px] truncate">{p.name}</span>
                   </div>
-                  <div className="flex bg-slate-100 p-0.5 rounded-lg border border-slate-200 shrink-0">
-                    <button type="button" disabled={p.id === captain1Id || p.id === captain2Id} onClick={() => handleTeamToggle(p.id, 1)} className={`px-2 py-0.5 rounded-md text-[10px] font-black transition ${p.assignedTeam === 1 ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-400'}`}>
+                  <div className="flex bg-stone-100 p-0.5 rounded-lg border border-stone-200 shrink-0">
+                    <button type="button" disabled={p.id === captain1Id || p.id === captain2Id} onClick={() => handleTeamToggle(p.id, 1)} className={`px-2 py-0.5 rounded-md text-[10px] font-black transition ${p.assignedTeam === 1 ? 'bg-[#2c4a66] text-white shadow-xs' : 'text-stone-400'}`}>
                       🔵 Azul
                     </button>
-                    <button type="button" disabled={p.id === captain1Id || p.id === captain2Id} onClick={() => handleTeamToggle(p.id, 2)} className={`px-2 py-0.5 rounded-md text-[10px] font-black transition ${p.assignedTeam === 2 ? 'bg-rose-600 text-white shadow-xs' : 'text-slate-400'}`}>
+                    <button type="button" disabled={p.id === captain1Id || p.id === captain2Id} onClick={() => handleTeamToggle(p.id, 2)} className={`px-2 py-0.5 rounded-md text-[10px] font-black transition ${p.assignedTeam === 2 ? 'bg-[#6b3f29] text-white shadow-xs' : 'text-stone-400'}`}>
                       🔴 Rojo
                     </button>
                   </div>
@@ -2820,14 +2820,14 @@ function TournamentCreatorModal({ isOpen, onClose, allPlayers, tournaments, onTo
               ))}
             </div>
 
-            <div className="bg-emerald-50 border border-emerald-200 p-3 rounded-2xl flex items-center gap-2 cursor-pointer" onClick={() => setCaptainsValidated(!captainsValidated)}>
-               <input type="checkbox" checked={captainsValidated} onChange={() => setCaptainsValidated(!captainsValidated)} className="w-4 h-4 text-emerald-600 accent-emerald-600" />
-               <span className="font-bold text-emerald-900 text-[11px]">Los capitanes validan que los equipos están correctos y equilibrados.</span>
+            <div className="bg-[#eef4f0] border border-[#c7ddc9] p-3 rounded-2xl flex items-center gap-2 cursor-pointer" onClick={() => setCaptainsValidated(!captainsValidated)}>
+               <input type="checkbox" checked={captainsValidated} onChange={() => setCaptainsValidated(!captainsValidated)} className="w-4 h-4 text-[#2f5d50] accent-[#2f5d50]" />
+               <span className="font-bold text-[#2f5d50] text-[11px]">Los capitanes validan que los equipos están correctos y equilibrados.</span>
             </div>
 
             <div className="flex gap-2 pt-1">
-              <button onClick={() => setStep(2)} className="flex-1 py-2 bg-slate-100 text-slate-600 font-bold rounded-xl">← Volver</button>
-              <button onClick={() => setStep(4)} disabled={!captainsValidated} className="flex-1 py-2 bg-blue-600 text-white font-bold rounded-xl shadow-xs disabled:opacity-50">Configurar Motor →</button>
+              <button onClick={() => setStep(2)} className="flex-1 py-2 bg-stone-100 text-stone-600 font-bold rounded-xl">← Volver</button>
+              <button onClick={() => setStep(4)} disabled={!captainsValidated} className="flex-1 py-2 bg-[#2c4a66] text-white font-bold rounded-xl shadow-xs disabled:opacity-50">Configurar Motor →</button>
             </div>
           </div>
         )}
@@ -2835,16 +2835,16 @@ function TournamentCreatorModal({ isOpen, onClose, allPlayers, tournaments, onTo
         {/* PASO 4: REGLAS DEL ALGORITMO (GEMINI) */}
         {step === 4 && (
           <div className="space-y-3.5 text-xs">
-            <div className="bg-purple-50 border border-purple-200 rounded-2xl p-3.5 space-y-2">
-              <h4 className="font-black text-purple-950 text-xs flex items-center gap-1"><span>✨</span> Motor de Cruces Inteligente</h4>
-              <p className="text-[11px] text-purple-900">Se procesarán las reglas del formato <strong>{tournamentMode.toUpperCase()}</strong> asegurando que no haya choques de zurdos en la misma pareja y equilibrando el rating.</p>
+            <div className="bg-[#f2eef2] border border-[#ddc9de] rounded-2xl p-3.5 space-y-2">
+              <h4 className="font-black text-[#4a3350] text-xs flex items-center gap-1"><span>✨</span> Motor de Cruces Inteligente</h4>
+              <p className="text-[11px] text-[#4a3350]">Se procesarán las reglas del formato <strong>{tournamentMode.toUpperCase()}</strong> asegurando que no haya choques de zurdos en la misma pareja y equilibrando el rating.</p>
             </div>
             
-            <textarea rows={6} value={customGeminiRules} onChange={e => setCustomGeminiRules(e.target.value)} className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 text-[10px] font-mono leading-tight text-slate-800" />
+            <textarea rows={6} value={customGeminiRules} onChange={e => setCustomGeminiRules(e.target.value)} className="w-full bg-stone-50 border border-stone-300 rounded-xl p-2.5 text-[10px] font-mono leading-tight text-stone-800" />
 
             <div className="flex gap-2 pt-1">
-              <button onClick={() => setStep(tournamentMode === 'equipos' ? 3 : 2)} className="flex-1 py-2 bg-slate-100 text-slate-600 font-bold rounded-xl">← Volver</button>
-              <button onClick={handleGenerateWithGemini} disabled={isGenerating} className="flex-1 py-2 bg-gradient-to-r from-purple-600 to-blue-600 text-white font-bold rounded-xl shadow-xs flex items-center justify-center gap-1.5">
+              <button onClick={() => setStep(tournamentMode === 'equipos' ? 3 : 2)} className="flex-1 py-2 bg-stone-100 text-stone-600 font-bold rounded-xl">← Volver</button>
+              <button onClick={handleGenerateWithGemini} disabled={isGenerating} className="flex-1 py-2 bg-gradient-to-r from-[#4a3350] to-[#2c4a66] text-white font-bold rounded-xl shadow-xs flex items-center justify-center gap-1.5">
                 {isGenerating ? '🔄 Calculando...' : '✨ Generar Cuadro'}
               </button>
             </div>
@@ -2854,44 +2854,44 @@ function TournamentCreatorModal({ isOpen, onClose, allPlayers, tournaments, onTo
         {/* PASO 5: VALIDACIÓN FINAL Y EDICIÓN DEL CUADRANTE */}
         {step === 5 && (
           <div className="space-y-3.5 text-xs">
-            <div className="bg-emerald-50 border border-emerald-200 p-2.5 rounded-xl flex items-center justify-between">
+            <div className="bg-[#eef4f0] border border-[#c7ddc9] p-2.5 rounded-xl flex items-center justify-between">
               <div>
-                <span className="font-black text-emerald-900 text-xs block">✅ Cuadrante Listo ({tournamentMode.toUpperCase()})</span>
-                <span className="text-[10px] text-emerald-700">Puedes editar los cruces manualmente antes de iniciar.</span>
+                <span className="font-black text-[#2f5d50] text-xs block">✅ Cuadrante Listo ({tournamentMode.toUpperCase()})</span>
+                <span className="text-[10px] text-[#2f5d50]">Puedes editar los cruces manualmente antes de iniciar.</span>
               </div>
-              <button onClick={() => setStep(4)} className="text-[10px] bg-white border border-emerald-300 text-emerald-800 font-bold px-2 py-0.5 rounded-md">
+              <button onClick={() => setStep(4)} className="text-[10px] bg-white border border-[#a9c4ad] text-[#2f5d50] font-bold px-2 py-0.5 rounded-md">
                 Re-calcular
               </button>
             </div>
 
             <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
               {generatedFixture.map((r, rIdx) => (
-                <div key={r.round} className="bg-slate-50 p-2 rounded-xl border border-slate-200 space-y-1">
-                  <div className="flex justify-between text-[10px] font-bold text-slate-500 mb-1">
-                    <span className="uppercase text-slate-900">{r.phase || `Ronda ${r.round}`}</span>
+                <div key={r.round} className="bg-stone-50 p-2 rounded-xl border border-stone-200 space-y-1">
+                  <div className="flex justify-between text-[10px] font-bold text-stone-500 mb-1">
+                    <span className="uppercase text-stone-900">{r.phase || `Ronda ${r.round}`}</span>
                     <span>⏱️ {r.timeLabel}</span>
                   </div>
                   {(r.matches || []).map((m, mIdx) => (
-                    <div key={m.id || mIdx} className="bg-white p-1.5 rounded-lg border border-slate-200 text-[10px]">
+                    <div key={m.id || mIdx} className="bg-white p-1.5 rounded-lg border border-stone-200 text-[10px]">
                       {editingMatchInfo?.id === m.id ? (
                         <div className="space-y-1.5 p-1">
-                          <input type="text" value={editingMatchInfo.court} onChange={e => setEditingMatchInfo({...editingMatchInfo, court: e.target.value})} className="w-full border rounded p-1 font-bold bg-slate-50" placeholder="Pista"/>
+                          <input type="text" value={editingMatchInfo.court} onChange={e => setEditingMatchInfo({...editingMatchInfo, court: e.target.value})} className="w-full border rounded p-1 font-bold bg-stone-50" placeholder="Pista"/>
                           <input type="text" value={editingMatchInfo.team1} onChange={e => setEditingMatchInfo({...editingMatchInfo, team1: e.target.value})} className="w-full border rounded p-1 font-semibold" placeholder="Pareja 1"/>
                           <input type="text" value={editingMatchInfo.team2} onChange={e => setEditingMatchInfo({...editingMatchInfo, team2: e.target.value})} className="w-full border rounded p-1 font-semibold" placeholder="Pareja 2"/>
                           <div className="flex gap-1 pt-1">
-                             <button onClick={() => setEditingMatchInfo(null)} className="flex-1 bg-slate-100 text-slate-600 py-1 rounded font-bold">Cancelar</button>
-                             <button onClick={handleSaveInlineMatchEdit} className="flex-1 bg-emerald-600 text-white py-1 rounded font-bold">Guardar Cambios</button>
+                             <button onClick={() => setEditingMatchInfo(null)} className="flex-1 bg-stone-100 text-stone-600 py-1 rounded font-bold">Cancelar</button>
+                             <button onClick={handleSaveInlineMatchEdit} className="flex-1 bg-[#2f5d50] text-white py-1 rounded font-bold">Guardar Cambios</button>
                           </div>
                         </div>
                       ) : (
                         <div className="flex justify-between items-center group">
-                          <span className="bg-purple-50 text-purple-700 font-bold px-1.5 py-0.5 rounded truncate max-w-[60px]">{m.court}</span>
+                          <span className="bg-[#f2eef2] text-[#4a3350] font-bold px-1.5 py-0.5 rounded truncate max-w-[60px]">{m.court}</span>
                           <div className="flex items-center gap-1 overflow-hidden mx-1 flex-1 justify-center">
                             <span className="truncate font-semibold">{m.team1}</span>
-                            <span className="text-slate-400 font-bold text-[9px]">vs</span>
+                            <span className="text-stone-400 font-bold text-[9px]">vs</span>
                             <span className="truncate font-semibold">{m.team2}</span>
                           </div>
-                          <button onClick={() => setEditingMatchInfo({...m, rIdx, mIdx})} className="text-[10px] text-slate-400 hover:text-blue-600 px-1 font-bold opacity-50 group-hover:opacity-100" title="Editar este partido">
+                          <button onClick={() => setEditingMatchInfo({...m, rIdx, mIdx})} className="text-[10px] text-stone-400 hover:text-[#2c4a66] px-1 font-bold opacity-50 group-hover:opacity-100" title="Editar este partido">
                             ✏️
                           </button>
                         </div>
@@ -2902,7 +2902,7 @@ function TournamentCreatorModal({ isOpen, onClose, allPlayers, tournaments, onTo
               ))}
             </div>
 
-            <button onClick={handleLaunchTournament} className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl shadow-xs mt-2 text-sm">
+            <button onClick={handleLaunchTournament} className="w-full py-2.5 bg-[#2f5d50] hover:bg-[#2f5d50] text-white font-bold rounded-xl shadow-xs mt-2 text-sm">
               🚀 Iniciar Torneo
             </button>
           </div>
@@ -2988,15 +2988,15 @@ function MatchVisualScoreModal({ isOpen, onClose, title, subtitle, team1Name, te
       <div className="bg-white rounded-3xl max-w-sm w-full max-h-[92vh] overflow-y-auto p-5 shadow-2xl space-y-4">
         <div className="flex justify-between items-center border-b pb-2">
           <div>
-            <h3 className="text-sm font-black uppercase text-purple-700">{title}</h3>
-            <p className="text-[10px] text-slate-400 font-bold">{subtitle || 'Marcador Oficial'}</p>
+            <h3 className="text-sm font-black uppercase text-[#4a3350]">{title}</h3>
+            <p className="text-[10px] text-stone-400 font-bold">{subtitle || 'Marcador Oficial'}</p>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-700 text-xl font-bold">&times;</button>
+          <button onClick={onClose} className="text-stone-400 hover:text-stone-700 text-xl font-bold">&times;</button>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4 text-xs">
           <div>
-            <label className="font-black text-slate-800 block mb-1.5 text-[11px] uppercase tracking-wide">
+            <label className="font-black text-stone-800 block mb-1.5 text-[11px] uppercase tracking-wide">
               1. Pareja Ganadora (Obligatorio seleccionar una) *
             </label>
             <div className="space-y-2">
@@ -3005,17 +3005,17 @@ function MatchVisualScoreModal({ isOpen, onClose, title, subtitle, team1Name, te
                 onClick={() => setWinnerTeam(1)}
                 className={`w-full p-2.5 rounded-2xl border text-left transition flex flex-col gap-1 ${
                   winnerTeam === 1
-                    ? 'bg-blue-50/90 border-blue-600 ring-2 ring-blue-500 text-blue-950 shadow-xs'
-                    : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
+                    ? 'bg-[#eef2f6]/90 border-[#2c4a66] ring-2 ring-[#9fb4c7] text-[#2c4a66] shadow-xs'
+                    : 'bg-stone-50 border-stone-200 text-stone-700 hover:bg-stone-100'
                 }`}
               >
                 <div className="flex justify-between items-center">
                   <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-md ${
-                    winnerTeam === 1 ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-700'
+                    winnerTeam === 1 ? 'bg-[#2c4a66] text-white' : 'bg-stone-200 text-stone-700'
                   }`}>
                     Pareja 1
                   </span>
-                  {winnerTeam === 1 && <span className="text-[10px] font-black text-blue-600">🏆 GANADORES SELECCIONADOS</span>}
+                  {winnerTeam === 1 && <span className="text-[10px] font-black text-[#2c4a66]">🏆 GANADORES SELECCIONADOS</span>}
                 </div>
 
                 <div className="flex items-center gap-2">
@@ -3037,17 +3037,17 @@ function MatchVisualScoreModal({ isOpen, onClose, title, subtitle, team1Name, te
                 onClick={() => setWinnerTeam(2)}
                 className={`w-full p-2.5 rounded-2xl border text-left transition flex flex-col gap-1 ${
                   winnerTeam === 2
-                    ? 'bg-amber-50/90 border-amber-600 ring-2 ring-amber-500 text-amber-950 shadow-xs'
-                    : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
+                    ? 'bg-[#faf3e7]/90 border-[#6b4d1c] ring-2 ring-[#d9b97c] text-[#6b4d1c] shadow-xs'
+                    : 'bg-stone-50 border-stone-200 text-stone-700 hover:bg-stone-100'
                 }`}
               >
                 <div className="flex justify-between items-center">
                   <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-md ${
-                    winnerTeam === 2 ? 'bg-amber-600 text-white' : 'bg-slate-200 text-slate-700'
+                    winnerTeam === 2 ? 'bg-[#6b4d1c] text-white' : 'bg-stone-200 text-stone-700'
                   }`}>
                     Pareja 2
                   </span>
-                  {winnerTeam === 2 && <span className="text-[10px] font-black text-amber-600">🏆 GANADORES SELECCIONADOS</span>}
+                  {winnerTeam === 2 && <span className="text-[10px] font-black text-[#6b4d1c]">🏆 GANADORES SELECCIONADOS</span>}
                 </div>
 
                 <div className="flex items-center gap-2">
@@ -3066,20 +3066,20 @@ function MatchVisualScoreModal({ isOpen, onClose, title, subtitle, team1Name, te
             </div>
           </div>
 
-          <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200 space-y-2.5">
+          <div className="bg-stone-50 p-3 rounded-2xl border border-stone-200 space-y-2.5">
             <div className="flex justify-between items-center">
               <div>
-                <label className="font-extrabold text-slate-800 text-[10px] uppercase block">
+                <label className="font-extrabold text-stone-800 text-[10px] uppercase block">
                   2. Tanteo por Sets (Opcional)
                 </label>
-                <span className="text-[9px] text-slate-400">Juegos de cada manga (2 a 5 sets)</span>
+                <span className="text-[9px] text-stone-400">Juegos de cada manga (2 a 5 sets)</span>
               </div>
               <div className="flex gap-1">
                 {sets.length < 5 && (
                   <button
                     type="button"
                     onClick={handleAddSet}
-                    className="px-2 py-0.5 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-[10px] font-bold"
+                    className="px-2 py-0.5 bg-[#2c4a66] hover:bg-[#2c4a66] text-white rounded-md text-[10px] font-bold"
                   >
                     + Set {sets.length + 1}
                   </button>
@@ -3088,7 +3088,7 @@ function MatchVisualScoreModal({ isOpen, onClose, title, subtitle, team1Name, te
                   <button
                     type="button"
                     onClick={handleRemoveSet}
-                    className="px-1.5 py-0.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-md text-[10px] font-bold"
+                    className="px-1.5 py-0.5 bg-stone-200 hover:bg-stone-300 text-stone-700 rounded-md text-[10px] font-bold"
                   >
                     ✕
                   </button>
@@ -3098,8 +3098,8 @@ function MatchVisualScoreModal({ isOpen, onClose, title, subtitle, team1Name, te
 
             <div className="space-y-1.5">
               {sets.map((setVal, idx) => (
-                <div key={idx} className="bg-white p-2 rounded-xl border border-slate-200 flex items-center justify-between">
-                  <span className="text-[10px] font-extrabold uppercase text-slate-500 w-14">
+                <div key={idx} className="bg-white p-2 rounded-xl border border-stone-200 flex items-center justify-between">
+                  <span className="text-[10px] font-extrabold uppercase text-stone-500 w-14">
                     {idx === 2 ? 'Set 3 (Tie)' : `Set ${idx + 1}`}
                   </span>
 
@@ -3107,35 +3107,35 @@ function MatchVisualScoreModal({ isOpen, onClose, title, subtitle, team1Name, te
                     <button
                       type="button"
                       onClick={() => handleScoreChange(idx, 't1', -1)}
-                      className="w-5 h-5 rounded bg-slate-100 font-bold text-xs flex items-center justify-center hover:bg-slate-200"
+                      className="w-5 h-5 rounded bg-stone-100 font-bold text-xs flex items-center justify-center hover:bg-stone-200"
                     >
                       -
                     </button>
-                    <span className="font-black text-slate-900 w-4 text-center text-sm">{setVal.t1}</span>
+                    <span className="font-black text-stone-900 w-4 text-center text-sm">{setVal.t1}</span>
                     <button
                       type="button"
                       onClick={() => handleScoreChange(idx, 't1', 1)}
-                      className="w-5 h-5 rounded bg-slate-100 font-bold text-xs flex items-center justify-center hover:bg-slate-200"
+                      className="w-5 h-5 rounded bg-stone-100 font-bold text-xs flex items-center justify-center hover:bg-stone-200"
                     >
                       +
                     </button>
                   </div>
 
-                  <span className="font-black text-slate-300 text-xs">/</span>
+                  <span className="font-black text-stone-300 text-xs">/</span>
 
                   <div className="flex items-center gap-1.5">
                     <button
                       type="button"
                       onClick={() => handleScoreChange(idx, 't2', -1)}
-                      className="w-5 h-5 rounded bg-slate-100 font-bold text-xs flex items-center justify-center hover:bg-slate-200"
+                      className="w-5 h-5 rounded bg-stone-100 font-bold text-xs flex items-center justify-center hover:bg-stone-200"
                     >
                       -
                     </button>
-                    <span className="font-black text-slate-900 w-4 text-center text-sm">{setVal.t2}</span>
+                    <span className="font-black text-stone-900 w-4 text-center text-sm">{setVal.t2}</span>
                     <button
                       type="button"
                       onClick={() => handleScoreChange(idx, 't2', 1)}
-                      className="w-5 h-5 rounded bg-slate-100 font-bold text-xs flex items-center justify-center hover:bg-slate-200"
+                      className="w-5 h-5 rounded bg-stone-100 font-bold text-xs flex items-center justify-center hover:bg-stone-200"
                     >
                       +
                     </button>
@@ -3146,10 +3146,10 @@ function MatchVisualScoreModal({ isOpen, onClose, title, subtitle, team1Name, te
           </div>
 
           <div className="flex gap-2 pt-1">
-            <button type="button" onClick={onClose} className="flex-1 py-2 bg-slate-100 text-slate-600 font-bold rounded-xl">
+            <button type="button" onClick={onClose} className="flex-1 py-2 bg-stone-100 text-stone-600 font-bold rounded-xl">
               Cancelar
             </button>
-            <button type="submit" className="flex-1 py-2 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-xl shadow-xs">
+            <button type="submit" className="flex-1 py-2 bg-[#4a3350] hover:bg-[#4a3350] text-white font-bold rounded-xl shadow-xs">
               Confirmar Marcador
             </button>
           </div>
@@ -3177,22 +3177,22 @@ function LinkPlayerSlotModal({ isOpen, onClose, slotName, allRegisteredPlayers, 
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 text-left">
       <div className="bg-white rounded-3xl max-w-sm w-full p-5 shadow-2xl space-y-3">
         <div className="border-b pb-2">
-          <h3 className="text-sm font-black text-slate-900">🔗 Vincular Jugador Huérfano</h3>
-          <p className="text-[11px] text-slate-500 mt-0.5">
+          <h3 className="text-sm font-black text-stone-900">🔗 Vincular Jugador Huérfano</h3>
+          <p className="text-[11px] text-stone-500 mt-0.5">
             Enlaza el texto <strong>"{slotName}"</strong> con su perfil oficial para que sus victorias se computen.
           </p>
         </div>
 
         <form onSubmit={handleLink} className="space-y-3 text-xs">
           <div>
-            <label className="block text-[10px] font-bold text-slate-600 mb-1">
+            <label className="block text-[10px] font-bold text-stone-600 mb-1">
               Selecciona el perfil registrado oficial:
             </label>
             <select
               required
               value={selectedUserId}
               onChange={e => setSelectedUserId(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-bold text-slate-800 text-xs"
+              className="w-full bg-stone-50 border border-stone-300 rounded-xl p-2 font-bold text-stone-800 text-xs"
             >
               <option value="">-- Elige un jugador del club --</option>
               {allRegisteredPlayers.map(p => (
@@ -3202,10 +3202,10 @@ function LinkPlayerSlotModal({ isOpen, onClose, slotName, allRegisteredPlayers, 
           </div>
 
           <div className="flex gap-2 pt-1">
-            <button type="button" onClick={onClose} className="flex-1 py-2 bg-slate-100 text-slate-600 font-bold rounded-xl">
+            <button type="button" onClick={onClose} className="flex-1 py-2 bg-stone-100 text-stone-600 font-bold rounded-xl">
               Cancelar
             </button>
-            <button type="submit" className="flex-1 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-xs">
+            <button type="submit" className="flex-1 py-2 bg-[#2c4a66] hover:bg-[#2c4a66] text-white font-bold rounded-xl shadow-xs">
               Vincular Perfil
             </button>
           </div>
@@ -3230,13 +3230,13 @@ function SwapPlayerModal({ isOpen, onClose, match, sourcePlayerId, onConfirmSwap
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 text-left">
       <div className="bg-white rounded-3xl max-w-sm w-full p-5 shadow-2xl space-y-4">
         <div className="border-b pb-3 flex justify-between items-center">
-          <h3 className="text-base font-black text-slate-900">🔄 Intercambio de Jugador</h3>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-700 text-xl font-bold">&times;</button>
+          <h3 className="text-base font-black text-stone-900">🔄 Intercambio de Jugador</h3>
+          <button onClick={onClose} className="text-stone-400 hover:text-stone-700 text-xl font-bold">&times;</button>
         </div>
         
         <div className="space-y-3 text-xs">
-          <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200 text-center">
-            <span className="text-[10px] font-black uppercase text-slate-500 block mb-1">Vas a mover a</span>
+          <div className="bg-stone-50 p-3 rounded-2xl border border-stone-200 text-center">
+            <span className="text-[10px] font-black uppercase text-stone-500 block mb-1">Vas a mover a</span>
             <div className="flex items-center justify-center gap-2">
               <UserAvatar name={sourcePlayer.name} photo={sourcePlayer.photo} size="sm" />
               <span className="font-bold text-sm">{sourcePlayer.name}</span>
@@ -3244,7 +3244,7 @@ function SwapPlayerModal({ isOpen, onClose, match, sourcePlayerId, onConfirmSwap
           </div>
 
           <div>
-            <span className="font-black text-slate-800 text-[11px] uppercase tracking-wide block mb-2">
+            <span className="font-black text-stone-800 text-[11px] uppercase tracking-wide block mb-2">
               Selecciona la acción:
             </span>
             <div className="space-y-2">
@@ -3252,13 +3252,13 @@ function SwapPlayerModal({ isOpen, onClose, match, sourcePlayerId, onConfirmSwap
                 <button
                   key={targetP.id}
                   onClick={() => onConfirmSwap(match.id, sourcePlayer.id, targetP.id)}
-                  className="w-full flex items-center justify-between p-2.5 rounded-xl border border-slate-200 bg-white hover:bg-blue-50 hover:border-blue-300 transition"
+                  className="w-full flex items-center justify-between p-2.5 rounded-xl border border-stone-200 bg-white hover:bg-[#eef2f6] hover:border-[#9fb4c7] transition"
                 >
                   <div className="flex items-center gap-2">
-                    <span className="text-xl text-blue-500">⇄</span>
+                    <span className="text-xl text-[#9fb4c7]">⇄</span>
                     <div className="text-left">
-                      <span className="block text-[10px] font-black text-blue-600 uppercase">Intercambiar por</span>
-                      <span className="block font-bold text-sm text-slate-900">{targetP.name}</span>
+                      <span className="block text-[10px] font-black text-[#2c4a66] uppercase">Intercambiar por</span>
+                      <span className="block font-bold text-sm text-stone-900">{targetP.name}</span>
                     </div>
                   </div>
                   <UserAvatar name={targetP.name} photo={targetP.photo} size="xs" />
@@ -3269,7 +3269,7 @@ function SwapPlayerModal({ isOpen, onClose, match, sourcePlayerId, onConfirmSwap
               {targetPlayers.length < 2 && (
                 <button
                   onClick={() => onConfirmSwap(match.id, sourcePlayer.id, null)}
-                  className="w-full flex items-center justify-center gap-2 p-3 rounded-xl border border-dashed border-emerald-400 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 transition font-bold"
+                  className="w-full flex items-center justify-center gap-2 p-3 rounded-xl border border-dashed border-[#a9c4ad] bg-[#eef4f0] text-[#2f5d50] hover:bg-[#eef4f0] transition font-bold"
                 >
                   <span className="text-xl">➡️</span> 
                   <span>Mover a hueco libre en Pareja {targetTeam}</span>
@@ -3311,34 +3311,34 @@ function RegisterPlayerForm({ onCancel, onRegister, syncing }) {
   return (
     <form onSubmit={handleSubmit} className="space-y-3">
       <div>
-        <label className="block text-xs font-bold text-slate-300 mb-1">Nombre y Apellido *</label>
-        <input type="text" required value={newUserName} onChange={(e) => setNewUserName(e.target.value)} placeholder="Ej: Marcos Iglesias" className="w-full bg-slate-700 border border-slate-600 rounded-xl p-2.5 text-xs text-white placeholder-slate-400 focus:outline-none focus:border-blue-500 font-semibold" />
+        <label className="block text-xs font-bold text-stone-300 mb-1">Nombre y Apellido *</label>
+        <input type="text" required value={newUserName} onChange={(e) => setNewUserName(e.target.value)} placeholder="Ej: Marcos Iglesias" className="w-full bg-stone-700 border border-stone-600 rounded-xl p-2.5 text-xs text-white placeholder-stone-400 focus:outline-none focus:border-[#9fb4c7] font-semibold" />
       </div>
       <div>
-        <label className="block text-xs font-bold text-slate-300 mb-1">Teléfono Móvil (WhatsApp) *</label>
-        <input type="tel" required value={newUserPhone} onChange={(e) => setNewUserPhone(e.target.value)} placeholder="Ej: 600123456" className="w-full bg-slate-700 border border-slate-600 rounded-xl p-2.5 text-xs text-white placeholder-slate-400 focus:outline-none focus:border-blue-500 font-semibold" />
+        <label className="block text-xs font-bold text-stone-300 mb-1">Teléfono Móvil (WhatsApp) *</label>
+        <input type="tel" required value={newUserPhone} onChange={(e) => setNewUserPhone(e.target.value)} placeholder="Ej: 600123456" className="w-full bg-stone-700 border border-stone-600 rounded-xl p-2.5 text-xs text-white placeholder-stone-400 focus:outline-none focus:border-[#9fb4c7] font-semibold" />
       </div>
       <div>
-        <label className="block text-xs font-bold text-slate-300 mb-1">¿A qué grupo perteneces?</label>
+        <label className="block text-xs font-bold text-stone-300 mb-1">¿A qué grupo perteneces?</label>
         <div className="flex gap-2">
           {[{ key: 'Chicos', label: 'Chicos (Jueves)' }, { key: 'Solo Torneo', label: 'Solo Torneo' }].map(g => (
-            <button type="button" key={g.key} onClick={() => setNewUserGroup(g.key)} className={`flex-1 py-2 text-xs font-bold rounded-xl border transition ${newUserGroup === g.key ? 'bg-blue-600 text-white border-blue-600' : 'bg-slate-700 text-slate-300 border-slate-600'}`}>
+            <button type="button" key={g.key} onClick={() => setNewUserGroup(g.key)} className={`flex-1 py-2 text-xs font-bold rounded-xl border transition ${newUserGroup === g.key ? 'bg-[#2c4a66] text-white border-[#2c4a66]' : 'bg-stone-700 text-stone-300 border-stone-600'}`}>
               {g.label}
             </button>
           ))}
         </div>
       </div>
       <div>
-        <label className="block text-xs font-bold text-slate-300 mb-1">Crea tu PIN de 4 cifras (seguridad) *</label>
-        <input type="password" maxLength={4} required value={newUserPin} onChange={(e) => setNewUserPin(e.target.value.replace(/\D/g, ''))} placeholder="Ej: 1234" className="w-full bg-slate-700 border border-slate-600 rounded-xl p-2.5 text-xs text-white placeholder-slate-400 focus:outline-none focus:border-blue-500 font-bold tracking-widest text-center" />
+        <label className="block text-xs font-bold text-stone-300 mb-1">Crea tu PIN de 4 cifras (seguridad) *</label>
+        <input type="password" maxLength={4} required value={newUserPin} onChange={(e) => setNewUserPin(e.target.value.replace(/\D/g, ''))} placeholder="Ej: 1234" className="w-full bg-stone-700 border border-stone-600 rounded-xl p-2.5 text-xs text-white placeholder-stone-400 focus:outline-none focus:border-[#9fb4c7] font-bold tracking-widest text-center" />
       </div>
       <div>
-        <label className="block text-xs font-bold text-slate-300 mb-1">Usuario de Playtomic (opcional)</label>
-        <input type="text" value={newUserPlaytomic} onChange={(e) => setNewUserPlaytomic(e.target.value)} placeholder="Ej: marcos-padel" className="w-full bg-slate-700 border border-slate-600 rounded-xl p-2.5 text-xs text-white placeholder-slate-400 focus:outline-none focus:border-blue-500" />
+        <label className="block text-xs font-bold text-stone-300 mb-1">Usuario de Playtomic (opcional)</label>
+        <input type="text" value={newUserPlaytomic} onChange={(e) => setNewUserPlaytomic(e.target.value)} placeholder="Ej: marcos-padel" className="w-full bg-stone-700 border border-stone-600 rounded-xl p-2.5 text-xs text-white placeholder-stone-400 focus:outline-none focus:border-[#9fb4c7]" />
       </div>
       <div className="flex gap-2 pt-2">
-        <button type="button" onClick={onCancel} className="flex-1 py-2.5 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded-xl text-xs font-bold transition">Volver</button>
-        <button type="submit" disabled={syncing} className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold shadow-lg transition">{syncing ? 'Guardando...' : 'Crear y Entrar'}</button>
+        <button type="button" onClick={onCancel} className="flex-1 py-2.5 bg-stone-700 hover:bg-stone-600 text-stone-300 rounded-xl text-xs font-bold transition">Volver</button>
+        <button type="submit" disabled={syncing} className="flex-1 py-2.5 bg-[#2c4a66] hover:bg-[#9fb4c7] text-white rounded-xl text-xs font-bold shadow-lg transition">{syncing ? 'Guardando...' : 'Crear y Entrar'}</button>
       </div>
     </form>
   );
@@ -3401,13 +3401,13 @@ const isOnlyPlaytomicLink = useMemo(() => {
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-3xl max-w-sm w-full p-5 shadow-2xl space-y-3">
-        <h3 className="text-base font-black text-slate-900">Añadir Partido Playtomic</h3>
+        <h3 className="text-base font-black text-stone-900">Añadir Partido Playtomic</h3>
         <form onSubmit={handleSubmit} className="space-y-3">
           <textarea rows={4} required value={playtomicText} onChange={e => { setPlaytomicText(e.target.value); setFormError(''); }} placeholder="Pega el texto copiado de Playtomic o el enlace..." className="w-full border rounded-xl p-2.5 text-xs font-semibold" />
           {isOnlyPlaytomicLink && (
-            <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200 space-y-2">
-              <span className="text-[10px] font-black uppercase text-blue-600 block">Datos adicionales requeridos</span>
-              <span className="text-[10px] text-slate-500 block -mt-1">
+            <div className="bg-stone-50 p-2.5 rounded-xl border border-stone-200 space-y-2">
+              <span className="text-[10px] font-black uppercase text-[#2c4a66] block">Datos adicionales requeridos</span>
+              <span className="text-[10px] text-stone-500 block -mt-1">
                 Has pegado solo un enlace, sin los detalles del partido. Rellena esto a mano o no se creará el partido.
               </span>
               <input type="text" value={manualDate} onChange={e => { setManualDate(e.target.value); setFormError(''); }} placeholder="Fecha y Hora (Ej: Jueves 21:00)" className="w-full border rounded-lg p-1.5 text-xs font-semibold" />
@@ -3420,13 +3420,13 @@ const isOnlyPlaytomicLink = useMemo(() => {
             </div>
           )}
           {formError && (
-            <div className="bg-rose-50 border border-rose-200 text-rose-700 text-[11px] font-bold rounded-xl p-2">
+            <div className="bg-[#f6ede6] border border-[#ead3bf] text-[#6b3f29] text-[11px] font-bold rounded-xl p-2">
               ⚠️ {formError}
             </div>
           )}
           <div className="flex gap-2">
-            <button type="button" onClick={onClose} className="flex-1 py-2 bg-slate-100 font-bold text-xs rounded-xl">Cancelar</button>
-            <button type="submit" disabled={syncing} className="flex-1 py-2 bg-blue-600 text-white font-bold text-xs rounded-xl shadow-xs">Crear Partido</button>
+            <button type="button" onClick={onClose} className="flex-1 py-2 bg-stone-100 font-bold text-xs rounded-xl">Cancelar</button>
+            <button type="submit" disabled={syncing} className="flex-1 py-2 bg-[#2c4a66] text-white font-bold text-xs rounded-xl shadow-xs">Crear Partido</button>
           </div>
         </form>
       </div>
@@ -4969,26 +4969,26 @@ export default function App() {
       };
 
       return (
-        <div className="min-h-screen bg-slate-900 text-white flex flex-col justify-center items-center p-4 text-left">
-          <div className="max-w-xs w-full bg-slate-800 rounded-3xl p-6 border border-purple-500/50 shadow-2xl text-center space-y-4">
+        <div className="min-h-screen bg-stone-900 text-white flex flex-col justify-center items-center p-4 text-left">
+          <div className="max-w-xs w-full bg-stone-800 rounded-3xl p-6 border border-[#b893ba]/50 shadow-2xl text-center space-y-4">
             <UserAvatar name={targetUser.name} photo={targetUser.photo} size="lg" className="mx-auto" />
             <div>
-              <span className="text-[10px] uppercase font-black bg-purple-900/60 text-purple-300 px-2.5 py-0.5 rounded-full">
+              <span className="text-[10px] uppercase font-black bg-[#4a3350]/60 text-[#b893ba] px-2.5 py-0.5 rounded-full">
                 Acceso Personal
               </span>
               <h2 className="text-lg font-black mt-2 text-white">{targetUser.name}</h2>
-              <p className="text-xs text-purple-200 mt-0.5">
+              <p className="text-xs text-[#f2eef2] mt-0.5">
                 Convocado al <strong>{invitedTournament.name}</strong>
               </p>
             </div>
 
-            <p className="text-xs text-slate-400">
+            <p className="text-xs text-stone-400">
               Pulsa continuar para verificar o crear tu PIN de 4 cifras y acceder a tus partidos:
             </p>
 
             <button
               onClick={() => handleUserClick(targetUser)}
-              className="w-full py-3 bg-purple-600 hover:bg-purple-500 text-white font-black rounded-xl text-xs shadow-md transition"
+              className="w-full py-3 bg-[#4a3350] hover:bg-[#b893ba] text-white font-black rounded-xl text-xs shadow-md transition"
             >
               Entrar al Torneo →
             </button>
@@ -5007,15 +5007,15 @@ export default function App() {
 
     if (invitedTournament) {
       return (
-        <div className="min-h-screen bg-slate-900 text-white flex flex-col justify-center items-center p-4 text-left">
-          <div className="max-w-md w-full bg-slate-800 rounded-3xl p-6 border border-purple-500/40 shadow-2xl space-y-4">
+        <div className="min-h-screen bg-stone-900 text-white flex flex-col justify-center items-center p-4 text-left">
+          <div className="max-w-md w-full bg-stone-800 rounded-3xl p-6 border border-[#b893ba]/40 shadow-2xl space-y-4">
             <div className="text-center">
               <span className="text-4xl block mb-1">⚔️</span>
-              <span className="text-[10px] font-black uppercase tracking-wider bg-purple-500/20 text-purple-300 px-2.5 py-0.5 rounded-full">
+              <span className="text-[10px] font-black uppercase tracking-wider bg-[#b893ba]/20 text-[#b893ba] px-2.5 py-0.5 rounded-full">
                 Invitación a Torneo Privado
               </span>
               <h2 className="text-xl font-black mt-2 text-white">{invitedTournament.name}</h2>
-              <p className="text-xs text-slate-400 mt-1">
+              <p className="text-xs text-stone-400 mt-1">
                 ¿Quién eres en este torneo? Selecciona tu nombre para entrar:
               </p>
             </div>
@@ -5037,22 +5037,22 @@ export default function App() {
                   <button
                     key={p.id}
                     onClick={() => handleUserClick(targetObj)}
-                    className="w-full text-left bg-slate-700/60 hover:bg-purple-600 p-3 rounded-2xl flex items-center justify-between transition group border border-slate-600/40"
+                    className="w-full text-left bg-stone-700/60 hover:bg-[#4a3350] p-3 rounded-2xl flex items-center justify-between transition group border border-stone-600/40"
                   >
                     <div className="flex items-center gap-3">
                       <UserAvatar name={p.name} photo={p.photo} size="sm" />
                       <span className="font-semibold text-sm group-hover:text-white">{p.name}</span>
                     </div>
-                    <span className="text-xs text-purple-300 group-hover:text-white font-bold">Entrar →</span>
+                    <span className="text-xs text-[#b893ba] group-hover:text-white font-bold">Entrar →</span>
                   </button>
                 );
               })}
             </div>
 
-            <div className="pt-2 border-t border-slate-700 text-center">
+            <div className="pt-2 border-t border-stone-700 text-center">
               <button
                 onClick={() => setInviteTournamentId(null)}
-                className="text-xs text-slate-400 hover:text-white font-semibold underline"
+                className="text-xs text-stone-400 hover:text-white font-semibold underline"
               >
                 Soy socio del club (Ir al acceso general)
               </button>
@@ -5071,13 +5071,13 @@ export default function App() {
     }
 
     return (
-      <div className="min-h-screen bg-slate-900 text-white flex flex-col justify-center items-center p-4">
-        <div className="max-w-md w-full bg-slate-800 rounded-3xl p-6 border border-slate-700 shadow-2xl">
-          <div className="w-16 h-16 bg-blue-600 rounded-2xl flex items-center justify-center text-3xl mx-auto mb-4">
+      <div className="min-h-screen bg-stone-900 text-white flex flex-col justify-center items-center p-4">
+        <div className="max-w-md w-full bg-stone-800 rounded-3xl p-6 border border-stone-700 shadow-2xl">
+          <div className="w-16 h-16 bg-[#2c4a66] rounded-2xl flex items-center justify-center text-3xl mx-auto mb-4">
             🎾
           </div>
           <h1 className="text-2xl font-black text-center mb-1">Pádel CTC</h1>
-          <p className="text-slate-400 text-xs text-center mb-5">
+          <p className="text-stone-400 text-xs text-center mb-5">
             {showRegisterForm ? 'Regístrate para entrar al club' : 'Elige tu perfil de jugador (protegido por PIN)'}
           </p>
 
@@ -5085,26 +5085,26 @@ export default function App() {
             <>
               <div className="space-y-2 max-h-64 overflow-y-auto pr-1 mb-4">
                 {allSelectableUsers.length === 0 ? (
-                  <p className="text-center text-slate-400 text-xs py-4">Cargando jugadores desde Google Sheets...</p>
+                  <p className="text-center text-stone-400 text-xs py-4">Cargando jugadores desde Google Sheets...</p>
                 ) : (
                   allSelectableUsers.map(u => (
                     <button
                       key={u.id}
                       onClick={() => handleUserClick(u)}
-                      className="w-full text-left bg-slate-700/60 hover:bg-blue-600 p-3 rounded-2xl flex items-center justify-between transition group border border-slate-600/40"
+                      className="w-full text-left bg-stone-700/60 hover:bg-[#2c4a66] p-3 rounded-2xl flex items-center justify-between transition group border border-stone-600/40"
                     >
                       <div className="flex items-center gap-3">
                         <UserAvatar name={u.name} photo={u.photo} size="sm" />
                         <div>
                           <span className="font-semibold text-sm group-hover:text-white block">{u.name}</span>
                           {u.group === 'torneo' && (
-                            <span className="text-[9px] bg-purple-900/60 text-purple-300 px-1.5 py-0.2 rounded font-bold">
+                            <span className="text-[9px] bg-[#4a3350]/60 text-[#b893ba] px-1.5 py-0.2 rounded font-bold">
                               Torneo
                             </span>
                           )}
                         </div>
                       </div>
-                      <span className="text-xs text-slate-400 group-hover:text-blue-100">{u.titulo}</span>
+                      <span className="text-xs text-stone-400 group-hover:text-[#eef2f6]">{u.titulo}</span>
                     </button>
                   ))
                 )}
@@ -5112,7 +5112,7 @@ export default function App() {
 
               <button
                 onClick={() => setShowRegisterForm(true)}
-                className="w-full py-3 bg-slate-700 hover:bg-slate-600 text-blue-300 hover:text-white rounded-2xl text-xs font-bold transition border border-dashed border-slate-500 flex items-center justify-center gap-1.5"
+                className="w-full py-3 bg-stone-700 hover:bg-stone-600 text-[#9fb4c7] hover:text-white rounded-2xl text-xs font-bold transition border border-dashed border-stone-500 flex items-center justify-center gap-1.5"
               >
                 <span>➕</span> ¿No estás en la lista? Añadir nuevo jugador
               </button>
@@ -5138,67 +5138,77 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-100 text-slate-900 pb-16">
-      <header className="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm">
-        <div className="max-w-xl mx-auto px-4 py-3 flex items-center justify-between">
+    <div className="min-h-screen bg-stone-100 text-stone-900 pb-16">
+      <header className="bg-white border-b border-stone-200 sticky top-0 z-30 shadow-sm">
+        <div className="max-w-xl mx-auto px-4 py-3 flex items-center justify-between gap-2">
           <div
             onClick={() => setInspectedUser(currentUser)}
-            className="flex items-center gap-2.5 cursor-pointer group"
+            className="flex items-center gap-2.5 cursor-pointer group min-w-0"
             title="Ver mis estadísticas y editar perfil"
           >
-            <UserAvatar name={currentUser.name} photo={currentUser.photo} size="md" className="group-hover:ring-2 group-hover:ring-blue-500 transition" />
-            <div>
-              <h1 className="text-base font-black leading-tight flex items-center gap-1 group-hover:text-blue-600 transition">
-                {currentUser.name} <span className="text-[10px] bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded-md font-bold">Ver perfil</span>
+            <UserAvatar name={currentUser.name} photo={currentUser.photo} size="md" className="ring-2 ring-stone-100 group-hover:ring-[#9fb4c7] transition" />
+            <div className="min-w-0">
+              <h1 className="text-[15px] font-black leading-tight truncate group-hover:text-[#2c4a66] transition">
+                {currentUser.name}
               </h1>
-              <p className="text-[11px] text-slate-500 font-bold uppercase tracking-wider">
+              <p className="text-[11px] text-stone-500 font-bold uppercase tracking-wider truncate">
                 {isThursdayMember ? `${currentUser.group} · ${currentUser.titulo}` : 'Invitado a Torneos CTC'}
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-1.5">
-            {isThursdayMember && (
-              <button
-                onClick={() => setActiveTab('inicio')}
-                className={`px-2.5 py-1.5 text-sm font-bold rounded-lg transition ${activeTab === 'inicio' ? 'bg-blue-600 text-white' : 'bg-slate-100 hover:bg-blue-50 text-slate-700'}`}
-                title="Inicio"
-              >
-                🏠
-              </button>
-            )}
-            <button
-              onClick={() => setActiveTab('avisos')}
-              className="relative px-2.5 py-1.5 text-sm font-bold bg-slate-100 hover:bg-amber-50 text-slate-700 rounded-lg transition"
-              title="Tus pendientes"
-            >
-              🔔
-              {pendingAlerts.length > 0 && (
-                <span className="absolute -top-1 -right-1 bg-rose-600 text-white text-[9px] font-black w-4 h-4 rounded-full flex items-center justify-center shadow-sm">
-                  {pendingAlerts.length > 9 ? '9+' : pendingAlerts.length}
-                </span>
+
+          {/* Iconos de utilidad agrupados en una sola píldora, todos del mismo tamaño — antes
+              estaban sueltos y con tamaños distintos (algunos con texto, otros sin él). */}
+          <div className="flex items-center gap-2 shrink-0">
+            <div className="flex items-center bg-stone-100 rounded-xl p-0.5 gap-0.5">
+              {isThursdayMember && (
+                <button
+                  onClick={() => setActiveTab('inicio')}
+                  className={`w-9 h-9 flex items-center justify-center text-base rounded-lg transition ${activeTab === 'inicio' ? 'bg-[#2c4a66] text-white shadow-xs' : 'text-stone-600 hover:bg-white hover:shadow-xs'}`}
+                  title="Inicio"
+                >
+                  🏠
+                </button>
               )}
-            </button>
-            {isThursdayMember && (
               <button
-                onClick={() => setShowRulesModal(true)}
-                className="px-2.5 py-1 text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition"
+                onClick={() => setActiveTab('avisos')}
+                className={`relative w-9 h-9 flex items-center justify-center text-base rounded-lg transition ${activeTab === 'avisos' ? 'bg-[#d9b97c] text-white shadow-xs' : 'text-stone-600 hover:bg-white hover:shadow-xs'}`}
+                title="Tus pendientes"
               >
-                📖 Reglas
+                🔔
+                {pendingAlerts.length > 0 && (
+                  <span className="absolute top-0.5 right-0.5 bg-[#6b3f29] text-white text-[9px] font-black w-4 h-4 rounded-full flex items-center justify-center shadow-sm">
+                    {pendingAlerts.length > 9 ? '9+' : pendingAlerts.length}
+                  </span>
+                )}
               </button>
-            )}
+              {isThursdayMember && (
+                <button
+                  onClick={() => setShowRulesModal(true)}
+                  className="w-9 h-9 flex items-center justify-center text-stone-600 hover:bg-white hover:shadow-xs rounded-lg transition"
+                  title="Reglas"
+                >
+                  <span className="w-4 h-4 rounded-full border-2 border-current flex items-center justify-center text-[10px] font-black leading-none">i</span>
+                </button>
+              )}
+              <button
+                onClick={() => fetchData(false)}
+                disabled={syncing}
+                className={`w-9 h-9 flex items-center justify-center text-base text-stone-600 hover:bg-white hover:shadow-xs rounded-lg transition ${syncing ? 'animate-spin' : ''}`}
+                title="Sincronizar ahora"
+              >
+                🔄
+              </button>
+            </div>
+
+            {/* "Salir" se deja fuera de la píldora y con su texto, a propósito: es la única
+                acción de la cabecera con consecuencias (cerrar sesión), así que conviene que
+                destaque y no se pueda tocar sin querer igual que un icono más. */}
             <button
               onClick={handleLogout}
-              className="px-2.5 py-1 text-xs font-semibold bg-slate-100 hover:bg-red-50 hover:text-red-600 text-slate-600 rounded-lg transition"
+              className="px-2.5 h-9 text-xs font-semibold bg-stone-100 hover:bg-red-50 hover:text-red-600 text-stone-600 rounded-lg transition"
             >
               Salir
-            </button>
-            <button
-              onClick={() => fetchData(false)}
-              disabled={syncing}
-              className={`p-1.5 text-slate-500 hover:text-blue-600 transition ${syncing ? 'animate-spin' : ''}`}
-              title="Sincronizar ahora"
-            >
-              🔄
             </button>
           </div>
         </div>
@@ -5229,7 +5239,7 @@ export default function App() {
           <div className="space-y-4">
             <button
               onClick={() => setSelectedMatchId(null)}
-              className="text-xs font-bold text-blue-600 hover:underline flex items-center gap-1"
+              className="text-xs font-bold text-[#2c4a66] hover:underline flex items-center gap-1"
             >
               ← Volver a la lista de partidos
             </button>
@@ -5244,21 +5254,21 @@ export default function App() {
                 return (
                   <div
                     onClick={() => setShowScoreModal(true)}
-                    className="bg-gradient-to-r from-purple-700 via-indigo-700 to-purple-800 text-white rounded-3xl p-4 shadow-lg border-2 border-amber-300 cursor-pointer animate-pulse hover:animate-none transition transform active:scale-98 flex items-center justify-between"
+                    className="bg-gradient-to-r from-[#4a3350] via-[#2c4a66] to-[#4a3350] text-white rounded-3xl p-4 shadow-lg border-2 border-[#d9b97c] cursor-pointer animate-pulse hover:animate-none transition transform active:scale-98 flex items-center justify-between"
                   >
                     <div className="flex items-center gap-3">
-                      <div className="w-12 h-12 rounded-2xl bg-amber-400 text-slate-950 font-black text-2xl flex items-center justify-center shrink-0 shadow-md">
+                      <div className="w-12 h-12 rounded-2xl bg-[#d9b97c] text-stone-950 font-black text-2xl flex items-center justify-center shrink-0 shadow-md">
                         🏆
                       </div>
                       <div>
-                        <span className="text-[10px] font-black uppercase tracking-wider bg-amber-300 text-slate-950 px-2 py-0.5 rounded-full">
+                        <span className="text-[10px] font-black uppercase tracking-wider bg-[#d9b97c] text-stone-950 px-2 py-0.5 rounded-full">
                           Partido Listo para Anotar
                         </span>
                         <h3 className="text-base font-black mt-0.5">¡Registra el Resultado Oficial!</h3>
-                        <p className="text-[11px] text-purple-200">Toca aquí para indicar el marcador y la pareja ganadora</p>
+                        <p className="text-[11px] text-[#f2eef2]">Toca aquí para indicar el marcador y la pareja ganadora</p>
                       </div>
                     </div>
-                    <span className="text-xl font-black bg-white text-purple-900 px-3 py-1.5 rounded-2xl shadow-md">
+                    <span className="text-xl font-black bg-white text-[#4a3350] px-3 py-1.5 rounded-2xl shadow-md">
                       Anotar →
                     </span>
                   </div>
@@ -5267,30 +5277,30 @@ export default function App() {
               return null;
             })()}
 
-            <div className="bg-white rounded-3xl p-5 shadow-sm border border-slate-200">
+            <div className="bg-white rounded-3xl p-5 shadow-sm border border-stone-200">
               <div className="flex justify-between items-center mb-2">
                 {(() => {
                   const dynamicStatus = computeMatchStatus(currentMatch);
                   const badgeColors = {
-                    'PROGRAMADO': 'bg-blue-50 text-blue-700 border-blue-200',
-                    'EN JUEGO': 'bg-amber-50 text-amber-700 border-amber-300 animate-pulse font-black',
-                    'SIN RESULTADO': 'bg-orange-50 text-orange-700 border-orange-300 font-black',
-                    'FINALIZADO': 'bg-purple-50 text-purple-700 border-purple-200',
-                    'CANCELADO': 'bg-rose-50 text-rose-700 border-rose-200'
+                    'PROGRAMADO': 'bg-[#eef2f6] text-[#2c4a66] border-[#c3d3e0]',
+                    'EN JUEGO': 'bg-[#faf3e7] text-[#6b4d1c] border-[#d9b97c] animate-pulse font-black',
+                    'SIN RESULTADO': 'bg-[#faf3e7] text-[#6b4d1c] border-[#d9b97c] font-black',
+                    'FINALIZADO': 'bg-[#f2eef2] text-[#4a3350] border-[#ddc9de]',
+                    'CANCELADO': 'bg-[#f6ede6] text-[#6b3f29] border-[#ead3bf]'
                   };
 
                   const isOfficial = isMatchOfficial(currentMatch);
 
                   return (
                     <div className="flex items-center gap-1.5 flex-wrap">
-                      <span className="text-[10px] font-black uppercase tracking-wider bg-slate-100 text-slate-600 px-2.5 py-1 rounded-full border border-slate-200">
+                      <span className="text-[10px] font-black uppercase tracking-wider bg-stone-100 text-stone-600 px-2.5 py-1 rounded-full border border-stone-200">
                         {currentMatch.grupo}
                       </span>
                       <span className={`text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-full border ${badgeColors[dynamicStatus] || badgeColors['PROGRAMADO']}`}>
                         {dynamicStatus === 'EN JUEGO' ? '🎾 EN JUEGO' : dynamicStatus}
                       </span>
                       {!isOfficial && (
-                        <span className="text-[10px] font-extrabold uppercase tracking-wide bg-amber-50 text-amber-800 border border-amber-300 px-2 py-0.5 rounded-full">
+                        <span className="text-[10px] font-extrabold uppercase tracking-wide bg-[#faf3e7] text-[#6b4d1c] border border-[#d9b97c] px-2 py-0.5 rounded-full">
                           Amistoso (No computable)
                         </span>
                       )}
@@ -5302,7 +5312,7 @@ export default function App() {
                   {computeMatchStatus(currentMatch) === 'PROGRAMADO' && (
                     <button
                       onClick={() => handleDeleteMatchComplete(currentMatch.id)}
-                      className="text-xs font-bold text-rose-600 hover:bg-rose-50 px-2.5 py-1 rounded-lg border border-rose-200 transition"
+                      className="text-xs font-bold text-[#6b3f29] hover:bg-[#f6ede6] px-2.5 py-1 rounded-lg border border-[#ead3bf] transition"
                     >
                       🗑️ Borrar Partido
                     </button>
@@ -5310,32 +5320,32 @@ export default function App() {
                 </div>
               </div>
 
-              <h2 className="text-xl font-black text-slate-900 mt-1">{currentMatch.date}</h2>
-              <p className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
+              <h2 className="text-xl font-black text-stone-900 mt-1">{currentMatch.date}</h2>
+              <p className="text-xs text-stone-500 flex items-center gap-1 mt-0.5">
                 📍 {currentMatch.location}
               </p>
 
               {/* BLOQUE DE MARCADOR FINAL */}
               {currentMatch.status === 'FINALIZADO' && (
-                <div className="bg-purple-50 border border-purple-200 rounded-2xl p-4 text-center my-3.5 space-y-2">
-                  <span className="text-[10px] font-black uppercase tracking-wider text-purple-600 block">
+                <div className="bg-[#f2eef2] border border-[#ddc9de] rounded-2xl p-4 text-center my-3.5 space-y-2">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-[#4a3350] block">
                     MARCADOR FINAL OFICIAL
                   </span>
                   
-                  <div className="inline-block bg-purple-950 text-white font-mono font-black text-base px-4 py-1.5 rounded-xl shadow-xs">
+                  <div className="inline-block bg-[#4a3350] text-white font-mono font-black text-base px-4 py-1.5 rounded-xl shadow-xs">
                     {currentMatch.score || 'Ganador Registrado'}
                   </div>
 
                   <div className="flex justify-center gap-2 pt-1">
                     <button
                       onClick={() => setShowScoreModal(true)}
-                      className="px-3 py-1.5 bg-purple-600 text-white font-bold text-xs rounded-xl hover:bg-purple-700 transition"
+                      className="px-3 py-1.5 bg-[#4a3350] text-white font-bold text-xs rounded-xl hover:bg-[#4a3350] transition"
                     >
                       ✏️ Editar Resultado
                     </button>
                     <button
                       onClick={() => handleResetMatchScore(currentMatch.id)}
-                      className="px-3 py-1.5 bg-rose-100 text-rose-700 font-bold text-xs rounded-xl hover:bg-rose-200 transition"
+                      className="px-3 py-1.5 bg-[#f6ede6] text-[#6b3f29] font-bold text-xs rounded-xl hover:bg-[#f6ede6] transition"
                     >
                       🔄 Reiniciar Partido
                     </button>
@@ -5343,10 +5353,10 @@ export default function App() {
                 </div>
               )}
 
-              <div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-slate-100">
+              <div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-stone-100">
                 <button
                   onClick={() => setShowReloadPlaytomicModal(true)}
-                  className="py-2 px-2 bg-blue-50 hover:bg-blue-100 text-blue-700 text-[11px] font-bold rounded-xl border border-blue-200 transition flex items-center justify-center gap-1"
+                  className="py-2 px-2 bg-[#eef2f6] hover:bg-[#eef2f6] text-[#2c4a66] text-[11px] font-bold rounded-xl border border-[#c3d3e0] transition flex items-center justify-center gap-1"
                 >
                   🔄 Recargar Playtomic
                 </button>
@@ -5356,7 +5366,7 @@ export default function App() {
                     setEditPlayerSlots([currentNames[0] || '', currentNames[1] || '', currentNames[2] || '', currentNames[3] || '']);
                     setShowEditPlayersModal(true);
                   }}
-                  className="py-2 px-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold rounded-xl border border-slate-200 transition flex items-center justify-center gap-1"
+                  className="py-2 px-2 bg-stone-100 hover:bg-stone-200 text-stone-700 text-[11px] font-bold rounded-xl border border-stone-200 transition flex items-center justify-center gap-1"
                 >
                   ✏️ Cambiar Suplentes
                 </button>
@@ -5365,10 +5375,10 @@ export default function App() {
               {/* CONVOCATORIA Y PAREJAS */}
               <div className="mt-5 space-y-4">
                 <div className="flex justify-between items-center border-b pb-2">
-                  <h3 className="text-xs font-black text-slate-800 uppercase tracking-wider">
+                  <h3 className="text-xs font-black text-stone-800 uppercase tracking-wider">
                     Convocatoria y Parejas
                   </h3>
-                  <span className="text-[10px] text-slate-500 font-bold">
+                  <span className="text-[10px] text-stone-500 font-bold">
                     {(currentMatch.players || []).length} / 4 en pista
                   </span>
                 </div>
@@ -5385,30 +5395,30 @@ export default function App() {
                       key={teamNum}
                       className={`border rounded-2xl p-3.5 transition-all ${
                         isWinningTeam
-                          ? 'bg-emerald-50/70 border-emerald-300 ring-1 ring-emerald-300 shadow-xs'
+                          ? 'bg-[#eef4f0]/70 border-[#a9c4ad] ring-1 ring-[#a9c4ad] shadow-xs'
                           : isP1
-                          ? 'bg-blue-50/40 border-blue-200'
-                          : 'bg-amber-50/40 border-amber-200'
+                          ? 'bg-[#eef2f6]/40 border-[#c3d3e0]'
+                          : 'bg-[#faf3e7]/40 border-[#efd9a9]'
                       }`}
                     >
                       <div className="flex justify-between items-center mb-2.5">
                         <div className="flex items-center gap-1.5">
                           <span className={`text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-md ${
                             isWinningTeam
-                              ? 'bg-emerald-600 text-white shadow-2xs'
+                              ? 'bg-[#2f5d50] text-white shadow-2xs'
                               : isP1
-                              ? 'bg-blue-600 text-white'
-                              : 'bg-amber-600 text-white'
+                              ? 'bg-[#2c4a66] text-white'
+                              : 'bg-[#6b4d1c] text-white'
                           }`}>
                             Pareja {teamNum}
                           </span>
                           {isWinningTeam && (
-                            <span className="text-[10px] font-black uppercase tracking-wide text-emerald-800 bg-emerald-100/90 px-2 py-0.5 rounded-md flex items-center gap-1">
+                            <span className="text-[10px] font-black uppercase tracking-wide text-[#2f5d50] bg-[#eef4f0]/90 px-2 py-0.5 rounded-md flex items-center gap-1">
                               👑 Ganadores
                             </span>
                           )}
                         </div>
-                        <span className="text-[10px] text-slate-400 font-medium">
+                        <span className="text-[10px] text-stone-400 font-medium">
                           {isFinalizado ? '🔒 Parejas bloqueadas' : 'P1 ⇄ / P2 ⇄ para intercambiar'}
                         </span>
                       </div>
@@ -5423,7 +5433,7 @@ export default function App() {
                             <div
                               key={p.id || p.name}
                               className={`rounded-2xl p-2.5 flex items-center justify-between border shadow-xs ${
-                                isWinningTeam ? 'bg-white border-emerald-200' : 'bg-white border-slate-200'
+                                isWinningTeam ? 'bg-white border-[#c7ddc9]' : 'bg-white border-stone-200'
                               }`}
                             >
                               <div className="flex items-center gap-2.5">
@@ -5433,8 +5443,8 @@ export default function App() {
                                   onClick={() => setSwapModalData({ matchId: currentMatch.id, playerId: p.id })}
                                   className={`text-[10px] font-black px-2 py-0.5 rounded transition ${
                                     isFinalizado 
-                                      ? 'bg-slate-100 text-slate-300 cursor-not-allowed' 
-                                      : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                                      ? 'bg-stone-100 text-stone-300 cursor-not-allowed' 
+                                      : 'bg-stone-100 hover:bg-stone-200 text-stone-700'
                                   }`}
                                   title={isFinalizado ? 'No se pueden cambiar parejas de un partido finalizado' : 'Mover o intercambiar jugador'}
                                 >
@@ -5448,20 +5458,20 @@ export default function App() {
                                 </div>
                                 <div>
                                   <div className="flex items-center gap-1.5">
-                                    <span className={`text-xs font-bold block ${isMe ? 'text-blue-600 font-black' : 'text-slate-800'}`}>
+                                    <span className={`text-xs font-bold block ${isMe ? 'text-[#2c4a66] font-black' : 'text-stone-800'}`}>
                                       {p.name} {isMe && '(Tú)'}
                                     </span>
                                     {isUnlinked && (
                                       <button
                                         onClick={() => setLinkingSlot({ matchId: currentMatch.id, name: p.name })}
-                                        className="text-[9px] bg-amber-100 hover:bg-amber-200 text-amber-900 font-extrabold px-1.5 py-0.5 rounded flex items-center gap-0.5"
+                                        className="text-[9px] bg-[#faf3e7] hover:bg-[#faf3e7] text-[#6b4d1c] font-extrabold px-1.5 py-0.5 rounded flex items-center gap-0.5"
                                         title="Este jugador no tiene perfil oficial enlazado. Clic para asociarlo."
                                       >
                                         ⚠️ Vincular
                                       </button>
                                     )}
                                   </div>
-                                  <span className="text-[10px] text-slate-400">
+                                  <span className="text-[10px] text-stone-400">
                                     {p.dinner === 'SI' ? '🍻 Cena confirmada' : p.dinner === 'NO' ? '🏃‍♂️ Se raja' : '🟡 Cena pendiente'}
                                   </span>
                                 </div>
@@ -5472,7 +5482,7 @@ export default function App() {
                                   disabled={isProcessing}
                                   onClick={() => handleUpdateDinner(currentMatch.id, p.id, p.name, p.dinner === 'SI' ? 'PENDIENTE' : 'SI')}
                                   className={`px-2.5 py-1 rounded-xl text-[10px] font-bold transition ${
-                                    p.dinner === 'SI' ? 'bg-emerald-600 text-white shadow-xs' : 'bg-slate-100 text-slate-600'
+                                    p.dinner === 'SI' ? 'bg-[#2f5d50] text-white shadow-xs' : 'bg-stone-100 text-stone-600'
                                   } ${isProcessing ? 'opacity-50 cursor-wait' : ''}`}
                                 >
                                   Cena 🍻
@@ -5481,7 +5491,7 @@ export default function App() {
                                   disabled={isProcessing}
                                   onClick={() => handleUpdateDinner(currentMatch.id, p.id, p.name, p.dinner === 'NO' ? 'PENDIENTE' : 'NO')}
                                   className={`px-2.5 py-1 rounded-xl text-[10px] font-bold transition ${
-                                    p.dinner === 'NO' ? 'bg-rose-600 text-white shadow-xs' : 'bg-slate-100 text-slate-600'
+                                    p.dinner === 'NO' ? 'bg-[#6b3f29] text-white shadow-xs' : 'bg-stone-100 text-stone-600'
                                   } ${isProcessing ? 'opacity-50 cursor-wait' : ''}`}
                                 >
                                   No 🏃‍♂️
@@ -5505,8 +5515,8 @@ export default function App() {
 
                 if (!isOfficial) {
                   return (
-                    <div className="mt-5 pt-3 border-t border-slate-100 text-center">
-                      <span className="text-[11px] text-slate-500 font-semibold italic block">
+                    <div className="mt-5 pt-3 border-t border-stone-100 text-center">
+                      <span className="text-[11px] text-stone-500 font-semibold italic block">
                         ℹ️ Este partido es amistoso. Las cenas y puntos oficiales se computan exclusivamente los Jueves.
                       </span>
                     </div>
@@ -5514,8 +5524,8 @@ export default function App() {
                 }
 
                 return (
-                  <div className="mt-5 pt-4 border-t border-slate-100 text-center">
-                    <p className="text-xs font-black text-slate-800 uppercase tracking-wide mb-2.5">
+                  <div className="mt-5 pt-4 border-t border-stone-100 text-center">
+                    <p className="text-xs font-black text-stone-800 uppercase tracking-wide mb-2.5">
                       ¿Te quedas al 3º tiempo?
                     </p>
                     <div className="flex gap-2.5">
@@ -5524,8 +5534,8 @@ export default function App() {
                         onClick={() => handleUpdateDinner(currentMatch.id, mySlot.id, mySlot.name, 'SI')}
                         className={`flex-1 py-2.5 rounded-xl font-extrabold text-xs transition border ${
                           mySlot.dinner === 'SI'
-                            ? 'bg-emerald-600 text-white border-emerald-600 shadow-md'
-                            : 'bg-white text-slate-700 border-slate-200 hover:bg-emerald-50'
+                            ? 'bg-[#2f5d50] text-white border-[#2f5d50] shadow-md'
+                            : 'bg-white text-stone-700 border-stone-200 hover:bg-[#eef4f0]'
                         } ${isProcessing ? 'opacity-60 cursor-wait' : ''}`}
                       >
                         ✓ ¡SÍ, CLARO! 🍻
@@ -5535,8 +5545,8 @@ export default function App() {
                         onClick={() => handleUpdateDinner(currentMatch.id, mySlot.id, mySlot.name, 'NO')}
                         className={`flex-1 py-2.5 rounded-xl font-extrabold text-xs transition border ${
                           mySlot.dinner === 'NO'
-                            ? 'bg-rose-600 text-white border-rose-600 shadow-md'
-                            : 'bg-white text-slate-700 border-slate-200 hover:bg-rose-50'
+                            ? 'bg-[#6b3f29] text-white border-[#6b3f29] shadow-md'
+                            : 'bg-white text-stone-700 border-stone-200 hover:bg-[#f6ede6]'
                         } ${isProcessing ? 'opacity-60 cursor-wait' : ''}`}
                       >
                         ME RAJO 🏃‍♂️
@@ -5551,48 +5561,42 @@ export default function App() {
           /* PESTAÑAS PRINCIPALES */
           <div className="space-y-4">
             {isThursdayMember ? (
-              <div className="flex bg-slate-200/80 p-1 rounded-2xl text-[11px] font-black">
-                <button
-                  onClick={() => setActiveTab('partidos')}
-                  className={`flex-1 py-2 rounded-xl transition ${activeTab === 'partidos' ? 'bg-white shadow text-slate-900' : 'text-slate-600'}`}
-                >
-                  Partidos 🎾
-                </button>
-                <button
-                  onClick={() => setActiveTab('cenas')}
-                  className={`flex-1 py-2 rounded-xl transition ${activeTab === 'cenas' ? 'bg-white shadow text-emerald-800' : 'text-slate-600'}`}
-                >
-                  Cena & Club 🍻
-                </button>
-                <button
-                  onClick={() => setActiveTab('rankings')}
-                  className={`flex-1 py-2 rounded-xl transition ${activeTab === 'rankings' ? 'bg-white shadow text-slate-900' : 'text-slate-600'}`}
-                >
-                  Rankings 🏆
-                </button>
-                <button
-                  onClick={() => setActiveTab('bote')}
-                  className={`flex-1 py-2 rounded-xl transition ${activeTab === 'bote' ? 'bg-white shadow text-slate-900' : 'text-slate-600'}`}
-                >
-                  Bote 💶
-                </button>
-                <button
-                  onClick={() => setActiveTab('torneos')}
-                  className={`flex-1 py-2 rounded-xl transition ${activeTab === 'torneos' ? 'bg-purple-600 text-white shadow' : 'text-purple-700 hover:text-purple-900 font-black'}`}
-                >
-                  Torneos ⚔️
-                </button>
+              // Pestañas principales: mismo patrón de seleccionado/no-seleccionado para las 5
+              // (antes "Torneos" se salía de la norma — se veía en morado incluso sin estar
+              // activa — y la sombra del activo no era la misma que en el resto de la app:
+              // "shadow" a secas en vez de "shadow-xs", que es la que se usa en todas partes).
+              // Cada pestaña conserva su color de acento solo cuando está activa, para
+              // orientarte de un vistazo a qué sección perteneces.
+              <div className="flex bg-stone-100 p-1 rounded-2xl text-[11px] font-black gap-0.5">
+                {[
+                  { key: 'partidos', label: 'Partidos', icon: '🎾', active: 'bg-white shadow-xs text-stone-900' },
+                  { key: 'cenas', label: 'Cena', icon: '🍻', active: 'bg-white shadow-xs text-[#2f5d50]' },
+                  { key: 'rankings', label: 'Rankings', icon: '🏆', active: 'bg-white shadow-xs text-stone-900' },
+                  { key: 'bote', label: 'Bote', icon: '💶', active: 'bg-white shadow-xs text-stone-900' },
+                  { key: 'torneos', label: 'Torneos', icon: '⚔️', active: 'bg-[#4a3350] shadow-xs text-white' }
+                ].map(tab => (
+                  <button
+                    key={tab.key}
+                    onClick={() => setActiveTab(tab.key)}
+                    className={`flex-1 flex flex-col items-center gap-0.5 py-1.5 rounded-xl transition ${
+                      activeTab === tab.key ? tab.active : 'text-stone-500 hover:text-stone-700'
+                    }`}
+                  >
+                    <span className="text-sm leading-none">{tab.icon}</span>
+                    <span className="text-[9.5px] leading-none">{tab.label}</span>
+                  </button>
+                ))}
               </div>
             ) : (
-              <div className="bg-purple-50 border border-purple-200 text-purple-900 rounded-2xl p-3 flex items-center justify-between shadow-xs">
+              <div className="bg-[#f2eef2] border border-[#ddc9de] text-[#4a3350] rounded-2xl p-3 flex items-center justify-between shadow-xs">
                 <div className="flex items-center gap-2.5">
                   <span className="text-2xl">⚔️</span>
                   <div>
                     <span className="font-black text-xs block">Acceso Exclusivo de Torneos CTC</span>
-                    <span className="text-[10px] text-purple-700 font-medium">Visualizas únicamente los eventos a los que estás convocado</span>
+                    <span className="text-[10px] text-[#4a3350] font-medium">Visualizas únicamente los eventos a los que estás convocado</span>
                   </div>
                 </div>
-                <span className="text-[10px] font-bold bg-purple-200 text-purple-800 px-2 py-0.5 rounded-md">
+                <span className="text-[10px] font-bold bg-[#f2eef2] text-[#4a3350] px-2 py-0.5 rounded-md">
                   Modo Torneo
                 </span>
               </div>
@@ -5603,12 +5607,12 @@ export default function App() {
               <div className="space-y-3">
                 <button
                   onClick={() => setShowAddModal(true)}
-                  className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 px-4 rounded-2xl text-xs flex items-center justify-center gap-2 shadow-sm transition"
+                  className="w-full bg-[#2c4a66] hover:bg-[#2c4a66] text-white font-bold py-2.5 px-4 rounded-2xl text-xs flex items-center justify-center gap-2 shadow-sm transition"
                 >
                   <span>➕</span> Añadir Partido (Pegar desde Playtomic)
                 </button>
 
-                <div className="flex bg-white p-1 rounded-2xl border border-slate-200 shadow-xs text-[11px] font-bold">
+                <div className="flex bg-white p-1 rounded-2xl border border-stone-200 shadow-xs text-[11px] font-bold">
                   {[
                     { key: 'semana', label: '📅 Esta semana' },
                     { key: 'proximos', label: '⏳ Próximos' },
@@ -5617,7 +5621,7 @@ export default function App() {
                     <button
                       key={t.key}
                       onClick={() => setFilterTime(t.key)}
-                      className={`flex-1 py-1.5 rounded-xl transition ${filterTime === t.key ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'}`}
+                      className={`flex-1 py-1.5 rounded-xl transition ${filterTime === t.key ? 'bg-[#2c4a66] text-white shadow-xs' : 'text-stone-600 hover:text-stone-900'}`}
                     >
                       {t.label}
                     </button>
@@ -5625,9 +5629,9 @@ export default function App() {
                 </div>
 
                 {filteredMatches.length === 0 ? (
-                  <div className="bg-white rounded-2xl p-8 text-center border border-slate-200">
+                  <div className="bg-white rounded-2xl p-8 text-center border border-stone-200">
                     <p className="text-2xl mb-1">🎾</p>
-                    <p className="text-sm font-bold text-slate-700">No hay partidos de {currentUser.group} en esta vista</p>
+                    <p className="text-sm font-bold text-stone-700">No hay partidos de {currentUser.group} en esta vista</p>
                   </div>
                 ) : (
                   filteredMatches.map(m => {
@@ -5640,52 +5644,52 @@ export default function App() {
                     const isOfficial = isMatchOfficial(m);
 
                     const badgeColors = {
-                      'PROGRAMADO': 'bg-blue-50 text-blue-700 border-blue-200',
-                      'EN JUEGO': 'bg-amber-50 text-amber-700 border-amber-300 animate-pulse font-black',
-                      'SIN RESULTADO': 'bg-orange-50 text-orange-700 border-orange-300 font-black',
-                      'FINALIZADO': 'bg-purple-100 text-purple-700 border-purple-200',
-                      'CANCELADO': 'bg-rose-100 text-rose-700 border-rose-200'
+                      'PROGRAMADO': 'bg-[#eef2f6] text-[#2c4a66] border-[#c3d3e0]',
+                      'EN JUEGO': 'bg-[#faf3e7] text-[#6b4d1c] border-[#d9b97c] animate-pulse font-black',
+                      'SIN RESULTADO': 'bg-[#faf3e7] text-[#6b4d1c] border-[#d9b97c] font-black',
+                      'FINALIZADO': 'bg-[#f2eef2] text-[#4a3350] border-[#ddc9de]',
+                      'CANCELADO': 'bg-[#f6ede6] text-[#6b3f29] border-[#ead3bf]'
                     };
 
                     return (
                       <div
                         key={m.id}
                         onClick={() => setSelectedMatchId(m.id)}
-                        className={`bg-white rounded-2xl p-4 border shadow-xs hover:border-blue-400 cursor-pointer transition ${
-                          isFinalizado ? 'border-purple-200' : 'border-slate-200'
+                        className={`bg-white rounded-2xl p-4 border shadow-xs hover:border-[#9fb4c7] cursor-pointer transition ${
+                          isFinalizado ? 'border-[#ddc9de]' : 'border-stone-200'
                         }`}
                       >
                         <div className="flex justify-between items-start">
                           <div>
                             <div className="flex items-center gap-1.5">
-                              <span className="text-[10px] font-black uppercase tracking-wider bg-slate-100 text-slate-600 px-2 py-0.5 rounded">
+                              <span className="text-[10px] font-black uppercase tracking-wider bg-stone-100 text-stone-600 px-2 py-0.5 rounded">
                                 {m.grupo}
                               </span>
                               {!isOfficial && (
-                                <span className="text-[9px] font-extrabold uppercase bg-amber-50 text-amber-800 border border-amber-300 px-1.5 py-0.2 rounded">
+                                <span className="text-[9px] font-extrabold uppercase bg-[#faf3e7] text-[#6b4d1c] border border-[#d9b97c] px-1.5 py-0.2 rounded">
                                   Amistoso
                                 </span>
                               )}
                             </div>
-                            <h3 className="text-base font-black text-slate-900 mt-1">{m.date}</h3>
-                            <p className="text-xs text-slate-500 mt-0.5">📍 {m.location}</p>
+                            <h3 className="text-base font-black text-stone-900 mt-1">{m.date}</h3>
+                            <p className="text-xs text-stone-500 mt-0.5">📍 {m.location}</p>
                           </div>
                           <span className={`text-[10px] font-black uppercase px-2.5 py-1 rounded-full border ${badgeColors[dynamicStatus] || badgeColors['PROGRAMADO']}`}>
                             {dynamicStatus === 'EN JUEGO' ? '🎾 EN JUEGO' : dynamicStatus}
                           </span>
                         </div>
 
-                        <div className="mt-3 pt-3 border-t border-slate-100">
+                        <div className="mt-3 pt-3 border-t border-stone-100">
                           <div className="flex items-center justify-between gap-2 text-[11px]">
                             <div className={`flex items-center gap-1.5 flex-1 min-w-0 p-1.5 rounded-xl transition ${
                               p1Won
-                                ? 'bg-emerald-50 border border-emerald-300 text-emerald-950 font-black'
+                                ? 'bg-[#eef4f0] border border-[#a9c4ad] text-[#2f5d50] font-black'
                                 : isFinalizado
-                                ? 'opacity-60 text-slate-600'
-                                : 'bg-slate-50/70 text-slate-700'
+                                ? 'opacity-60 text-stone-600'
+                                : 'bg-stone-50/70 text-stone-700'
                             }`}>
                               <span className={`text-[9px] font-black px-1.5 py-0.5 rounded shrink-0 ${
-                                p1Won ? 'bg-emerald-600 text-white' : 'bg-blue-100 text-blue-800'
+                                p1Won ? 'bg-[#2f5d50] text-white' : 'bg-[#eef2f6] text-[#2c4a66]'
                               }`}>
                                 {p1Won ? '👑 P1' : 'P1'}
                               </span>
@@ -5699,14 +5703,14 @@ export default function App() {
                               </div>
                             </div>
 
-                            <span className="font-black text-slate-300 text-[10px] px-1 shrink-0">VS</span>
+                            <span className="font-black text-stone-300 text-[10px] px-1 shrink-0">VS</span>
 
                             <div className={`flex items-center justify-end gap-1.5 flex-1 min-w-0 p-1.5 rounded-xl transition ${
                               p2Won
-                                ? 'bg-emerald-50 border border-emerald-300 text-emerald-950 font-black'
+                                ? 'bg-[#eef4f0] border border-[#a9c4ad] text-[#2f5d50] font-black'
                                 : isFinalizado
-                                ? 'opacity-60 text-slate-600'
-                                : 'bg-slate-50/70 text-slate-700'
+                                ? 'opacity-60 text-stone-600'
+                                : 'bg-stone-50/70 text-stone-700'
                             }`}>
                               <div className="flex items-center gap-1.5 truncate justify-end">
                                 {p2.map((p, idx) => (
@@ -5717,7 +5721,7 @@ export default function App() {
                                 ))}
                               </div>
                               <span className={`text-[9px] font-black px-1.5 py-0.5 rounded shrink-0 ${
-                                p2Won ? 'bg-emerald-600 text-white' : 'bg-amber-100 text-amber-800'
+                                p2Won ? 'bg-[#2f5d50] text-white' : 'bg-[#faf3e7] text-[#6b4d1c]'
                               }`}>
                                 {p2Won ? '👑 P2' : 'P2'}
                               </span>
@@ -5734,14 +5738,14 @@ export default function App() {
             {/* TAB 2: CENA & CLUB UNIFICADA */}
             {isThursdayMember && activeTab === 'cenas' && (
               <div className="space-y-4">
-                <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-xs space-y-2">
+                <div className="bg-white rounded-2xl p-4 border border-stone-200 shadow-xs space-y-2">
                   <div className="flex justify-between items-center">
-                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide">
+                    <label className="block text-xs font-bold text-stone-700 uppercase tracking-wide">
                       Jornada de Cena:
                     </label>
                     <button
                       onClick={() => setShowDinnerHistory(!showDinnerHistory)}
-                      className="text-[11px] font-bold text-blue-600 hover:text-blue-800 underline"
+                      className="text-[11px] font-bold text-[#2c4a66] hover:text-[#2c4a66] underline"
                     >
                       {showDinnerHistory ? '📅 Ver Próximas Cenas' : '📜 Ver Histórico de Cenas'}
                     </button>
@@ -5750,7 +5754,7 @@ export default function App() {
                   <select
                     value={activeDinnerKey}
                     onChange={(e) => setSelectedDinnerDate(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 text-xs font-bold text-slate-800"
+                    className="w-full bg-stone-50 border border-stone-300 rounded-xl p-2.5 text-xs font-bold text-stone-800"
                   >
                     {(showDinnerHistory ? pastDinnerDates : upcomingDinnerDates).map(d => (
                       <option key={d.key} value={d.key}>
@@ -5760,54 +5764,54 @@ export default function App() {
                   </select>
                 </div>
 
-                <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 text-center">
-                  <p className="text-xs font-black text-blue-900 mb-2">
+                <div className="bg-[#eef2f6] border border-[#c3d3e0] rounded-2xl p-4 text-center">
+                  <p className="text-xs font-black text-[#2c4a66] mb-2">
                     ¿Te vienes a la cena este {currentVisualDinnerLabel}? 🍻
                   </p>
                   <button
                     onClick={() => handleToggleSoloCena(activeDinnerKey, isUserInDinner ? 'NO' : 'SI')}
                     className={`py-2 px-4 rounded-xl text-xs font-bold transition shadow-xs ${
                       isUserInDinner
-                        ? 'bg-rose-600 hover:bg-rose-700 text-white'
-                        : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                        ? 'bg-[#6b3f29] hover:bg-[#6b3f29] text-white'
+                        : 'bg-[#2f5d50] hover:bg-[#2f5d50] text-white'
                     }`}
                   >
                     {isUserInDinner ? '✓ Apuntado a la cena (Clic para borrarte)' : '+ ¡Me apunto a cenar!'}
                   </button>
                 </div>
 
-                <div className="bg-white rounded-3xl p-5 border border-slate-200 shadow-xs space-y-4">
-                  <div className="flex justify-between items-center pb-3 border-b border-slate-100">
+                <div className="bg-white rounded-3xl p-5 border border-stone-200 shadow-xs space-y-4">
+                  <div className="flex justify-between items-center pb-3 border-b border-stone-100">
                     <div>
-                      <h3 className="text-sm font-black text-slate-900">Mesa Unificada</h3>
-                      <p className="text-xs text-slate-500 font-bold capitalize">{currentVisualDinnerLabel}</p>
+                      <h3 className="text-sm font-black text-stone-900">Mesa Unificada</h3>
+                      <p className="text-xs text-stone-500 font-bold capitalize">{currentVisualDinnerLabel}</p>
                     </div>
                     <div className="text-right">
-                      <span className="text-2xl font-black text-emerald-600">
+                      <span className="text-2xl font-black text-[#2f5d50]">
                         {dinnerYes.length + dinnerGuests.length}
                       </span>
-                      <span className="text-[10px] text-slate-400 block font-bold">MESA PARA</span>
+                      <span className="text-[10px] text-stone-400 block font-bold">MESA PARA</span>
                     </div>
                   </div>
 
                   <div className="grid grid-cols-3 gap-2 text-center">
-                    <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-2.5">
-                      <span className="text-base font-black text-emerald-700 block">{dinnerYes.length + dinnerGuests.length}</span>
-                      <span className="text-[10px] font-bold text-emerald-900 uppercase">Cenan SÍ</span>
+                    <div className="bg-[#eef4f0] border border-[#c7ddc9] rounded-2xl p-2.5">
+                      <span className="text-base font-black text-[#2f5d50] block">{dinnerYes.length + dinnerGuests.length}</span>
+                      <span className="text-[10px] font-bold text-[#2f5d50] uppercase">Cenan SÍ</span>
                     </div>
-                    <div className="bg-rose-50 border border-rose-200 rounded-2xl p-2.5">
-                      <span className="text-base font-black text-rose-700 block">{dinnerNo.length}</span>
-                      <span className="text-[10px] font-bold text-rose-900 uppercase">Se Rajan</span>
+                    <div className="bg-[#f6ede6] border border-[#ead3bf] rounded-2xl p-2.5">
+                      <span className="text-base font-black text-[#6b3f29] block">{dinnerNo.length}</span>
+                      <span className="text-[10px] font-bold text-[#6b3f29] uppercase">Se Rajan</span>
                     </div>
-                    <div className="bg-amber-50 border border-amber-200 rounded-2xl p-2.5">
-                      <span className="text-base font-black text-amber-700 block">{dinnerPending.length}</span>
-                      <span className="text-[10px] font-bold text-amber-900 uppercase">Pendientes</span>
+                    <div className="bg-[#faf3e7] border border-[#efd9a9] rounded-2xl p-2.5">
+                      <span className="text-base font-black text-[#6b4d1c] block">{dinnerPending.length}</span>
+                      <span className="text-[10px] font-bold text-[#6b4d1c] uppercase">Pendientes</span>
                     </div>
                   </div>
 
                   <div className="space-y-3 pt-2 text-xs">
                     <div>
-                      <span className="font-extrabold text-emerald-800 block mb-2">
+                      <span className="font-extrabold text-[#2f5d50] block mb-2">
                         🟢 Confirmados ({dinnerYes.length + dinnerGuests.length}):
                       </span>
                       <div className="flex flex-wrap gap-2">
@@ -5818,7 +5822,7 @@ export default function App() {
                               const found = players.find(u => normalizeName(u.name) === normalizeName(item.name));
                               setInspectedUser(found || item);
                             }}
-                            className="flex items-center gap-1.5 bg-emerald-50 border border-emerald-200 text-emerald-950 px-2.5 py-1 rounded-xl font-bold text-xs shadow-2xs cursor-pointer hover:bg-emerald-100 transition"
+                            className="flex items-center gap-1.5 bg-[#eef4f0] border border-[#c7ddc9] text-[#2f5d50] px-2.5 py-1 rounded-xl font-bold text-xs shadow-2xs cursor-pointer hover:bg-[#eef4f0] transition"
                           >
                             <UserAvatar name={item.name} photo={item.photo} size="sm" />
                             <span>{item.name}</span>
@@ -5828,8 +5832,8 @@ export default function App() {
                     </div>
 
                     {dinnerNo.length > 0 && (
-                      <div className="pt-2 border-t border-slate-100">
-                        <span className="font-extrabold text-rose-800 block mb-2">
+                      <div className="pt-2 border-t border-stone-100">
+                        <span className="font-extrabold text-[#6b3f29] block mb-2">
                           🔴 Se Rajan ({dinnerNo.length}):
                         </span>
                         <div className="flex flex-wrap gap-2">
@@ -5840,7 +5844,7 @@ export default function App() {
                                 const found = players.find(u => normalizeName(u.name) === normalizeName(item.name));
                                 setInspectedUser(found || item);
                               }}
-                              className="flex items-center gap-1.5 bg-rose-50 border border-rose-200 text-rose-950 px-2.5 py-1 rounded-xl font-bold text-xs cursor-pointer hover:bg-rose-100 transition"
+                              className="flex items-center gap-1.5 bg-[#f6ede6] border border-[#ead3bf] text-[#6b3f29] px-2.5 py-1 rounded-xl font-bold text-xs cursor-pointer hover:bg-[#f6ede6] transition"
                             >
                               <UserAvatar name={item.name} photo={item.photo} size="sm" />
                               <span>{item.name}</span>
@@ -5851,15 +5855,15 @@ export default function App() {
                     )}
 
                     {dinnerPending.length > 0 && (
-                      <div className="pt-2 border-t border-slate-100">
-                        <span className="font-extrabold text-amber-800 block mb-2">
+                      <div className="pt-2 border-t border-stone-100">
+                        <span className="font-extrabold text-[#6b4d1c] block mb-2">
                           🟡 Pendientes de Confirmar ({dinnerPending.length}):
                         </span>
                         <div className="space-y-1.5">
                           {dinnerPending.map((item, i) => (
                             <div
                               key={i}
-                              className="flex items-center justify-between bg-amber-50/80 border border-amber-200 p-2 rounded-xl text-amber-950"
+                              className="flex items-center justify-between bg-[#faf3e7]/80 border border-[#efd9a9] p-2 rounded-xl text-[#6b4d1c]"
                             >
                               <div
                                 onClick={() => {
@@ -5874,7 +5878,7 @@ export default function App() {
 
                               <button
                                 onClick={() => handleNotifyPendingWhatsApp(item, currentVisualDinnerLabel)}
-                                className="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white font-extrabold text-[10px] rounded-lg transition flex items-center gap-1 shadow-2xs"
+                                className="px-2.5 py-1 bg-[#6b4d1c] hover:bg-[#6b4d1c] text-white font-extrabold text-[10px] rounded-lg transition flex items-center gap-1 shadow-2xs"
                                 title="Avisar por WhatsApp para que confirme cena"
                               >
                                 💬 Avisar por WhatsApp
@@ -5886,10 +5890,10 @@ export default function App() {
                     )}
                   </div>
 
-                  <div className="pt-2 border-t border-slate-100">
+                  <div className="pt-2 border-t border-stone-100">
                     <button
                       onClick={() => handleShareClubWhatsapp(currentVisualDinnerLabel, dinnerYes, dinnerGuests)}
-                      className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 rounded-2xl text-xs flex items-center justify-center gap-1.5 shadow-sm transition"
+                      className="w-full bg-[#2f5d50] hover:bg-[#2f5d50] text-white font-bold py-2.5 rounded-2xl text-xs flex items-center justify-center gap-1.5 shadow-sm transition"
                     >
                       📲 Enviar Reserva al Club / Restaurante por WhatsApp ({dinnerYes.length + dinnerGuests.length} comensales)
                     </button>
@@ -5900,12 +5904,12 @@ export default function App() {
 
             {/* TAB 3: RANKINGS REGULARES */}
             {isThursdayMember && activeTab === 'rankings' && (
-              <div className="bg-white rounded-2xl p-4 border border-slate-200">
+              <div className="bg-white rounded-2xl p-4 border border-stone-200">
                 <div className="flex justify-between items-center mb-3">
-                  <span className="text-[10px] font-black uppercase tracking-wider bg-blue-50 text-blue-700 px-2.5 py-1 rounded-lg border border-blue-200">
+                  <span className="text-[10px] font-black uppercase tracking-wider bg-[#eef2f6] text-[#2c4a66] px-2.5 py-1 rounded-lg border border-[#c3d3e0]">
                     Ranking {currentUser.group}
                   </span>
-                  <span className="text-[10px] text-slate-400 font-semibold">{sortedGroupPlayers.length} jugadores</span>
+                  <span className="text-[10px] text-stone-400 font-semibold">{sortedGroupPlayers.length} jugadores</span>
                 </div>
 
                 <div className="flex gap-1.5 mb-4">
@@ -5914,7 +5918,7 @@ export default function App() {
                       key={type}
                       onClick={() => setRankingType(type)}
                       className={`flex-1 py-1.5 text-[11px] font-bold rounded-lg capitalize transition ${
-                        rankingType === type ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600'
+                        rankingType === type ? 'bg-stone-900 text-white' : 'bg-stone-100 text-stone-600'
                       }`}
                     >
                       {type}
@@ -5927,23 +5931,23 @@ export default function App() {
                     <div
                       key={p.id}
                       onClick={() => setInspectedUser(p)}
-                      className="flex items-center justify-between p-2 rounded-2xl bg-slate-50 text-xs hover:bg-blue-50/60 cursor-pointer transition"
+                      className="flex items-center justify-between p-2 rounded-2xl bg-stone-50 text-xs hover:bg-[#eef2f6]/60 cursor-pointer transition"
                     >
                       <div className="flex items-center gap-2.5">
-                        <span className="font-black w-6 text-center text-sm text-slate-400">
+                        <span className="font-black w-6 text-center text-sm text-stone-400">
                           {idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : idx + 1}
                         </span>
                         <UserAvatar name={p.name} photo={p.photo} size="md" />
                         <div>
-                          <p className="font-bold text-slate-900">{p.name}</p>
-                          <p className="text-[10px] text-slate-500">{p.titulo}</p>
+                          <p className="font-bold text-stone-900">{p.name}</p>
+                          <p className="text-[10px] text-stone-500">{p.titulo}</p>
                         </div>
                       </div>
                       <div className="text-right">
-                        <span className="font-black text-blue-600 text-sm">
+                        <span className="font-black text-[#2c4a66] text-sm">
                           {rankingType === 'deportivo' ? p.ptsDeportivo : rankingType === 'barandas' ? p.ptsBarandas : p.hibrido}
                         </span>
-                        <span className="text-[10px] text-slate-400 block">pts</span>
+                        <span className="text-[10px] text-stone-400 block">pts</span>
                       </div>
                     </div>
                   ))}
@@ -5953,11 +5957,11 @@ export default function App() {
 
             {/* TAB 4: BOTE REGULAR */}
             {isThursdayMember && activeTab === 'bote' && (
-              <div className="bg-white rounded-2xl p-4 border border-slate-200 space-y-3">
-                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-900">
+              <div className="bg-white rounded-2xl p-4 border border-stone-200 space-y-3">
+                <div className="bg-[#faf3e7] border border-[#efd9a9] rounded-xl p-3 text-xs text-[#6b4d1c]">
                   <div className="flex justify-between items-center mb-1">
                     <p className="font-bold">💶 Bote {currentUser.group}</p>
-                    <span className="text-[10px] font-black uppercase bg-amber-100 text-amber-800 px-2 py-0.5 rounded">
+                    <span className="text-[10px] font-black uppercase bg-[#faf3e7] text-[#6b4d1c] px-2 py-0.5 rounded">
                       Total: {groupPlayers.reduce((acc, curr) => acc + (curr.deuda || 0), 0)} €
                     </span>
                   </div>
@@ -5971,17 +5975,17 @@ export default function App() {
                       <div
                         key={p.id}
                         onClick={() => setInspectedUser(p)}
-                        className="flex items-center justify-between p-2.5 rounded-2xl bg-slate-50 text-xs hover:bg-amber-50/60 cursor-pointer transition"
+                        className="flex items-center justify-between p-2.5 rounded-2xl bg-stone-50 text-xs hover:bg-[#faf3e7]/60 cursor-pointer transition"
                       >
                         <div className="flex items-center gap-2.5">
                           <UserAvatar name={p.name} photo={p.photo} size="md" />
                           <div>
-                            <p className="font-bold text-slate-900">{p.name}</p>
-                            <p className="text-[10px] text-slate-500">{p.pJ} partidos · {p.cSi} cenas</p>
+                            <p className="font-bold text-stone-900">{p.name}</p>
+                            <p className="text-[10px] text-stone-500">{p.pJ} partidos · {p.cSi} cenas</p>
                           </div>
                         </div>
                         <span className={`font-black text-sm px-2.5 py-1 rounded-xl ${
-                          p.deuda > 0 ? 'bg-rose-100 text-rose-700' : 'bg-emerald-100 text-emerald-700'
+                          p.deuda > 0 ? 'bg-[#f6ede6] text-[#6b3f29]' : 'bg-[#eef4f0] text-[#2f5d50]'
                         }`}>
                           {p.deuda} €
                         </span>
@@ -5994,7 +5998,7 @@ export default function App() {
             {/* TAB 5: MÓDULO TORNEOS CTC */}
             {activeTab === 'torneos' && (
               <div className="space-y-3">
-                <div className="bg-gradient-to-r from-purple-700 to-indigo-800 rounded-3xl p-5 text-white shadow-md">
+                <div className="bg-gradient-to-r from-[#4a3350] to-[#2c4a66] rounded-3xl p-5 text-white shadow-md">
                   <div className="flex justify-between items-start mb-2">
                     <div>
                       <span className="text-[10px] uppercase font-black bg-white/20 px-2 py-0.5 rounded-md tracking-wider">
@@ -6006,7 +6010,7 @@ export default function App() {
                   </div>
                   <button
                     onClick={() => { setTournamentWizardKey(k => k + 1); setShowTournamentWizard(true); }}
-                    className="w-full mt-3 py-2.5 bg-white text-purple-900 hover:bg-purple-50 font-black rounded-xl text-xs transition shadow-sm flex items-center justify-center gap-1.5"
+                    className="w-full mt-3 py-2.5 bg-white text-[#4a3350] hover:bg-[#f2eef2] font-black rounded-xl text-xs transition shadow-sm flex items-center justify-center gap-1.5"
                   >
                     <span>✨</span> Crear Nuevo Torneo con Gemini
                   </button>
@@ -6100,43 +6104,43 @@ export default function App() {
                       };
 
                       return (
-                        <div key={t.id} className="bg-slate-900 rounded-3xl p-4 border border-blue-500/30 shadow-lg text-white space-y-3">
+                        <div key={t.id} className="bg-stone-900 rounded-3xl p-4 border border-[#9fb4c7]/30 shadow-lg text-white space-y-3">
                           <div className="flex justify-between items-start">
                             <div>
-                              <span className="text-[10px] font-black uppercase tracking-wider bg-amber-500 text-amber-950 px-2 py-0.5 rounded-md">
+                              <span className="text-[10px] font-black uppercase tracking-wider bg-[#d9b97c] text-[#6b4d1c] px-2 py-0.5 rounded-md">
                                 Draft Ryder (Capitanes)
                               </span>
                               <h3 className="text-base font-black mt-1">{t.name}</h3>
                             </div>
                             {isCreatorOrCoOrg && (
-                              <button onClick={() => handleDeleteTournament(t.id)} className="text-[11px] font-bold text-rose-400">🗑️ Borrar</button>
+                              <button onClick={() => handleDeleteTournament(t.id)} className="text-[11px] font-bold text-[#d9a582]">🗑️ Borrar</button>
                             )}
                           </div>
 
                           {canEditDraft ? (
                             <div className="space-y-3.5 mt-2">
-                              <div className="bg-slate-800 p-3 rounded-2xl border border-slate-700 space-y-2">
+                              <div className="bg-stone-800 p-3 rounded-2xl border border-stone-700 space-y-2">
                                 <div className="flex justify-between items-center">
-                                  <span className="text-[10px] font-black uppercase text-blue-400">📊 Balance de Escuadras</span>
-                                  <span className={`text-[9px] font-black px-2 py-0.5 rounded-full ${isBalanced ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40' : 'bg-amber-500/20 text-amber-300 border border-amber-500/40'}`}>
+                                  <span className="text-[10px] font-black uppercase text-[#9fb4c7]">📊 Balance de Escuadras</span>
+                                  <span className={`text-[9px] font-black px-2 py-0.5 rounded-full ${isBalanced ? 'bg-[#a9c4ad]/20 text-[#a9c4ad] border border-[#a9c4ad]/40' : 'bg-[#d9b97c]/20 text-[#d9b97c] border border-[#d9b97c]/40'}`}>
                                     {isBalanced ? '✓ Equilibrado' : '⚠️ Desnivelado'} (Δ {delta})
                                   </span>
                                 </div>
                                 <div className="grid grid-cols-2 gap-2 text-center text-xs">
-                                  <div className="bg-blue-950/60 p-2 rounded-xl border border-blue-500/30">
-                                    <span className="text-[9px] text-blue-300 font-bold block">Equipo Azul 🔵</span>
-                                    <span className="text-sm font-black text-white">{avgT1} <span className="text-[10px] font-normal text-slate-400">({team1Players.length} jugs)</span></span>
+                                  <div className="bg-[#2c4a66]/60 p-2 rounded-xl border border-[#9fb4c7]/30">
+                                    <span className="text-[9px] text-[#9fb4c7] font-bold block">Equipo Azul 🔵</span>
+                                    <span className="text-sm font-black text-white">{avgT1} <span className="text-[10px] font-normal text-stone-400">({team1Players.length} jugs)</span></span>
                                   </div>
-                                  <div className="bg-rose-950/60 p-2 rounded-xl border border-rose-500/30">
-                                    <span className="text-[9px] text-rose-300 font-bold block">Equipo Rojo 🔴</span>
-                                    <span className="text-sm font-black text-white">{avgT2} <span className="text-[10px] font-normal text-slate-400">({team2Players.length} jugs)</span></span>
+                                  <div className="bg-[#6b3f29]/60 p-2 rounded-xl border border-[#d9a582]/30">
+                                    <span className="text-[9px] text-[#d9a582] font-bold block">Equipo Rojo 🔴</span>
+                                    <span className="text-sm font-black text-white">{avgT2} <span className="text-[10px] font-normal text-stone-400">({team2Players.length} jugs)</span></span>
                                   </div>
                                 </div>
 
                                 <button 
                                   type="button" 
                                   onClick={handleAutoBalanceDraft} 
-                                  className="w-full py-2 bg-gradient-to-r from-blue-600 to-rose-600 hover:from-blue-500 text-white font-black rounded-xl text-xs shadow-md transition"
+                                  className="w-full py-2 bg-gradient-to-r from-[#2c4a66] to-[#6b3f29] hover:from-[#9fb4c7] text-white font-black rounded-xl text-xs shadow-md transition"
                                 >
                                   ⚡ Auto-Equilibrar Escuadras por Rating
                                 </button>
@@ -6144,23 +6148,23 @@ export default function App() {
                               
                               <div className="max-h-52 overflow-y-auto pr-1 space-y-1.5">
                                 {(t.participants || []).map(p => (
-                                  <div key={p.id} className="p-2 rounded-xl border border-slate-700 bg-slate-800 flex items-center justify-between">
+                                  <div key={p.id} className="p-2 rounded-xl border border-stone-700 bg-stone-800 flex items-center justify-between">
                                     <div className="flex items-center gap-2 truncate">
                                       <UserAvatar name={p.name} photo={p.photo} size="xs" />
-                                      <span className="font-bold text-slate-200 text-xs truncate">{p.name} <span className="text-[10px] text-amber-400">★{p.level || 3.5}</span></span>
+                                      <span className="font-bold text-stone-200 text-xs truncate">{p.name} <span className="text-[10px] text-[#d9b97c]">★{p.level || 3.5}</span></span>
                                     </div>
-                                    <div className="flex bg-slate-900 p-0.5 rounded-lg border border-slate-700 shrink-0">
+                                    <div className="flex bg-stone-900 p-0.5 rounded-lg border border-stone-700 shrink-0">
                                       <button 
                                         disabled={p.id === t.captain1Id || p.id === t.captain2Id}
                                         onClick={() => handleUpdateDraftTeam(t.id, p.id, 1)} 
-                                        className={`px-2 py-1 rounded-md text-[10px] font-black transition ${p.assignedTeam === 1 ? 'bg-blue-600 text-white' : 'text-slate-500'}`}
+                                        className={`px-2 py-1 rounded-md text-[10px] font-black transition ${p.assignedTeam === 1 ? 'bg-[#2c4a66] text-white' : 'text-stone-500'}`}
                                       >
                                         🔵 Azul
                                       </button>
                                       <button 
                                         disabled={p.id === t.captain1Id || p.id === t.captain2Id}
                                         onClick={() => handleUpdateDraftTeam(t.id, p.id, 2)} 
-                                        className={`px-2 py-1 rounded-md text-[10px] font-black transition ${p.assignedTeam === 2 ? 'bg-rose-600 text-white' : 'text-slate-500'}`}
+                                        className={`px-2 py-1 rounded-md text-[10px] font-black transition ${p.assignedTeam === 2 ? 'bg-[#6b3f29] text-white' : 'text-stone-500'}`}
                                       >
                                         🔴 Rojo
                                       </button>
@@ -6169,34 +6173,34 @@ export default function App() {
                                 ))}
                               </div>
 
-                              <div className="bg-slate-800 p-3 rounded-2xl border border-slate-700 space-y-2 text-xs">
-                                <span className="text-[10px] font-black text-blue-400 uppercase block">Validación de Equipos</span>
+                              <div className="bg-stone-800 p-3 rounded-2xl border border-stone-700 space-y-2 text-xs">
+                                <span className="text-[10px] font-black text-[#9fb4c7] uppercase block">Validación de Equipos</span>
                                 
-                                <label className="flex items-center gap-2 cursor-pointer bg-slate-900/60 p-2 rounded-xl border border-slate-700">
+                                <label className="flex items-center gap-2 cursor-pointer bg-stone-900/60 p-2 rounded-xl border border-stone-700">
                                   <input
                                     type="checkbox"
                                     disabled={!isMeCaptain1}
                                     title={!isMeCaptain1 ? 'Solo el Capitán Azul puede marcar esta casilla' : ''}
                                     checked={Boolean(t.captain1Validated)}
                                     onChange={e => handleSetCaptainValidation(t.id, 1, e.target.checked)}
-                                    className="w-4 h-4 text-blue-600 accent-blue-600 disabled:opacity-40 disabled:cursor-not-allowed"
+                                    className="w-4 h-4 text-[#2c4a66] accent-[#2c4a66] disabled:opacity-40 disabled:cursor-not-allowed"
                                   />
-                                  <span className="font-bold text-slate-200">Capitán Azul ({cap1?.name || 'Por asignar'}) da el visto bueno</span>
+                                  <span className="font-bold text-stone-200">Capitán Azul ({cap1?.name || 'Por asignar'}) da el visto bueno</span>
                                 </label>
 
-                                <label className="flex items-center gap-2 cursor-pointer bg-slate-900/60 p-2 rounded-xl border border-slate-700">
+                                <label className="flex items-center gap-2 cursor-pointer bg-stone-900/60 p-2 rounded-xl border border-stone-700">
                                   <input
                                     type="checkbox"
                                     disabled={!isMeCaptain2}
                                     title={!isMeCaptain2 ? 'Solo el Capitán Rojo puede marcar esta casilla' : ''}
                                     checked={Boolean(t.captain2Validated)}
                                     onChange={e => handleSetCaptainValidation(t.id, 2, e.target.checked)}
-                                    className="w-4 h-4 text-rose-600 accent-rose-600 disabled:opacity-40 disabled:cursor-not-allowed"
+                                    className="w-4 h-4 text-[#6b3f29] accent-[#6b3f29] disabled:opacity-40 disabled:cursor-not-allowed"
                                   />
-                                  <span className="font-bold text-slate-200">Capitán Rojo ({cap2?.name || 'Por asignar'}) da el visto bueno</span>
+                                  <span className="font-bold text-stone-200">Capitán Rojo ({cap2?.name || 'Por asignar'}) da el visto bueno</span>
                                 </label>
                                 {!isMeCaptain1 && !isMeCaptain2 && (
-                                  <p className="text-[10px] text-slate-400 italic pt-0.5">
+                                  <p className="text-[10px] text-stone-400 italic pt-0.5">
                                     👀 Solo {cap1?.name || 'el Capitán Azul'} y {cap2?.name || 'el Capitán Rojo'} pueden dar el visto bueno a su equipo. Como organizador puedes ver el estado, pero no validar en su nombre.
                                   </p>
                                 )}
@@ -6205,15 +6209,15 @@ export default function App() {
                               <button 
                                 onClick={() => handleApproveDraftTeams(t.id)} 
                                 disabled={!bothValidated}
-                                className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white font-black rounded-xl text-xs mt-2 transition shadow-md"
+                                className="w-full py-2.5 bg-[#2f5d50] hover:bg-[#a9c4ad] disabled:opacity-40 text-white font-black rounded-xl text-xs mt-2 transition shadow-md"
                               >
                                 {bothValidated ? '✅ Equipos Validados por ambos Capitanes' : '⏳ Esperando doble validación...'}
                               </button>
                             </div>
                           ) : (
-                            <div className="p-4 text-center bg-slate-800 rounded-2xl border border-slate-700 mt-2">
+                            <div className="p-4 text-center bg-stone-800 rounded-2xl border border-stone-700 mt-2">
                               <span className="text-3xl block mb-2">🛡️</span>
-                              <p className="text-xs text-slate-300">Los capitanes <strong>{cap1?.name?.split(' ')[0] || 'Azul'}</strong> y <strong>{cap2?.name?.split(' ')[0] || 'Rojo'}</strong> están confeccionando los equipos.<br/><br/>Recibirás una alerta cuando el cuadrante esté listo.</p>
+                              <p className="text-xs text-stone-300">Los capitanes <strong>{cap1?.name?.split(' ')[0] || 'Azul'}</strong> y <strong>{cap2?.name?.split(' ')[0] || 'Rojo'}</strong> están confeccionando los equipos.<br/><br/>Recibirás una alerta cuando el cuadrante esté listo.</p>
                             </div>
                           )}
                         </div>
@@ -6278,12 +6282,12 @@ export default function App() {
                       };
 
                       return (
-                        <div key={t.id} className="bg-purple-900 rounded-3xl p-4 border border-purple-500/30 shadow-lg text-white space-y-3 text-center">
+                        <div key={t.id} className="bg-[#4a3350] rounded-3xl p-4 border border-[#b893ba]/30 shadow-lg text-white space-y-3 text-center">
                           <span className="text-3xl block mb-1">✨</span>
                           <h3 className="text-base font-black">¡Equipos Validados por los Capitanes!</h3>
-                          <p className="text-xs text-purple-200">Ambos capitanes han dado su conformidad. Pulsa para generar los cruces definitivos.</p>
+                          <p className="text-xs text-[#f2eef2]">Ambos capitanes han dado su conformidad. Pulsa para generar los cruces definitivos.</p>
                           {isCreatorOrCoOrg && (
-                            <button onClick={handleGenerateFixtureForDraft} className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-black rounded-xl text-xs mt-2 transition shadow-md">
+                            <button onClick={handleGenerateFixtureForDraft} className="w-full py-2.5 bg-[#2f5d50] hover:bg-[#a9c4ad] text-white font-black rounded-xl text-xs mt-2 transition shadow-md">
                               🚀 Generar Cuadrante Definitivo
                             </button>
                           )}
@@ -6293,25 +6297,25 @@ export default function App() {
 
                     // VISTA NORMAL (Torneo ACTIVO)
                     return (
-                      <div key={t.id} className="bg-white rounded-3xl p-4 border border-slate-200 shadow-xs space-y-3">
+                      <div key={t.id} className="bg-white rounded-3xl p-4 border border-stone-200 shadow-xs space-y-3">
                         <div className="flex justify-between items-start">
                           <div>
                             <div className="flex items-center gap-1.5 flex-wrap">
-                              <span className="text-[10px] font-black uppercase tracking-wider bg-purple-50 text-purple-700 px-2.5 py-0.5 rounded-lg border border-purple-200">
+                              <span className="text-[10px] font-black uppercase tracking-wider bg-[#f2eef2] text-[#4a3350] px-2.5 py-0.5 rounded-lg border border-[#ddc9de]">
                                 {t.mode}
                               </span>
                               {isCreatorOrCoOrg && (
-                                <span className="text-[9px] bg-emerald-100 text-emerald-800 font-extrabold px-1.5 py-0.2 rounded border border-emerald-300">
+                                <span className="text-[9px] bg-[#eef4f0] text-[#2f5d50] font-extrabold px-1.5 py-0.2 rounded border border-[#a9c4ad]">
                                   👑 Organizador
                                 </span>
                               )}
                             </div>
-                            <h3 className="text-base font-black text-slate-900 mt-1">{t.name}</h3>
+                            <h3 className="text-base font-black text-stone-900 mt-1">{t.name}</h3>
                           </div>
                           {isCreatorOrCoOrg && (
                             <button
                               onClick={() => handleDeleteTournament(t.id)}
-                              className="text-[11px] font-bold text-rose-500 hover:text-rose-700 p-1 rounded-lg"
+                              className="text-[11px] font-bold text-[#d9a582] hover:text-[#6b3f29] p-1 rounded-lg"
                               title="Eliminar torneo"
                             >
                               🗑️
@@ -6319,22 +6323,22 @@ export default function App() {
                           )}
                         </div>
 
-                        <div className="flex bg-slate-100 p-1 rounded-xl text-[11px] font-bold">
+                        <div className="flex bg-stone-100 p-1 rounded-xl text-[11px] font-bold">
                           <button
                             onClick={() => setTournamentSubTab(prev => ({ ...prev, [t.id]: 'partidos' }))}
-                            className={`flex-1 py-1.5 rounded-lg transition ${curSubTab === 'partidos' ? 'bg-white shadow text-purple-800' : 'text-slate-600'}`}
+                            className={`flex-1 py-1.5 rounded-lg transition ${curSubTab === 'partidos' ? 'bg-white shadow text-[#4a3350]' : 'text-stone-600'}`}
                           >
                             ⚔️ Partidos
                           </button>
                           <button
                             onClick={() => setTournamentSubTab(prev => ({ ...prev, [t.id]: 'jugadores' }))}
-                            className={`flex-1 py-1.5 rounded-lg transition ${curSubTab === 'jugadores' ? 'bg-white shadow text-blue-800' : 'text-slate-600'}`}
+                            className={`flex-1 py-1.5 rounded-lg transition ${curSubTab === 'jugadores' ? 'bg-white shadow text-[#2c4a66]' : 'text-stone-600'}`}
                           >
                             📲 Invitar
                           </button>
                           <button
                             onClick={() => setTournamentSubTab(prev => ({ ...prev, [t.id]: 'cena' }))}
-                            className={`flex-1 py-1.5 rounded-lg transition ${curSubTab === 'cena' ? 'bg-white shadow text-amber-900' : 'text-slate-600'}`}
+                            className={`flex-1 py-1.5 rounded-lg transition ${curSubTab === 'cena' ? 'bg-white shadow text-[#6b4d1c]' : 'text-stone-600'}`}
                           >
                             🍻 3º Tiempo
                           </button>
@@ -6346,26 +6350,26 @@ export default function App() {
                               const standings = computePozoStandings(t);
                               if (!standings.length) return null;
                               return (
-                                <div className="bg-white rounded-2xl border border-slate-200 p-3 space-y-1.5">
-                                  <span className="font-black text-slate-800 text-xs block mb-1">🪜 Clasificación en vivo</span>
+                                <div className="bg-white rounded-2xl border border-stone-200 p-3 space-y-1.5">
+                                  <span className="font-black text-stone-800 text-xs block mb-1">🪜 Clasificación en vivo</span>
                                   {standings.map((p, idx) => (
-                                    <div key={p.id} className="flex items-center justify-between text-[11px] py-1 border-b border-slate-50 last:border-0">
-                                      <span className="font-bold text-slate-700">{idx + 1}. {p.name}</span>
-                                      <span className="text-slate-500">
+                                    <div key={p.id} className="flex items-center justify-between text-[11px] py-1 border-b border-stone-50 last:border-0">
+                                      <span className="font-bold text-stone-700">{idx + 1}. {p.name}</span>
+                                      <span className="text-stone-500">
                                         Pista {p.finalCourt === 999 ? '–' : p.finalCourt}
-                                        {p.subidos > 0 && <span className="text-emerald-600 font-bold"> ▲{p.subidos}</span>}
-                                        {p.subidos < 0 && <span className="text-rose-500 font-bold"> ▼{Math.abs(p.subidos)}</span>}
+                                        {p.subidos > 0 && <span className="text-[#2f5d50] font-bold"> ▲{p.subidos}</span>}
+                                        {p.subidos < 0 && <span className="text-[#d9a582] font-bold"> ▼{Math.abs(p.subidos)}</span>}
                                       </span>
                                     </div>
                                   ))}
-                                  <span className="text-[9px] text-slate-400 block pt-0.5">Quien termina en la Pista 1 gana; a igualdad de pista, decide cuánto has subido desde donde empezaste.</span>
+                                  <span className="text-[9px] text-stone-400 block pt-0.5">Quien termina en la Pista 1 gana; a igualdad de pista, decide cuánto has subido desde donde empezaste.</span>
                                 </div>
                               );
                             })()}
                             <button
                               id={`share-btn-${t.id}`}
                               onClick={() => handleShareTournamentImage(t.id, t.name)}
-                              className="w-full mb-1 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-sm transition"
+                              className="w-full mb-1 py-2 bg-[#2f5d50] hover:bg-[#2f5d50] text-white font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-sm transition"
                             >
                               <span>📷</span> Compartir Cuadrante por WhatsApp
                             </button>
@@ -6374,15 +6378,15 @@ export default function App() {
                             <div id={`tournament-fixture-${t.id}`} className="space-y-2 bg-white p-2 rounded-xl">
                               
                               {/* Título interno para que la foto se vea profesional */}
-                              <div className="text-center pb-2 pt-1 border-b border-slate-100 mb-2">
-                                <span className="font-black text-slate-800 text-sm block">{t.name}</span>
-                                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Cuadrante Oficial</span>
+                              <div className="text-center pb-2 pt-1 border-b border-stone-100 mb-2">
+                                <span className="font-black text-stone-800 text-sm block">{t.name}</span>
+                                <span className="text-[9px] font-bold text-stone-400 uppercase tracking-widest">Cuadrante Oficial</span>
                               </div>
 
                               {(t.rounds || []).map(r => (
-                                <div key={r.round} className="bg-slate-50 p-2.5 rounded-2xl border border-slate-200 space-y-1">
+                                <div key={r.round} className="bg-stone-50 p-2.5 rounded-2xl border border-stone-200 space-y-1">
                                   <div className="text-center mb-1.5">
-                                    <span className="text-[9px] font-black uppercase text-purple-700 bg-purple-100 px-2 py-0.5 rounded-md">
+                                    <span className="text-[9px] font-black uppercase text-[#4a3350] bg-[#f2eef2] px-2 py-0.5 rounded-md">
                                       {r.timeLabel || `Ronda ${r.round}`}
                                     </span>
                                   </div>
@@ -6393,11 +6397,11 @@ export default function App() {
                                         setActiveTournamentId(t.id);
                                         setReportingTournamentMatch(m);
                                       }}
-                                      className="bg-white p-2.5 rounded-xl border border-slate-200 flex items-center justify-between text-xs cursor-pointer hover:border-purple-300"
+                                      className="bg-white p-2.5 rounded-xl border border-stone-200 flex items-center justify-between text-xs cursor-pointer hover:border-[#b893ba]"
                                     >
-                                      <span className="font-bold text-slate-800">{m.court}</span>
-                                      <span className="font-semibold text-slate-600">{m.team1} vs {m.team2}</span>
-                                      <span className="text-purple-700 font-black">{m.score || 'Anotar ✍️'}</span>
+                                      <span className="font-bold text-stone-800">{m.court}</span>
+                                      <span className="font-semibold text-stone-600">{m.team1} vs {m.team2}</span>
+                                      <span className="text-[#4a3350] font-black">{m.score || 'Anotar ✍️'}</span>
                                     </div>
                                   ))}
                                 </div>
@@ -6412,11 +6416,11 @@ export default function App() {
                               <div key={p.id} className="p-2 rounded-xl border bg-white flex items-center justify-between text-xs">
                                 <div className="flex items-center gap-2">
                                   <UserAvatar name={p.name} photo={p.photo} size="xs" />
-                                  <span className="font-bold text-slate-800">{p.name}</span>
+                                  <span className="font-bold text-stone-800">{p.name}</span>
                                 </div>
                                 <button
                                   onClick={() => handleSharePlayerPersonalLink(t, p)}
-                                  className="px-2 py-1 bg-emerald-600 text-white font-bold text-[10px] rounded-lg"
+                                  className="px-2 py-1 bg-[#2f5d50] text-white font-bold text-[10px] rounded-lg"
                                 >
                                   📲 Enviar Link
                                 </button>
@@ -6437,18 +6441,18 @@ export default function App() {
                             <div className="space-y-2.5 text-xs">
                               {/* NUEVO: el propio jugador confirma aquí si se queda al 3º tiempo de ESTE torneo */}
                               {myParticipant && (
-                                <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3 space-y-2">
-                                  <p className="font-bold text-amber-900">¿Te quedas a la cena de este torneo?</p>
+                                <div className="bg-[#faf3e7] border border-[#efd9a9] rounded-2xl p-3 space-y-2">
+                                  <p className="font-bold text-[#6b4d1c]">¿Te quedas a la cena de este torneo?</p>
                                   <div className="flex gap-2">
                                     <button
                                       onClick={() => handleUpdateTournamentDinner(t.id, myParticipant.id, 'SI')}
-                                      className={`flex-1 py-2 rounded-xl font-black transition ${myParticipant.dinner === 'SI' ? 'bg-emerald-600 text-white shadow-xs' : 'bg-white text-slate-600 border border-slate-200'}`}
+                                      className={`flex-1 py-2 rounded-xl font-black transition ${myParticipant.dinner === 'SI' ? 'bg-[#2f5d50] text-white shadow-xs' : 'bg-white text-stone-600 border border-stone-200'}`}
                                     >
                                       🍻 Sí, me quedo
                                     </button>
                                     <button
                                       onClick={() => handleUpdateTournamentDinner(t.id, myParticipant.id, 'NO')}
-                                      className={`flex-1 py-2 rounded-xl font-black transition ${myParticipant.dinner === 'NO' ? 'bg-rose-600 text-white shadow-xs' : 'bg-white text-slate-600 border border-slate-200'}`}
+                                      className={`flex-1 py-2 rounded-xl font-black transition ${myParticipant.dinner === 'NO' ? 'bg-[#6b3f29] text-white shadow-xs' : 'bg-white text-stone-600 border border-stone-200'}`}
                                     >
                                       🏃‍♂️ No me quedo
                                     </button>
@@ -6457,17 +6461,17 @@ export default function App() {
                               )}
 
                               <div className="grid grid-cols-3 gap-1.5 text-center">
-                                <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-2">
-                                  <span className="block font-black text-emerald-700">{siList.length}</span>
-                                  <span className="text-[9px] font-bold text-emerald-900 uppercase">Cenan</span>
+                                <div className="bg-[#eef4f0] border border-[#c7ddc9] rounded-xl p-2">
+                                  <span className="block font-black text-[#2f5d50]">{siList.length}</span>
+                                  <span className="text-[9px] font-bold text-[#2f5d50] uppercase">Cenan</span>
                                 </div>
-                                <div className="bg-amber-50 border border-amber-200 rounded-xl p-2">
-                                  <span className="block font-black text-amber-700">{pendList.length}</span>
-                                  <span className="text-[9px] font-bold text-amber-900 uppercase">Pendientes</span>
+                                <div className="bg-[#faf3e7] border border-[#efd9a9] rounded-xl p-2">
+                                  <span className="block font-black text-[#6b4d1c]">{pendList.length}</span>
+                                  <span className="text-[9px] font-bold text-[#6b4d1c] uppercase">Pendientes</span>
                                 </div>
-                                <div className="bg-rose-50 border border-rose-200 rounded-xl p-2">
-                                  <span className="block font-black text-rose-700">{noList.length}</span>
-                                  <span className="text-[9px] font-bold text-rose-900 uppercase">Se rajan</span>
+                                <div className="bg-[#f6ede6] border border-[#ead3bf] rounded-xl p-2">
+                                  <span className="block font-black text-[#6b3f29]">{noList.length}</span>
+                                  <span className="text-[9px] font-bold text-[#6b3f29] uppercase">Se rajan</span>
                                 </div>
                               </div>
 
@@ -6476,30 +6480,30 @@ export default function App() {
                               <div className="space-y-2">
                                 {siList.length > 0 && (
                                   <div>
-                                    <span className="text-[9px] font-black text-emerald-700 uppercase block mb-1">🍻 Cenan</span>
+                                    <span className="text-[9px] font-black text-[#2f5d50] uppercase block mb-1">🍻 Cenan</span>
                                     <div className="flex flex-wrap gap-1">
                                       {siList.map(p => (
-                                        <span key={p.id} className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-full">{p.name}</span>
+                                        <span key={p.id} className="bg-[#eef4f0] text-[#2f5d50] text-[10px] font-bold px-2 py-0.5 rounded-full">{p.name}</span>
                                       ))}
                                     </div>
                                   </div>
                                 )}
                                 {pendList.length > 0 && (
                                   <div>
-                                    <span className="text-[9px] font-black text-amber-700 uppercase block mb-1">⏳ Pendientes de confirmar</span>
+                                    <span className="text-[9px] font-black text-[#6b4d1c] uppercase block mb-1">⏳ Pendientes de confirmar</span>
                                     <div className="flex flex-wrap gap-1">
                                       {pendList.map(p => (
-                                        <span key={p.id} className="bg-amber-100 text-amber-800 text-[10px] font-bold px-2 py-0.5 rounded-full">{p.name}</span>
+                                        <span key={p.id} className="bg-[#faf3e7] text-[#6b4d1c] text-[10px] font-bold px-2 py-0.5 rounded-full">{p.name}</span>
                                       ))}
                                     </div>
                                   </div>
                                 )}
                                 {noList.length > 0 && (
                                   <div>
-                                    <span className="text-[9px] font-black text-rose-700 uppercase block mb-1">🏃‍♂️ Se rajan</span>
+                                    <span className="text-[9px] font-black text-[#6b3f29] uppercase block mb-1">🏃‍♂️ Se rajan</span>
                                     <div className="flex flex-wrap gap-1">
                                       {noList.map(p => (
-                                        <span key={p.id} className="bg-rose-100 text-rose-800 text-[10px] font-bold px-2 py-0.5 rounded-full">{p.name}</span>
+                                        <span key={p.id} className="bg-[#f6ede6] text-[#6b3f29] text-[10px] font-bold px-2 py-0.5 rounded-full">{p.name}</span>
                                       ))}
                                     </div>
                                   </div>
@@ -6508,7 +6512,7 @@ export default function App() {
 
                               <button
                                 onClick={() => handleShareTournamentDinnerWhatsapp(t)}
-                                className="w-full py-2 bg-emerald-600 text-white font-bold rounded-xl"
+                                className="w-full py-2 bg-[#2f5d50] text-white font-bold rounded-xl"
                               >
                                 📲 Avisar al Restaurante por WhatsApp
                               </button>
@@ -6537,7 +6541,7 @@ export default function App() {
       {showReloadPlaytomicModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl max-w-sm w-full p-5 shadow-2xl">
-            <h3 className="text-base font-black text-slate-900 mb-2">Recargar desde Playtomic</h3>
+            <h3 className="text-base font-black text-stone-900 mb-2">Recargar desde Playtomic</h3>
             <form onSubmit={handleReloadPlaytomic} className="space-y-3">
               <textarea
                 rows={5}
@@ -6548,8 +6552,8 @@ export default function App() {
                 className="w-full border rounded-xl p-2.5 text-xs font-semibold"
               />
               <div className="flex gap-2">
-                <button type="button" onClick={() => setShowReloadPlaytomicModal(false)} className="flex-1 py-2 bg-slate-100 font-bold text-xs rounded-xl">Cancelar</button>
-                <button type="submit" disabled={syncing} className="flex-1 py-2 bg-blue-600 text-white font-bold text-xs rounded-xl">Actualizar</button>
+                <button type="button" onClick={() => setShowReloadPlaytomicModal(false)} className="flex-1 py-2 bg-stone-100 font-bold text-xs rounded-xl">Cancelar</button>
+                <button type="submit" disabled={syncing} className="flex-1 py-2 bg-[#2c4a66] text-white font-bold text-xs rounded-xl">Actualizar</button>
               </div>
             </form>
           </div>
@@ -6560,7 +6564,7 @@ export default function App() {
       {showEditPlayersModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl max-w-sm w-full p-5 shadow-2xl">
-            <h3 className="text-base font-black text-slate-900 mb-2">Cambiar Suplentes</h3>
+            <h3 className="text-base font-black text-stone-900 mb-2">Cambiar Suplentes</h3>
             <form onSubmit={handleSaveManualPlayers} className="space-y-2">
               {[0, 1, 2, 3].map(idx => (
                 <input
@@ -6577,8 +6581,8 @@ export default function App() {
                 />
               ))}
               <div className="flex gap-2 pt-2">
-                <button type="button" onClick={() => setShowEditPlayersModal(false)} className="flex-1 py-2 bg-slate-100 font-bold text-xs rounded-xl">Cancelar</button>
-                <button type="submit" disabled={syncing} className="flex-1 py-2 bg-blue-600 text-white font-bold text-xs rounded-xl">Guardar</button>
+                <button type="button" onClick={() => setShowEditPlayersModal(false)} className="flex-1 py-2 bg-stone-100 font-bold text-xs rounded-xl">Cancelar</button>
+                <button type="submit" disabled={syncing} className="flex-1 py-2 bg-[#2c4a66] text-white font-bold text-xs rounded-xl">Guardar</button>
               </div>
             </form>
           </div>
