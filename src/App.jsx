@@ -1247,23 +1247,74 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, allDinn
     let puntosDetalle = [], boteDetalle = [];
     const partnerStats = {}, rivalStats = {};
 
-    // NUEVO: "química" cara a cara entre quien consulta (viewerUser) y el perfil que está
-    // viendo (user) — solo tiene sentido cuando son dos personas distintas. Se calcula sobre
-    // los mismos partidos oficiales de liga regular que ya usa el resto de estadísticas.
+    // "química" cara a cara entre quien consulta (viewerUser) y el perfil que está viendo
+    // (user) — solo tiene sentido cuando son dos personas distintas. A diferencia del resto
+    // de estadísticas de liga, esta SÍ se calcula sobre partidos oficiales Y amistosos (ver
+    // acumularQuimica más abajo).
     const normViewerName = viewerUser ? normalizeName(viewerUser.name) : null;
     const headToHead = (viewerUser && viewerUser.id !== user.id)
       ? { partnerPlayed: 0, partnerWon: 0, partnerLost: 0, rivalPlayed: 0, profileWonVsViewer: 0, viewerWonVsProfile: 0, recent: [] }
       : null;
 
+    // Acumula química de parejas/rivales y el cara a cara entre quien consulta y el perfil.
+    // A propósito se llama tanto para partidos oficiales como amistosos (a diferencia de
+    // playedList/puntosDetalle/boteDetalle, que siguen siendo solo liga oficial): esto habla
+    // de con quién/contra quién rindes jugando, no de la clasificación de la liga, así que
+    // cuantos más partidos entren, más fiable es el dato — no hay razón para descartar un
+    // amistoso aquí solo porque no puntúe.
+    const acumularQuimica = (m, mySlot) => {
+      const playersArr = m.players || [];
+      // Si el partido es antiguo y no tiene 'team', deduce que los 2 primeros son el equipo 1
+      const myTeam = mySlot.team !== undefined ? Number(mySlot.team) : (playersArr.indexOf(mySlot) < 2 ? 1 : 2);
+
+      playersArr.forEach((p, idx) => {
+        if (normalizeName(p.name) === normUserName) return;
+        const pTeam = p.team !== undefined ? Number(p.team) : (idx < 2 ? 1 : 2);
+
+        if (pTeam === myTeam) {
+          if (!partnerStats[p.name]) partnerStats[p.name] = { played: 0, won: 0, lost: 0 };
+          partnerStats[p.name].played++;
+          if (mySlot.won === 'SI') partnerStats[p.name].won++; else partnerStats[p.name].lost++;
+        } else {
+          if (!rivalStats[p.name]) rivalStats[p.name] = { played: 0, wonAgainst: 0, lostAgainst: 0 };
+          rivalStats[p.name].played++;
+          if (mySlot.won === 'SI') rivalStats[p.name].wonAgainst++; else rivalStats[p.name].lostAgainst++;
+        }
+
+        // Si este compañero/rival de la pista es justo quien está consultando el perfil,
+        // acumulamos también el cara a cara específico entre los dos.
+        if (headToHead && (p.id === viewerUser.id || normalizeName(p.name) === normViewerName)) {
+          if (pTeam === myTeam) {
+            headToHead.partnerPlayed++;
+            if (mySlot.won === 'SI') headToHead.partnerWon++; else headToHead.partnerLost++;
+            headToHead.recent.push({ date: m.date, tipo: 'pareja', ganaron: mySlot.won === 'SI' });
+          } else {
+            headToHead.rivalPlayed++;
+            if (mySlot.won === 'SI') headToHead.profileWonVsViewer++; else headToHead.viewerWonVsProfile++;
+            headToHead.recent.push({ date: m.date, tipo: 'rival', ganaProfile: mySlot.won === 'SI' });
+          }
+        }
+      });
+    };
+
     matches.forEach(m => {
       if (m.status !== 'FINALIZADO') return;
-      if (!isMatchOfficial(m)) return;
 
       const mySlot = (m.players || []).find(p => p.id === user.id || normalizeName(p.name) === normUserName);
       if (!mySlot) return;
 
       const partner = (m.players || []).find(p => p.team === mySlot.team && normalizeName(p.name) !== normUserName)?.name || 'Compañero';
       const rivals = (m.players || []).filter(p => p.team !== mySlot.team).map(p => p.name).join(' & ') || 'Rivales';
+
+      if (!isMatchOfficial(m)) {
+        // Los amistosos no cuentan para PJ/liga ni puntúan, pero sí entran en la química de
+        // parejas/rivales de arriba, y se listan aquí a 0 (en vez de desaparecer sin más) para
+        // que quede claro, mirando el propio historial, por qué no han movido el total.
+        acumularQuimica(m, mySlot);
+        puntosDetalle.push({ date: m.date, title: `Partido vs ${rivals} (amistoso)`, pts: 0, desc: 'Amistoso — no computa para la liga' });
+        boteDetalle.push({ date: m.date, title: `Partido vs ${rivals} (amistoso)`, bote: 0, desc: 'Amistoso — no computa para la liga' });
+        return;
+      }
 
       const matchDetail = {
         id: m.id, date: m.date, location: m.location || 'Club', score: m.score || 'Finalizado',
@@ -1303,38 +1354,7 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, allDinn
         boteDetalle.push({ date: m.date, title: `Partido vs ${rivals}`, bote: matchBote, desc: breakdownBote.join(' | ') });
       }
 
-     const playersArr = m.players || [];
-      // Si el partido es antiguo y no tiene 'team', deduce que los 2 primeros son el equipo 1
-      const myTeam = mySlot.team !== undefined ? Number(mySlot.team) : (playersArr.indexOf(mySlot) < 2 ? 1 : 2);
-      
-      playersArr.forEach((p, idx) => {
-        if (normalizeName(p.name) === normUserName) return;
-        const pTeam = p.team !== undefined ? Number(p.team) : (idx < 2 ? 1 : 2);
-        
-        if (pTeam === myTeam) {
-          if (!partnerStats[p.name]) partnerStats[p.name] = { played: 0, won: 0, lost: 0 };
-          partnerStats[p.name].played++;
-          if (mySlot.won === 'SI') partnerStats[p.name].won++; else partnerStats[p.name].lost++;
-        } else {
-          if (!rivalStats[p.name]) rivalStats[p.name] = { played: 0, wonAgainst: 0, lostAgainst: 0 };
-          rivalStats[p.name].played++;
-          if (mySlot.won === 'SI') rivalStats[p.name].wonAgainst++; else rivalStats[p.name].lostAgainst++;
-        }
-
-        // Si este compañero/rival de la pista es justo quien está consultando el perfil,
-        // acumulamos también el cara a cara específico entre los dos.
-        if (headToHead && (p.id === viewerUser.id || normalizeName(p.name) === normViewerName)) {
-          if (pTeam === myTeam) {
-            headToHead.partnerPlayed++;
-            if (mySlot.won === 'SI') headToHead.partnerWon++; else headToHead.partnerLost++;
-            headToHead.recent.push({ date: m.date, tipo: 'pareja', ganaron: mySlot.won === 'SI' });
-          } else {
-            headToHead.rivalPlayed++;
-            if (mySlot.won === 'SI') headToHead.profileWonVsViewer++; else headToHead.viewerWonVsProfile++;
-            headToHead.recent.push({ date: m.date, tipo: 'rival', ganaProfile: mySlot.won === 'SI' });
-          }
-        }
-      });
+      acumularQuimica(m, mySlot);
     });
 
     // Añadir las cenas sin partido al listado visual y al historial de puntos
@@ -1868,7 +1888,7 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, allDinn
               {sinDatos ? (
                 <div className="bg-stone-50 border border-stone-200 rounded-2xl p-3 text-center">
                   <span className="text-[11px] text-stone-400 italic">
-                    Todavía no habéis coincidido en ningún partido oficial.
+                    Todavía no habéis coincidido en ningún partido (ni oficial ni amistoso).
                   </span>
                 </div>
               ) : (
@@ -5541,7 +5561,7 @@ export default function App() {
                   return (
                     <div className="mt-5 pt-3 border-t border-stone-100 text-center">
                       <span className="text-[11px] text-stone-500 font-semibold italic block">
-                        ℹ️ Este partido es amistoso. Las cenas y puntos oficiales se computan exclusivamente los Jueves.
+                        ℹ️ Este partido es amistoso: no suma puntos ni bote (eso solo cuenta los Jueves), aunque sí entra en tu química de parejas y rivales.
                       </span>
                     </div>
                   );
@@ -6691,3 +6711,4 @@ export default function App() {
     </div>
   );
 }
+
