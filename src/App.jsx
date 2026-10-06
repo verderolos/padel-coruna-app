@@ -593,10 +593,34 @@ function CriteriosModal({ isOpen, onClose }) {
       <div className="bg-white rounded-3xl max-w-lg w-full max-h-[90vh] overflow-y-auto shadow-2xl p-6 text-left space-y-4">
         <div className="flex items-center justify-between border-b pb-3">
           <h3 className="text-lg font-black text-stone-900 flex items-center gap-2">
-            📖 Sistema Oficial de Puntuación CTC
+            ℹ️ Guía y Sistema Oficial de CTC Padel
           </h3>
           <button onClick={onClose} className="text-stone-400 hover:text-stone-700 text-2xl font-bold leading-none">&times;</button>
         </div>
+
+        <section className="bg-stone-50 border border-stone-200 rounded-2xl p-4 space-y-2">
+          <h4 className="font-extrabold text-stone-700 text-xs uppercase tracking-wide">📱 Cómo se usa la app</h4>
+          <ul className="text-xs text-stone-600 space-y-1.5 list-disc list-inside">
+            <li><strong>🏠 Inicio:</strong> lo primero que ves al entrar — el próximo partido de la semana, si falta gente por confirmar cena y tus torneos activos, con accesos directos al resto de secciones.</li>
+            <li><strong>🎾 Partidos:</strong> pulsa "Añadir Partido (Pegar desde Playtomic)" y pega el texto que Playtomic genera al compartir el partido (con los jugadores marcados con ✅). Si solo pegas el enlace, sin ese texto, la app te pedirá la fecha/hora y al menos 2 jugadores a mano antes de crearlo.</li>
+            <li><strong>🍻 Cena &amp; Club:</strong> confirma si te quedas a cenar. En los torneos puedes ver, por nombre, quién cena, quién está pendiente de confirmar y quién se raja.</li>
+            <li><strong>🏆 Rankings:</strong> toca el perfil de cualquier jugador para ver sus estadísticas: partidos jugados, % de victorias, cenas, rajadas, historial de puntos y desglose del bote.</li>
+            <li><strong>💶 Bote:</strong> lo que cada uno debe aportar, según las reglas de abajo.</li>
+            <li><strong>⚔️ Torneos:</strong> 4 formatos distintos para organizar — ver detalle más abajo.</li>
+            <li><strong>🔔 Avisos:</strong> desde el icono de la campana configuras qué avisos quieres recibir — el recordatorio de los lunes (si para esa semana no hay partido subido) y los avisos de apertura de reserva en Playtomic, por día y hora (puedes tener varios).</li>
+            <li><strong>🔔 Notificaciones en el móvil:</strong> en iPhone solo funcionan si añades la app a la pantalla de inicio desde Safari (compartir → "Añadir a pantalla de inicio") y la abres desde ahí; en Android/ordenador puedes activarlas directamente desde "Avisos".</li>
+          </ul>
+        </section>
+
+        <section className="bg-[#eef2f6] border border-[#c3d3e0] rounded-2xl p-4 space-y-2">
+          <h4 className="font-extrabold text-[#2c4a66] text-xs uppercase tracking-wide">⚔️ Formatos de Torneo</h4>
+          <ul className="text-xs text-[#2c4a66] space-y-1.5 list-disc list-inside">
+            <li><strong>🔄 Pozo Continuo:</strong> pistas ordenadas por nivel; quien gana sube de pista, quien pierde baja. Gana el torneo quien acabe dominando la Pista 1.</li>
+            <li><strong>🇺🇸 Americano:</strong> inscripción individual, rotando de compañero y rival en cada ronda; los puntos se suman a tu casillero personal, no al de tu pareja de turno.</li>
+            <li><strong>🥇 Fases Finales:</strong> parejas fijas, primero una liguilla por grupos y después cuadro final (oro/plata) a eliminación directa.</li>
+            <li><strong>🛡️ Por Equipos (Ryder):</strong> dos equipos enfrentados pista a pista; gana el equipo que sume más puntos en el cómputo global.</li>
+          </ul>
+        </section>
 
         <section className="bg-[#eef2f6] border border-[#c3d3e0] rounded-2xl p-4 space-y-2">
           <h4 className="font-extrabold text-[#2c4a66] text-xs uppercase tracking-wide">🏆 1. Ranking Deportivo</h4>
@@ -6667,9 +6691,3 @@ export default function App() {
     </div>
   );
 }
-
-
-
-
-
-
