@@ -359,6 +359,22 @@ function computeMatchStatus(m) {
   }
 }
 
+// Misma regla que ya aplica el backend (doGet, al calcular cSi/cNo para los rankings) para
+// decidir si una cena "cuenta" de verdad: se computa a partir de las 09:00 del día SIGUIENTE a
+// la cena, nunca antes. Antes esta regla solo vivía en el backend — el detalle de "Cenas" y
+// "Historial de Puntos" del propio perfil (más abajo, en statsCalculated) sumaba la cena en
+// cuanto el jugador marcaba "Sí" o en cuanto se apuntaba a una cena sin partido, aunque esa
+// cena fuera esta misma noche o incluso un día futuro, dando una sensación de puntos/cenas ya
+// "ganados" que en realidad el ranking todavía no contaba hasta pasado ese corte.
+function esCenaComputable(dateStr) {
+  const fechaBase = parseMatchDateObject(dateStr);
+  if (!fechaBase) return false;
+  const limite = new Date(fechaBase.getTime());
+  limite.setDate(limite.getDate() + 1);
+  limite.setHours(9, 0, 0, 0);
+  return new Date() >= limite;
+}
+
 function parseMatchTiming(dateStr) {
   const matchDate = parseMatchDateObject(dateStr);
   if (!matchDate) return { canReport: true, shouldPrompt: false };
@@ -1410,14 +1426,26 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, allDinn
       // Jugar (Barandas)
       matchPts += 1; breakdownPts.push('Jugar (+1)');
 
-      // Cena (Barandas)
+      // Cena (Barandas) — igual que en el backend (doGet), una cena solo "cuenta" de verdad a
+      // partir de las 09:00 del día siguiente. Antes de ese corte, aunque ya hayas marcado si
+      // te quedas o no, no se suma ni a la lista de Cenas/Rajadas ni a los puntos — así el
+      // detalle de tu perfil no te da ya por "ganados" puntos que el ranking todavía no cuenta.
+      const cenaDeEstePartidoComputable = esCenaComputable(m.date);
       if (mySlot.dinner === 'SI') {
-        dinnerYesList.push(matchDetail);
-        matchPts += 5; breakdownPts.push('Cena (+5)');
+        if (cenaDeEstePartidoComputable) {
+          dinnerYesList.push(matchDetail);
+          matchPts += 5; breakdownPts.push('Cena (+5)');
+        } else {
+          breakdownPts.push('Cena (aún no computa)');
+        }
       } else if (mySlot.dinner === 'NO') {
-        dinnerNoList.push(matchDetail);
-        matchPts -= 1; breakdownPts.push('Rajada (-1)');
-        matchBote += 1; breakdownBote.push('Rajada (+1€)');
+        if (cenaDeEstePartidoComputable) {
+          dinnerNoList.push(matchDetail);
+          matchPts -= 1; breakdownPts.push('Rajada (-1)');
+          matchBote += 1; breakdownBote.push('Rajada (+1€)');
+        } else {
+          breakdownPts.push('Rajada (aún no computa)');
+        }
       } else if (mySlot.dinner === 'PENDIENTE') {
         breakdownPts.push('Cena Pendiente (0)');
       }
@@ -1430,15 +1458,18 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, allDinn
       acumularQuimica(m, mySlot);
     });
 
-    // Añadir las cenas sin partido al listado visual y al historial de puntos
+    // Añadir las cenas sin partido al listado visual y al historial de puntos — con la misma
+    // regla de las 09:00 del día siguiente: una cena sin partido futura (o de esta misma noche,
+    // antes de esa hora) a la que ya estés apuntado no debe aparecer todavía como "ganada".
     (allDinnerGuests || []).forEach(g => {
       // COMPROBAMOS TAMBIÉN POR ID
       if (g.id === user.id || normalizeName(g.name) === normUserName) {
         const cleanDate = extractCleanDate(g.target || g.cleanTarget);
-        
+        if (!esCenaComputable(cleanDate)) return;
+
         // Evitar duplicar si ya se ha sumado una cena ese mismo día por partido
         const yaTieneCenaEseDia = dinnerYesList.some(d => d.date === cleanDate);
-        
+
         if (!yaTieneCenaEseDia) {
           dinnerYesList.push({
             date: cleanDate, partner: 'Solo Cena', rivals: '-', score: '-', dinner: 'SI', won: false
