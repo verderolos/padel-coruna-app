@@ -894,6 +894,14 @@ const DIAS_SEMANA_ALERTAS = [
   { v: 4, l: 'Jueves' }, { v: 5, l: 'Viernes' }, { v: 6, l: 'Sábado' }, { v: 7, l: 'Domingo' }
 ];
 
+// Horas del selector de la alerta de reserva, en formato 24h (00-23). Usamos dos <select>
+// propios en vez de <input type="time"> porque ese input nativo muestra AM/PM o 24h según el
+// idioma/región del dispositivo (en iPhone, por ejemplo, lo decide el ajuste regional del
+// sistema, no la propia página), así que no hay forma fiable de forzar 24h ahí. Con <select>
+// el formato queda fijo siempre, y de paso limitamos los minutos a horas en punto o y media.
+const HORAS_SELECTOR_ALERTA = Array.from({ length: 24 }, (_, h) => String(h).padStart(2, '0'));
+const MINUTOS_SELECTOR_ALERTA = ['00', '30'];
+
 function PushPreferencesCard({ currentUser, apiUrl, alertPreferences, reservationAlerts, onRefresh }) {
   const [busy, setBusy] = useState(false);
   const [diaNuevo, setDiaNuevo] = useState(4);
@@ -902,6 +910,10 @@ function PushPreferencesCard({ currentUser, apiUrl, alertPreferences, reservatio
   const miPref = (alertPreferences || []).find(p => p.idJugador === currentUser.id);
   const lunesActivo = miPref ? String(miPref.avisoLunesPartido).toUpperCase() === 'SI' : false;
   const misReservas = (reservationAlerts || []).filter(r => r.idJugador === currentUser.id);
+
+  // horaNueva se guarda siempre como "HH:mm" (igual que antes); aquí solo la partimos para
+  // pintar los dos selectores de hora/minuto en formato 24h.
+  const [horaSelActual, minSelActual] = horaNueva.split(':');
 
   const postAccion = async (payload) => {
     setBusy(true);
@@ -978,12 +990,23 @@ function PushPreferencesCard({ currentUser, apiUrl, alertPreferences, reservatio
           <select value={diaNuevo} onChange={(e) => setDiaNuevo(e.target.value)} className="flex-1 text-[11px] border border-stone-300 rounded-lg px-2 py-1.5 bg-white">
             {DIAS_SEMANA_ALERTAS.map(d => <option key={d.v} value={d.v}>{d.l}</option>)}
           </select>
-          <input
-            type="time"
-            value={horaNueva}
-            onChange={(e) => setHoraNueva(e.target.value)}
-            className="w-24 text-[11px] border border-stone-300 rounded-lg px-2 py-1.5 bg-white"
-          />
+          <div className="flex items-center gap-1 shrink-0">
+            <select
+              value={horaSelActual}
+              onChange={(e) => setHoraNueva(`${e.target.value}:${minSelActual}`)}
+              className="text-[11px] border border-stone-300 rounded-lg pl-1.5 pr-0.5 py-1.5 bg-white"
+            >
+              {HORAS_SELECTOR_ALERTA.map(h => <option key={h} value={h}>{h}</option>)}
+            </select>
+            <span className="text-[11px] text-stone-400 font-bold">:</span>
+            <select
+              value={minSelActual}
+              onChange={(e) => setHoraNueva(`${horaSelActual}:${e.target.value}`)}
+              className="text-[11px] border border-stone-300 rounded-lg pl-1.5 pr-0.5 py-1.5 bg-white"
+            >
+              {MINUTOS_SELECTOR_ALERTA.map(m => <option key={m} value={m}>{m}</option>)}
+            </select>
+          </div>
           <button onClick={handleAddReserva} disabled={busy} className="shrink-0 px-3 py-1.5 bg-[#d9b97c] hover:bg-[#6b4d1c] text-white font-bold rounded-lg text-[11px] disabled:opacity-50 transition">
             + Añadir
           </button>
@@ -6711,4 +6734,3 @@ export default function App() {
     </div>
   );
 }
-
