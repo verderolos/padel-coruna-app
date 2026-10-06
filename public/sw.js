@@ -43,7 +43,13 @@ self.addEventListener('push', (event) => {
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   const targetUrl = (event.notification.data && event.notification.data.url) || '/';
-  const esExterna = /^https?:\/\//i.test(targetUrl) && !targetUrl.startsWith(self.location.origin);
+  // "Externa" = cualquier URL que no sea una ruta propia de la app ni apunte a nuestro propio
+  // origen. Antes solo se consideraba externo lo que empezaba por http(s)://, así que un enlace
+  // con un esquema propio de app (como "playtomic://...") no lo detectaba como externo y, si ya
+  // había una pestaña de CTC Padel abierta, el click simplemente la enfocaba en vez de llevar a
+  // Playtomic — por eso dejó de "hacer algo" al tocar el aviso de reserva.
+  const esRelativaPropia = targetUrl.startsWith('/') || targetUrl.startsWith(self.location.origin);
+  const esExterna = !esRelativaPropia;
 
   event.waitUntil(
     (async () => {
@@ -54,9 +60,26 @@ self.addEventListener('notificationclick', (event) => {
             return client.focus();
           }
         }
+        if (self.clients.openWindow) {
+          return self.clients.openWindow(targetUrl);
+        }
+        return;
       }
+
+      // Para enlaces externos con un esquema que no sea http(s) (p.ej. "playtomic://..."),
+      // clients.openWindow() no navega de forma fiable: esa API está pensada para abrir pestañas
+      // de navegador normales, no para lanzar apps nativas directamente desde el Service Worker.
+      // Por eso, en vez de pasarle el esquema propio tal cual, abrimos nuestra propia página
+      // "redirect.html" (sí es http/https, así que esto funciona bien) pasándole la URL real como
+      // parámetro — es esa página, ya cargada en un contexto de navegador normal, la que hace el
+      // salto final con window.location.href, que sí reconoce correctamente el esquema de Android.
+      const esHttp = /^https?:\/\//i.test(targetUrl);
       if (self.clients.openWindow) {
-        return self.clients.openWindow(targetUrl);
+        if (esHttp) {
+          return self.clients.openWindow(targetUrl);
+        }
+        const urlPuente = self.location.origin + '/redirect.html?to=' + encodeURIComponent(targetUrl);
+        return self.clients.openWindow(urlPuente);
       }
     })()
   );
