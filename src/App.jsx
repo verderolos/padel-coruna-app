@@ -381,6 +381,117 @@ function esCenaComputable(dateStr) {
   return new Date() >= limite;
 }
 
+// NUEVO (Home · "Estadísticas individuales"): cuántas semanas llevas sin jugar / sin ganar /
+// sin perder / sin quedarte a cenar. A petición explícita de Marcos, el alcance es "Todo" —
+// Liga regular + Amistosos + Torneos — así que un partido o cena de cualquier tipo cuenta para
+// romper la racha correspondiente, no solo los oficiales de Jueves/Martes. Vive fuera de los
+// componentes (función pura) porque la necesitan tanto HomeScreen como, más adelante, cualquier
+// otra pantalla, sin duplicar la lógica de recorrido de partidos/torneos.
+function calcularRachasSemanales(currentUser, matches, tournaments, allDinnerGuests) {
+  if (!currentUser) return null;
+  const normUserName = normalizeName(currentUser.name || '');
+  const ahora = new Date();
+
+  // NUEVO: a petición de Marcos, "semanas sin cena" solo mira las cenas del día de liga de tu
+  // grupo — jueves para Chicos, martes para Chicas — aunque la cena venga de un amistoso, una
+  // cena suelta o un torneo (no solo de un partido oficial). Así que aquí NO se restringe por
+  // "es oficial o no", sino por el día de la semana en que cae la cena. Nota: "Jugar"/"Ganar"/
+  // "Perder" siguen con alcance "Todo" (cualquier día), que es lo que se pidió para esos tres.
+  const diaCenaEsperado = (currentUser.group || '').toLowerCase() === 'chicas' ? 2 : 4; // 2=martes, 4=jueves
+
+  const eventosPartido = []; // { fecha: Date, ganado: boolean } — liga, amistosos y torneos
+  const eventosCena = [];    // { fecha: Date } — solo cenas confirmadas ("SI") en el día de liga del grupo
+
+  (matches || []).forEach(m => {
+    if (m.status !== 'FINALIZADO') return;
+    const mySlot = (m.players || []).find(p => p.id === currentUser.id || normalizeName(p.name) === normUserName);
+    if (!mySlot) return;
+    const fecha = parseMatchDateObject(m.date);
+    if (!fecha) return;
+    eventosPartido.push({ fecha, ganado: mySlot.won === 'SI' });
+    if (mySlot.dinner === 'SI' && esCenaComputable(m.date) && fecha.getDay() === diaCenaEsperado) {
+      eventosCena.push({ fecha });
+    }
+  });
+
+  (allDinnerGuests || []).forEach(g => {
+    if (g.id === currentUser.id || normalizeName(g.name) === normUserName) {
+      const cleanDate = extractCleanDate(g.target || g.cleanTarget);
+      if (!esCenaComputable(cleanDate)) return;
+      const fecha = parseMatchDateObject(cleanDate);
+      if (fecha && fecha.getDay() === diaCenaEsperado) eventosCena.push({ fecha });
+    }
+  });
+
+  (tournaments || []).forEach(t => {
+    const participante = (t.participants || []).find(p => p.id === currentUser.id || normalizeName(p.name) === normUserName);
+    if (!participante) return;
+    // Los torneos no guardan la fecha de cada partido suelto, solo la fecha de inicio del
+    // torneo — misma aproximación que ya usa streakAndTrend más abajo para el gráfico mensual.
+    const tFecha = t.startDate ? new Date(`${t.startDate}T${t.startTime || '00:00'}`) : null;
+    const tFechaValida = tFecha && !isNaN(tFecha.getTime()) ? tFecha : null;
+
+    (t.rounds || []).forEach(r => {
+      (r.matches || []).forEach(m => {
+        if (m.status !== 'FINALIZADO' || !tFechaValida) return;
+        let inT1, inT2;
+        if ((m.team1Ids && m.team1Ids.length) || (m.team2Ids && m.team2Ids.length)) {
+          inT1 = (m.team1Ids || []).includes(currentUser.id);
+          inT2 = (m.team2Ids || []).includes(currentUser.id);
+        } else {
+          const myFirstName = normUserName.split(' ')[0];
+          inT1 = myFirstName && normalizeName(m.team1 || '').split(' ').includes(myFirstName);
+          inT2 = myFirstName && normalizeName(m.team2 || '').split(' ').includes(myFirstName);
+        }
+        if (!inT1 && !inT2) return;
+        const ganado = (inT1 && m.winner === 1) || (inT2 && m.winner === 2);
+        eventosPartido.push({ fecha: tFechaValida, ganado });
+      });
+    });
+
+    if (participante.cena === 'SI' && tFechaValida && tFechaValida.getDay() === diaCenaEsperado) {
+      eventosCena.push({ fecha: tFechaValida });
+    }
+  });
+
+  const masReciente = (lista) => lista.length
+    ? lista.reduce((max, e) => (e.fecha > max ? e.fecha : max), lista[0].fecha)
+    : null;
+
+  const semanasDesde = (fecha) => {
+    if (!fecha) return null; // nunca — sin historial
+    const diffMs = ahora.getTime() - fecha.getTime();
+    if (diffMs < 0) return 0;
+    return Math.floor(diffMs / (7 * 24 * 60 * 60 * 1000));
+  };
+
+  const victorias = eventosPartido.filter(e => e.ganado);
+  const derrotas = eventosPartido.filter(e => !e.ganado);
+  const fechaUltimoPartido = masReciente(eventosPartido);
+  const fechaUltimaVictoria = masReciente(victorias);
+  const fechaUltimaDerrota = masReciente(derrotas);
+  const fechaUltimaCena = masReciente(eventosCena);
+
+  // Hueco compartido "sin ganar / sin perder" en el Home: se decide según tu último resultado
+  // (si lo último que jugaste fue una derrota, te interesa más ver cuánto llevas sin ganar, y
+  // viceversa) — mismo criterio que ya usa la racha de victorias del modal de perfil.
+  let ultimoResultado = null;
+  if (fechaUltimaVictoria && (!fechaUltimaDerrota || fechaUltimaVictoria >= fechaUltimaDerrota)) {
+    ultimoResultado = 'victoria';
+  } else if (fechaUltimaDerrota) {
+    ultimoResultado = 'derrota';
+  }
+
+  return {
+    semanasSinJugar: semanasDesde(fechaUltimoPartido),
+    semanasSinGanar: semanasDesde(fechaUltimaVictoria),
+    semanasSinPerder: semanasDesde(fechaUltimaDerrota),
+    semanasSinCena: semanasDesde(fechaUltimaCena),
+    ultimoResultado,
+    tieneHistorial: eventosPartido.length > 0
+  };
+}
+
 function parseMatchTiming(dateStr) {
   const matchDate = parseMatchDateObject(dateStr);
   if (!matchDate) return { canReport: true, shouldPrompt: false };
@@ -419,6 +530,74 @@ function isUpcoming(dateStr) {
   startOfToday.setHours(0, 0, 0, 0);
   return matchDate >= startOfToday;
 }
+
+// NUEVO (tema visual): icono propio de "2 palas de padel" cruzadas, para sustituir el emoji
+// ⚔️ (dos espadas) que usábamos para todo lo relacionado con Torneos — no existe un emoji
+// estándar de palas de padel, así que a petición de Marcos se dibuja como SVG propio. Usa
+// currentColor para heredar el color del texto donde se coloque (igual de versátil que un
+// emoji tanto en botones claros como oscuros) y "1em" de tamaño por defecto para poder
+// colocarlo igual que un emoji dentro de cualquier texto/span (hereda el font-size de alrededor).
+function PadelRacketsIcon({ className = '', size = '1em' }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width={size}
+      height={size}
+      className={`inline-block align-[-0.15em] shrink-0 ${className}`}
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+    >
+      <g transform="rotate(45 12 12)">
+        <path d="M12 2.6c-2.5 0-4.4 2-4.4 4.6 0 2.8 2 4.9 4.4 4.9s4.4-2.1 4.4-4.9c0-2.6-1.9-4.6-4.4-4.6z" stroke="currentColor" strokeWidth="1.5" fill="currentColor" fillOpacity="0.22"/>
+        <circle cx="10.5" cy="6.2" r="0.5" fill="currentColor"/>
+        <circle cx="13.5" cy="6.2" r="0.5" fill="currentColor"/>
+        <circle cx="12" cy="8.3" r="0.5" fill="currentColor"/>
+        <circle cx="10.5" cy="10.4" r="0.5" fill="currentColor"/>
+        <circle cx="13.5" cy="10.4" r="0.5" fill="currentColor"/>
+        <line x1="12" y1="12.1" x2="12" y2="21" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
+      </g>
+      <g transform="rotate(-45 12 12)">
+        <path d="M12 2.6c-2.5 0-4.4 2-4.4 4.6 0 2.8 2 4.9 4.4 4.9s4.4-2.1 4.4-4.9c0-2.6-1.9-4.6-4.4-4.6z" stroke="currentColor" strokeWidth="1.5" fill="currentColor" fillOpacity="0.22"/>
+        <circle cx="10.5" cy="6.2" r="0.5" fill="currentColor"/>
+        <circle cx="13.5" cy="6.2" r="0.5" fill="currentColor"/>
+        <circle cx="12" cy="8.3" r="0.5" fill="currentColor"/>
+        <circle cx="10.5" cy="10.4" r="0.5" fill="currentColor"/>
+        <circle cx="13.5" cy="10.4" r="0.5" fill="currentColor"/>
+        <line x1="12" y1="12.1" x2="12" y2="21" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
+      </g>
+    </svg>
+  );
+}
+
+// NUEVO (tema visual, fondo general de la app): pista de padel de muro en tono tierra batida.
+// A propósito NO es una foto real — eso añadiría una dependencia externa (enlace que se puede
+// caer, dudas de licencia de uso) para un detalle puramente decorativo — sino una ilustración
+// generada en SVG/CSS: base en gradiente tierra batida + un patrón repetido en crema muy tenue
+// con la malla/valla superior ("muro") y las líneas típicas de una pista (límite, línea
+// central, líneas de servicio). Se calcula una sola vez (constante de módulo) porque no
+// depende de ningún dato de la app. Los colores de las tarjetas no cambian: todas siguen con
+// fondo blanco/stone sólido, así que este fondo solo se ve en los huecos entre tarjetas.
+const FONDO_PISTA_PADEL_SVG = (() => {
+  const mallaVerticales = Array.from({ length: 31 }, (_, i) => `<line x1="${i * 20}" y1="0" x2="${i * 20}" y2="40"/>`).join('');
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="600" height="600" viewBox="0 0 600 600">`
+    + `<g stroke="#fdf6ec" stroke-width="2" opacity="0.32"><line x1="0" y1="40" x2="600" y2="40"/>${mallaVerticales}</g>`
+    + `<g stroke="#fdf6ec" stroke-width="3" fill="none" opacity="0.26">`
+    + `<rect x="60" y="110" width="480" height="430" rx="10"/>`
+    + `<line x1="300" y1="110" x2="300" y2="540"/>`
+    + `<line x1="60" y1="222" x2="540" y2="222"/>`
+    + `<line x1="60" y1="428" x2="540" y2="428"/>`
+    + `</g></svg>`;
+  return `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
+})();
+
+const ESTILO_FONDO_PISTA_PADEL = {
+  backgroundColor: '#c97b4a',
+  backgroundImage: `${FONDO_PISTA_PADEL_SVG}, linear-gradient(160deg, #e2975f 0%, #c97b4a 55%, #b5693f 100%)`,
+  backgroundRepeat: 'repeat, no-repeat',
+  backgroundSize: '600px 600px, auto',
+  backgroundAttachment: 'fixed, fixed'
+};
 
 function UserAvatar({ name, photo, size = 'md', className = '' }) {
   const sizeClasses = {
@@ -628,14 +807,14 @@ function CriteriosModal({ isOpen, onClose }) {
             <li><strong>🍻 Cena &amp; Club:</strong> confirma si te quedas a cenar. En los torneos puedes ver, por nombre, quién cena, quién está pendiente de confirmar y quién se raja.</li>
             <li><strong>🏆 Rankings:</strong> toca el perfil de cualquier jugador para ver sus estadísticas: partidos jugados, % de victorias, cenas, rajadas, historial de puntos y desglose del bote.</li>
             <li><strong>💶 Bote:</strong> lo que cada uno debe aportar, según las reglas de abajo.</li>
-            <li><strong>⚔️ Torneos:</strong> 4 formatos distintos para organizar — ver detalle más abajo.</li>
+            <li><strong className="inline-flex items-center gap-1"><PadelRacketsIcon /> Torneos:</strong> 4 formatos distintos para organizar — ver detalle más abajo.</li>
             <li><strong>🔔 Avisos:</strong> desde el icono de la campana configuras qué avisos quieres recibir — el recordatorio de los lunes (si para esa semana no hay partido subido) y los avisos de apertura de reserva en Playtomic, por día y hora (puedes tener varios).</li>
             <li><strong>🔔 Notificaciones en el móvil:</strong> en iPhone solo funcionan si añades la app a la pantalla de inicio desde Safari (compartir → "Añadir a pantalla de inicio") y la abres desde ahí; en Android/ordenador puedes activarlas directamente desde "Avisos".</li>
           </ul>
         </section>
 
         <section className="bg-[#eef2f6] border border-[#c3d3e0] rounded-2xl p-4 space-y-2">
-          <h4 className="font-extrabold text-[#2c4a66] text-xs uppercase tracking-wide">⚔️ Formatos de Torneo</h4>
+          <h4 className="font-extrabold text-[#2c4a66] text-xs uppercase tracking-wide flex items-center gap-1"><PadelRacketsIcon /> Formatos de Torneo</h4>
           <ul className="text-xs text-[#2c4a66] space-y-1.5 list-disc list-inside">
             <li><strong>🔄 Pozo Continuo:</strong> pistas ordenadas por nivel; quien gana sube de pista, quien pierde baja. Gana el torneo quien acabe dominando la Pista 1.</li>
             <li><strong>🇺🇸 Americano:</strong> inscripción individual, rotando de compañero y rival en cada ronda; los puntos se suman a tu casillero personal, no al de tu pareja de turno.</li>
@@ -1119,11 +1298,303 @@ function PushPreferencesCard({ currentUser, apiUrl, alertPreferences, reservatio
   );
 }
 
+// NUEVO (control de gasto de cena): comprime la foto del ticket antes de mandarla al backend.
+// Usa más resolución que la del avatar de perfil (1600px vs 200px) porque aquí lo que importa
+// es que el texto del ticket se pueda leer, tanto a simple vista como por el OCR.
+function comprimirFotoTicket(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (readerEvent) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const maxSize = 1600;
+        let width = img.width;
+        let height = img.height;
+        if (width > height) { if (width > maxSize) { height *= maxSize / width; width = maxSize; } }
+        else { if (height > maxSize) { width *= maxSize / height; height = maxSize; } }
+        canvas.width = width; canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', 0.85));
+      };
+      img.onerror = reject;
+      img.src = readerEvent.target.result;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+// NUEVO (control de gasto de cena): tarjeta de "Ticket de la cena" dentro de Cena & Club, a
+// petición de Marcos ("subir una foto del ticket y leer con OCR las bebidas... llevar un
+// control de importe por jueves y por persona... saber cuánto de esa cuenta es alcohol").
+// Un ticket por cena (clave: grupo + fechaClave). El reparto por persona es a partes iguales
+// (total ÷ comensales confirmados esa noche) y la categoría es solo Alcohol / Sin alcohol —
+// ambas decisiones confirmadas explícitamente por Marcos. El OCR es un best-effort: SIEMPRE se
+// enseña para revisar/corregir antes de guardar, nunca se guarda directo.
+function TicketCenaCard({ grupo, fechaClave, fechaLabel, numPersonasActuales, currentUser, apiUrl, ticketExistente, onSaved }) {
+  const [modo, setModo] = useState('resumen'); // 'resumen' | 'revisando'
+  const [cargandoOcr, setCargandoOcr] = useState(false);
+  const [guardando, setGuardando] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
+  const [itemsRevision, setItemsRevision] = useState([]);
+  const [fotoUrlPendiente, setFotoUrlPendiente] = useState('');
+  const [avisoSinOcr, setAvisoSinOcr] = useState(false);
+  const fileInputRef = useRef(null);
+
+  const totales = (() => {
+    const total = itemsRevision.reduce((acc, it) => acc + (Number(it.precio) || 0), 0);
+    const alcohol = itemsRevision.filter(it => it.esAlcohol).reduce((acc, it) => acc + (Number(it.precio) || 0), 0);
+    const sinAlcohol = total - alcohol;
+    const personas = Math.max(1, Number(numPersonasActuales) || 1);
+    return { total, alcohol, sinAlcohol, porPersona: total / personas };
+  })();
+
+  const handleFileSelected = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    e.target.value = '';
+    setErrorMsg('');
+    setCargandoOcr(true);
+    try {
+      const fotoBase64 = await comprimirFotoTicket(file);
+      const res = await fetch(apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ action: 'OCR_TICKET_CENA', fotoBase64 })
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || 'No se ha podido leer el ticket.');
+      setFotoUrlPendiente(data.fotoUrl || '');
+      setItemsRevision((data.items && data.items.length > 0) ? data.items : [{ desc: '', precio: '', esAlcohol: false }]);
+      setAvisoSinOcr(!data.items || data.items.length === 0);
+      setModo('revisando');
+    } catch (err) {
+      console.error(err);
+      setErrorMsg('No se ha podido leer el ticket. Puedes añadir las líneas a mano, o inténtalo de nuevo.');
+      setItemsRevision([{ desc: '', precio: '', esAlcohol: false }]);
+      setFotoUrlPendiente('');
+      setAvisoSinOcr(true);
+      setModo('revisando');
+    } finally {
+      setCargandoOcr(false);
+    }
+  };
+
+  const handleEditarExistente = () => {
+    setItemsRevision((ticketExistente?.items && ticketExistente.items.length > 0)
+      ? ticketExistente.items.map(it => ({ ...it }))
+      : [{ desc: '', precio: '', esAlcohol: false }]);
+    setFotoUrlPendiente(ticketExistente?.fotoUrl || '');
+    setAvisoSinOcr(false);
+    setErrorMsg('');
+    setModo('revisando');
+  };
+
+  const actualizarLinea = (idx, campo, valor) => {
+    setItemsRevision(prev => prev.map((it, i) => i === idx ? { ...it, [campo]: valor } : it));
+  };
+
+  const eliminarLinea = (idx) => {
+    setItemsRevision(prev => prev.filter((_, i) => i !== idx));
+  };
+
+  const handleGuardar = async () => {
+    const itemsValidos = itemsRevision
+      .map(it => ({ desc: String(it.desc || '').trim(), precio: parseFloat(String(it.precio).replace(',', '.')) || 0, esAlcohol: Boolean(it.esAlcohol) }))
+      .filter(it => it.desc && it.precio > 0);
+
+    if (itemsValidos.length === 0) {
+      setErrorMsg('Añade al menos una línea con descripción y precio antes de guardar.');
+      return;
+    }
+
+    setGuardando(true);
+    setErrorMsg('');
+    try {
+      const res = await fetch(apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({
+          action: 'GUARDAR_TICKET_CENA',
+          grupo, fechaClave, fechaLabel,
+          items: itemsValidos,
+          numPersonas: numPersonasActuales,
+          subidoPorId: currentUser?.id,
+          subidoPorNombre: currentUser?.name,
+          fotoUrl: fotoUrlPendiente || ticketExistente?.fotoUrl || ''
+        })
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || 'No se ha podido guardar el ticket.');
+      onSaved(data.ticket);
+      setModo('resumen');
+    } catch (err) {
+      console.error(err);
+      setErrorMsg('No se ha podido guardar el ticket. Inténtalo de nuevo.');
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  if (modo === 'revisando') {
+    return (
+      <div className="bg-white rounded-3xl p-4 border border-stone-200 shadow-xs space-y-3">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-black text-stone-900">🧾 Revisar ticket</h3>
+          <button onClick={() => setModo('resumen')} className="text-[11px] font-bold text-stone-400 hover:text-stone-600">Cancelar</button>
+        </div>
+
+        {avisoSinOcr && (
+          <p className="text-[10px] text-[#6b4d1c] bg-[#faf3e7] border border-[#efd9a9] rounded-xl p-2">
+            No se ha podido leer el ticket automáticamente. Añade las líneas a mano.
+          </p>
+        )}
+        {errorMsg && <p className="text-[10px] text-[#6b3f29] bg-[#f6ede6] border border-[#ead3bf] rounded-xl p-2">{errorMsg}</p>}
+
+        <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1">
+          {itemsRevision.map((it, idx) => (
+            <div key={idx} className="flex items-center gap-1.5 bg-stone-50 border border-stone-200 rounded-xl p-1.5">
+              <input
+                type="text"
+                value={it.desc}
+                onChange={e => actualizarLinea(idx, 'desc', e.target.value)}
+                placeholder="Bebida"
+                className="flex-1 min-w-0 bg-white border border-stone-300 rounded-lg px-2 py-1 text-[11px] font-semibold"
+              />
+              <input
+                type="text"
+                inputMode="decimal"
+                value={it.precio}
+                onChange={e => actualizarLinea(idx, 'precio', e.target.value)}
+                placeholder="€"
+                className="w-14 bg-white border border-stone-300 rounded-lg px-2 py-1 text-[11px] font-semibold text-right"
+              />
+              <label className="flex items-center gap-1 text-[9px] font-bold text-stone-600 shrink-0">
+                <input
+                  type="checkbox"
+                  checked={Boolean(it.esAlcohol)}
+                  onChange={e => actualizarLinea(idx, 'esAlcohol', e.target.checked)}
+                  className="w-3.5 h-3.5 accent-[#6b3f29]"
+                />
+                🍷
+              </label>
+              <button onClick={() => eliminarLinea(idx)} className="text-stone-300 hover:text-[#6b3f29] font-black text-sm shrink-0 px-1">✕</button>
+            </div>
+          ))}
+        </div>
+
+        <button
+          onClick={() => setItemsRevision(prev => [...prev, { desc: '', precio: '', esAlcohol: false }])}
+          className="w-full py-1.5 border border-dashed border-stone-300 rounded-xl text-[11px] font-bold text-stone-500 hover:bg-stone-50"
+        >
+          + Añadir línea
+        </button>
+
+        <div className="grid grid-cols-3 gap-2 text-center pt-1 border-t border-stone-100">
+          <div className="bg-stone-50 border border-stone-200 rounded-xl p-2">
+            <span className="text-sm font-black text-stone-800 block">{totales.total.toFixed(2)}€</span>
+            <span className="text-[8.5px] font-bold text-stone-500 uppercase">Total</span>
+          </div>
+          <div className="bg-[#f6ede6] border border-[#ead3bf] rounded-xl p-2">
+            <span className="text-sm font-black text-[#6b3f29] block">{totales.alcohol.toFixed(2)}€</span>
+            <span className="text-[8.5px] font-bold text-[#6b3f29] uppercase">Alcohol</span>
+          </div>
+          <div className="bg-[#eef2f6] border border-[#c3d3e0] rounded-xl p-2">
+            <span className="text-sm font-black text-[#2c4a66] block">{totales.porPersona.toFixed(2)}€</span>
+            <span className="text-[8.5px] font-bold text-[#2c4a66] uppercase">Por persona</span>
+          </div>
+        </div>
+
+        <button
+          onClick={handleGuardar}
+          disabled={guardando}
+          className="w-full py-2.5 bg-[#2f5d50] text-white rounded-2xl font-bold text-xs shadow-xs"
+        >
+          {guardando ? 'Guardando...' : '✓ Confirmar y guardar'}
+        </button>
+      </div>
+    );
+  }
+
+  // Modo resumen
+  return (
+    <div className="bg-white rounded-3xl p-4 border border-stone-200 shadow-xs space-y-3">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-black text-stone-900">🧾 Ticket de la cena</h3>
+        {cargandoOcr && <span className="text-[10px] font-bold text-stone-400">Leyendo ticket...</span>}
+      </div>
+
+      {errorMsg && <p className="text-[10px] text-[#6b3f29] bg-[#f6ede6] border border-[#ead3bf] rounded-xl p-2">{errorMsg}</p>}
+
+      {!ticketExistente ? (
+        <div className="text-center space-y-2 py-2">
+          <p className="text-[11px] text-stone-500">Todavía no hay ticket subido para esta cena.</p>
+          <button
+            onClick={() => fileInputRef.current && fileInputRef.current.click()}
+            disabled={cargandoOcr}
+            className="px-4 py-2 bg-[#2c4a66] text-white rounded-xl text-xs font-bold shadow-xs"
+          >
+            {cargandoOcr ? 'Leyendo...' : '📸 Subir foto del ticket'}
+          </button>
+        </div>
+      ) : (
+        <>
+          <div className="grid grid-cols-3 gap-2 text-center">
+            <div className="bg-stone-50 border border-stone-200 rounded-xl p-2">
+              <span className="text-sm font-black text-stone-800 block">{ticketExistente.totalTicket.toFixed(2)}€</span>
+              <span className="text-[8.5px] font-bold text-stone-500 uppercase">Total</span>
+            </div>
+            <div className="bg-[#f6ede6] border border-[#ead3bf] rounded-xl p-2">
+              <span className="text-sm font-black text-[#6b3f29] block">{ticketExistente.totalAlcohol.toFixed(2)}€</span>
+              <span className="text-[8.5px] font-bold text-[#6b3f29] uppercase">Alcohol</span>
+            </div>
+            <div className="bg-[#eef2f6] border border-[#c3d3e0] rounded-xl p-2">
+              <span className="text-sm font-black text-[#2c4a66] block">{ticketExistente.importePorPersona.toFixed(2)}€</span>
+              <span className="text-[8.5px] font-bold text-[#2c4a66] uppercase">Por persona ({ticketExistente.numPersonas})</span>
+            </div>
+          </div>
+
+          <p className="text-[10px] text-stone-400 text-center">
+            Subido por {ticketExistente.subidoPorNombre || 'alguien'}
+            {ticketExistente.fotoUrl && (
+              <> · <a href={ticketExistente.fotoUrl} target="_blank" rel="noreferrer" className="underline font-bold text-[#2c4a66]">Ver foto</a></>
+            )}
+          </p>
+
+          <div className="flex gap-2">
+            <button onClick={handleEditarExistente} className="flex-1 py-1.5 bg-stone-100 text-stone-700 rounded-xl text-[11px] font-bold">
+              ✏️ Editar líneas
+            </button>
+            <button
+              onClick={() => fileInputRef.current && fileInputRef.current.click()}
+              disabled={cargandoOcr}
+              className="flex-1 py-1.5 bg-stone-100 text-stone-700 rounded-xl text-[11px] font-bold"
+            >
+              {cargandoOcr ? 'Leyendo...' : '📸 Repetir foto'}
+            </button>
+          </div>
+        </>
+      )}
+
+      <input type="file" ref={fileInputRef} accept="image/*" capture="environment" className="hidden" onChange={handleFileSelected} />
+    </div>
+  );
+}
+
 // NUEVO: pantalla de "Inicio" — lo primero que se ve al entrar en la app (antes se caía
 // directo en la lista de Partidos). Da un vistazo rápido a lo importante de la semana (si ya
 // hay partido subido, cuánta gente ha confirmado cena o se está haciendo la remolona), a los
 // torneos activos, y accesos directos al resto de secciones.
-function HomeScreen({ currentUser, matches, activeTournaments, pendingAlerts, onNavigate, onOpenMatch }) {
+function HomeScreen({ currentUser, matches, activeTournaments, allDinnerGuests, pendingAlerts, onNavigate, onOpenMatch }) {
+  // NUEVO: "Estadísticas individuales" del Home — semanas sin jugar / sin ganar-perder / sin
+  // cena, calculadas sobre Liga + Amistosos + Torneos (alcance "Todo", a petición de Marcos).
+  const rachas = useMemo(
+    () => calcularRachasSemanales(currentUser, matches, activeTournaments, allDinnerGuests),
+    [currentUser, matches, activeTournaments, allDinnerGuests]
+  );
+
   const resumen = useMemo(() => {
     const ahora = new Date();
     const finSemana = new Date(ahora.getTime());
@@ -1199,10 +1670,58 @@ function HomeScreen({ currentUser, matches, activeTournaments, pendingAlerts, on
         )}
       </div>
 
+      {/* NUEVO: "Estadísticas individuales" — pensado para rellenar un Home que se veía un poco
+          vacío, con 3 datos "de racha" sobre Liga + Amistosos + Torneos juntos (alcance "Todo").
+          El hueco central es compartido: muestra "sin ganar" si tu último resultado fue una
+          derrota (para animarte) o "sin perder" si fue una victoria (para presumir de racha) —
+          nunca los dos a la vez. */}
+      {rachas && rachas.tieneHistorial && (
+        <div className="bg-white rounded-2xl p-3.5 border border-stone-200 shadow-xs space-y-2.5">
+          <span className="font-black text-stone-900 text-xs block">📊 Estadísticas individuales</span>
+          <div className="grid grid-cols-3 gap-2 text-center">
+            <div className="bg-stone-50 border border-stone-200 rounded-xl p-2.5">
+              <span className="text-lg font-black text-stone-800 block">{rachas.semanasSinJugar}</span>
+              <span className="text-[9px] font-bold text-stone-500 uppercase leading-tight block">
+                {rachas.semanasSinJugar === 1 ? 'Semana sin jugar' : 'Semanas sin jugar'}
+              </span>
+            </div>
+
+            {rachas.ultimoResultado === 'derrota' ? (
+              <div className="bg-[#faf3e7] border border-[#efd9a9] rounded-xl p-2.5">
+                <span className="text-lg font-black text-[#6b4d1c] block">
+                  {rachas.semanasSinGanar === null ? '–' : rachas.semanasSinGanar}
+                </span>
+                <span className="text-[9px] font-bold text-[#6b4d1c] uppercase leading-tight block">
+                  {rachas.semanasSinGanar === 1 ? 'Semana sin ganar' : 'Semanas sin ganar'}
+                </span>
+              </div>
+            ) : (
+              <div className="bg-[#eef4f0] border border-[#c7ddc9] rounded-xl p-2.5">
+                <span className="text-lg font-black text-[#2f5d50] block">
+                  {rachas.semanasSinPerder === null ? '–' : rachas.semanasSinPerder}
+                </span>
+                <span className="text-[9px] font-bold text-[#2f5d50] uppercase leading-tight block">
+                  {rachas.semanasSinPerder === 1 ? 'Semana sin perder' : 'Semanas sin perder'}
+                </span>
+              </div>
+            )}
+
+            <div className="bg-[#f2eef2] border border-[#ddc9de] rounded-xl p-2.5">
+              <span className="text-lg font-black text-[#4a3350] block">
+                {rachas.semanasSinCena === null ? '–' : rachas.semanasSinCena}
+              </span>
+              <span className="text-[9px] font-bold text-[#4a3350] uppercase leading-tight block">
+                {rachas.semanasSinCena === 1 ? 'Semana sin cena' : 'Semanas sin cena'}
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+
       {resumen.misTorneos.length > 0 && (
         <div className="bg-white rounded-2xl p-3.5 border border-stone-200 shadow-xs space-y-2">
           <div className="flex items-center justify-between">
-            <span className="font-black text-stone-900 text-xs">⚔️ Tus torneos activos</span>
+            <span className="font-black text-stone-900 text-xs flex items-center gap-1"><PadelRacketsIcon /> Tus torneos activos</span>
             <button onClick={() => onNavigate('torneos')} className="text-[10px] font-bold text-[#4a3350] hover:underline">Ver todo →</button>
           </div>
           <div className="flex flex-wrap gap-1.5">
@@ -1237,7 +1756,7 @@ function HomeScreen({ currentUser, matches, activeTournaments, pendingAlerts, on
           <span className="text-[11px] font-bold text-stone-700">Bote</span>
         </button>
         <button onClick={() => onNavigate('torneos')} className="bg-[#4a3350] text-white rounded-2xl p-3 text-center hover:bg-[#4a3350] transition">
-          <span className="text-xl block mb-0.5">⚔️</span>
+          <span className="text-xl block mb-0.5"><PadelRacketsIcon /></span>
           <span className="text-[11px] font-bold">Torneos</span>
         </button>
       </div>
@@ -1376,6 +1895,10 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, allDinn
   const [uploading, setUploading] = useState(false);
   const [editing, setEditing] = useState(false);
   const [selectedStatCategory, setSelectedStatCategory] = useState(null);
+  // NUEVO: qué "vista" de Partidos/Victorias/Derrotas/Éxito se muestra — Liga regular (el dato
+  // de siempre, intacto), Amistosos y Torneos, o Todo combinado. Por defecto se queda en "liga"
+  // para que a nadie le cambien los números que ya conocía al abrir el perfil.
+  const [vistaPJ, setVistaPJ] = useState('liga');
 
   const [editName, setEditName] = useState('');
   const [editPhone, setEditPhone] = useState('');
@@ -1391,6 +1914,7 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, allDinn
       setEditIsLeftHanded(Boolean(user.isLeftHanded));
       setEditing(false);
       setSelectedStatCategory(null);
+      setVistaPJ('liga');
     }
   }, [user]);
 
@@ -1445,6 +1969,12 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, allDinn
 
   const statsCalculated = (() => {
     let playedList = [], wonList = [], lostList = [], dinnerYesList = [], dinnerNoList = [];
+    // NUEVO (vistas Todo/Liga/Amistosos+Torneos): los amistosos antes no se listaban en ningún
+    // sitio salvo a 0 puntos — ahora además se guardan en su propia lista, con la misma forma
+    // que playedList/wonList/lostList, para poder sumarlos en la vista "Amistosos y Torneos"
+    // sin tocar en absoluto playedList/wonList/lostList (que siguen siendo solo Liga regular,
+    // exactamente igual que antes — "no debe modificar el dato actual").
+    let friendliesList = [], friendliesWonList = [], friendliesLostList = [];
     let puntosDetalle = [], boteDetalle = [];
     const partnerStats = {}, rivalStats = {};
 
@@ -1508,10 +2038,17 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, allDinn
       const rivals = (m.players || []).filter(p => p.team !== mySlot.team).map(p => p.name).join(' & ') || 'Rivales';
 
       if (!isMatchOfficial(m)) {
-        // Los amistosos no cuentan para PJ/liga ni puntúan, pero sí entran en la química de
-        // parejas/rivales de arriba, y se listan aquí a 0 (en vez de desaparecer sin más) para
-        // que quede claro, mirando el propio historial, por qué no han movido el total.
+        // Los amistosos no cuentan para PJ/liga ni puntúan (eso sigue igual: puntosDetalle y
+        // boteDetalle se quedan a 0, no computan para el bote ni los puntos híbridos), pero sí
+        // entran en la química de parejas/rivales de arriba Y ahora también en friendliesList,
+        // para que la vista "Amistosos y Torneos" pueda mostrar sus propios PJ/V/D.
         acumularQuimica(m, mySlot);
+        const friendlyDetail = {
+          id: m.id, date: m.date, location: m.location || 'Club', score: m.score || 'Finalizado',
+          myTeam: mySlot.team, won: mySlot.won === 'SI', dinner: mySlot.dinner, partner, rivals, esAmistoso: true
+        };
+        friendliesList.push(friendlyDetail);
+        if (friendlyDetail.won) friendliesWonList.push(friendlyDetail); else friendliesLostList.push(friendlyDetail);
         puntosDetalle.push({ date: m.date, title: `Partido vs ${rivals} (amistoso)`, pts: 0, desc: 'Amistoso — no computa para la liga' });
         boteDetalle.push({ date: m.date, title: `Partido vs ${rivals} (amistoso)`, bote: 0, desc: 'Amistoso — no computa para la liga' });
         return;
@@ -1603,6 +2140,7 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, allDinn
     puntosDetalle.sort(sortByDate);
     boteDetalle.sort(sortByDate);
     playedList.sort(sortByDate);
+    friendliesList.sort(sortByDate);
 
 // Análisis de química
     let bestPartner = null, worstPartner = null;
@@ -1642,6 +2180,7 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, allDinn
 
     return {
       playedList, wonList, lostList, dinnerYesList, dinnerNoList, puntosDetalle, boteDetalle,
+      friendliesList, friendliesWonList, friendliesLostList,
       played: playedList.length,
       won: wonList.length,
       lost: lostList.length,
@@ -1743,6 +2282,12 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, allDinn
       if (!isParticipant) return;
 
       const tMode = (t.mode || 'pozo').toLowerCase();
+      // Los torneos no guardan la fecha de cada partido suelto, solo la fecha de inicio del
+      // torneo — misma aproximación que ya usa streakAndTrend más abajo para el gráfico mensual.
+      // Se usa aquí solo para poder ordenar cronológicamente al mezclar con amistosos en la
+      // vista "Amistosos y Torneos".
+      const tFechaObj = t.startDate ? new Date(`${t.startDate}T${t.startTime || '00:00'}`) : null;
+      const tFecha = tFechaObj && !isNaN(tFechaObj.getTime()) ? tFechaObj : null;
 
       (t.rounds || []).forEach(r => {
         (r.matches || []).forEach(m => {
@@ -1767,7 +2312,8 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, allDinn
               team1: m.team1,
               team2: m.team2,
               score: m.score || 'Finalizado',
-              won
+              won,
+              fecha: tFecha
             });
 
             if (modeStats[tMode]) {
@@ -1806,14 +2352,64 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, allDinn
     };
   })();
 
+  // NUEVO: las 3 vistas del bloque Partidos/Victorias/Derrotas/Éxito que pidió Marcos. "Liga"
+  // es exactamente statsCalculated de siempre (sin tocar). "Amistosos" suma amistosos + partidos
+  // de torneo. "Todo" es la suma de las dos. Cada vista lleva también su propia lista ordenada
+  // cronológicamente para el subpanel de detalle (mezclando partidos de liga/amistoso, que
+  // llevan fecha en texto, con partidos de torneo, que llevan "fecha" como objeto Date).
+  const vistasPJ = (() => {
+    const fechaDeItem = (item) => (item.fecha !== undefined ? item.fecha : parseMatchDateObject(item.date));
+    const mergeOrdenado = (...listas) => [].concat(...listas).sort((a, b) => {
+      const da = fechaDeItem(a) || new Date(0);
+      const db = fechaDeItem(b) || new Date(0);
+      return db - da;
+    });
+
+    const liga = {
+      played: statsCalculated.played, won: statsCalculated.won, lost: statsCalculated.lost,
+      winRate: statsCalculated.winRate,
+      playedList: statsCalculated.playedList, wonList: statsCalculated.wonList, lostList: statsCalculated.lostList
+    };
+
+    const amistososTorneos = (() => {
+      const played = statsCalculated.friendliesList.length + tournamentStats.tPlayed;
+      const won = statsCalculated.friendliesWonList.length + tournamentStats.tWon;
+      const lost = statsCalculated.friendliesLostList.length + tournamentStats.tLost;
+      return {
+        played, won, lost,
+        winRate: played > 0 ? ((won / played) * 100).toFixed(0) : 0,
+        playedList: mergeOrdenado(statsCalculated.friendliesList, tournamentStats.tList),
+        wonList: mergeOrdenado(statsCalculated.friendliesWonList, tournamentStats.tList.filter(x => x.won)),
+        lostList: mergeOrdenado(statsCalculated.friendliesLostList, tournamentStats.tList.filter(x => !x.won))
+      };
+    })();
+
+    const todo = {
+      played: liga.played + amistososTorneos.played,
+      won: liga.won + amistososTorneos.won,
+      lost: liga.lost + amistososTorneos.lost,
+      winRate: (liga.played + amistososTorneos.played) > 0
+        ? (((liga.won + amistososTorneos.won) / (liga.played + amistososTorneos.played)) * 100).toFixed(0)
+        : 0,
+      playedList: mergeOrdenado(liga.playedList, amistososTorneos.playedList),
+      wonList: mergeOrdenado(liga.wonList, amistososTorneos.wonList),
+      lostList: mergeOrdenado(liga.lostList, amistososTorneos.lostList)
+    };
+
+    return { liga, amistosos: amistososTorneos, todo };
+  })();
+
+  const vistaPJActual = vistasPJ[vistaPJ === 'amistosos' ? 'amistosos' : vistaPJ === 'todo' ? 'todo' : 'liga'];
+  const etiquetaVistaPJ = vistaPJ === 'amistosos' ? ' (Amistosos y Torneos)' : vistaPJ === 'todo' ? ' (Todo)' : ' (Liga)';
+
   const getDetailTitle = () => {
     switch(selectedStatCategory) {
-      case 'pj': return 'Partidos Jugados (Liga)';
-      case 'victorias': return 'Victorias (Liga)';
-      case 'derrotas': return 'Derrotas (Liga)';
+      case 'pj': return `Partidos Jugados${etiquetaVistaPJ}`;
+      case 'victorias': return `Victorias${etiquetaVistaPJ}`;
+      case 'derrotas': return `Derrotas${etiquetaVistaPJ}`;
       case 'cenas': return 'Cenas Asistidas 🍻';
       case 'rajadas': return 'Rajadas de Cena 🏃‍♂️';
-      case 'torneos': return 'Partidos en Torneos ⚔️';
+      case 'torneos': return 'Partidos en Torneos';
       case 'puntos': return 'Historial de Puntos Híbridos 🏅';
       case 'bote': return 'Desglose del Bote 💶';
       default: return '';
@@ -1822,9 +2418,9 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, allDinn
 
   const getDetailItems = () => {
     switch(selectedStatCategory) {
-      case 'pj': return statsCalculated.playedList;
-      case 'victorias': return statsCalculated.wonList;
-      case 'derrotas': return statsCalculated.lostList;
+      case 'pj': return vistaPJActual.playedList;
+      case 'victorias': return vistaPJActual.wonList;
+      case 'derrotas': return vistaPJActual.lostList;
       case 'cenas': return statsCalculated.dinnerYesList;
       case 'rajadas': return statsCalculated.dinnerNoList;
       case 'torneos': return tournamentStats.tList;
@@ -2012,16 +2608,39 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, allDinn
 
         {isThursdayMember && (
           <div className="space-y-2">
-            <span className="text-[10px] font-black text-stone-400 uppercase tracking-wider block">
-              Estadísticas Liga Regular
-            </span>
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[10px] font-black text-stone-400 uppercase tracking-wider block">
+                Partidos, Victorias y Derrotas
+              </span>
+            </div>
+
+            {/* NUEVO: selector de vista — Liga regular es el dato de siempre, sin tocar; las
+                otras dos suman amistosos y/o torneos, a petición de Marcos ("una visión de
+                todo, una visión de liga regular y una visión de amistosos y torneos"). */}
+            <div className="flex bg-stone-100 p-0.5 rounded-xl text-[9.5px] font-bold">
+              {[
+                { key: 'liga', label: 'Liga regular' },
+                { key: 'amistosos', label: 'Amistosos y Torneos' },
+                { key: 'todo', label: 'Todo' }
+              ].map(v => (
+                <button
+                  key={v.key}
+                  type="button"
+                  onClick={() => { setVistaPJ(v.key); setSelectedStatCategory(null); }}
+                  className={`flex-1 py-1.5 rounded-lg transition ${vistaPJ === v.key ? 'bg-white shadow-xs text-stone-900' : 'text-stone-500 hover:text-stone-700'}`}
+                >
+                  {v.label}
+                </button>
+              ))}
+            </div>
+
             <div className="grid grid-cols-4 gap-2 text-center">
               <button
                 type="button"
                 onClick={() => setSelectedStatCategory(selectedStatCategory === 'pj' ? null : 'pj')}
                 className={`border rounded-xl p-2 transition ${selectedStatCategory === 'pj' ? 'bg-[#2c4a66] text-white border-[#2c4a66]' : 'bg-stone-50 border-stone-200 hover:bg-stone-100'}`}
               >
-                <span className="text-base font-black block">{statsCalculated.played}</span>
+                <span className="text-base font-black block">{vistaPJActual.played}</span>
                 <span className="text-[9px] uppercase font-bold opacity-80">PJ</span>
               </button>
 
@@ -2030,7 +2649,7 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, allDinn
                 onClick={() => setSelectedStatCategory(selectedStatCategory === 'victorias' ? null : 'victorias')}
                 className={`border rounded-xl p-2 transition ${selectedStatCategory === 'victorias' ? 'bg-[#2f5d50] text-white border-[#2f5d50]' : 'bg-[#eef4f0] border-[#c7ddc9] text-[#2f5d50] hover:bg-[#eef4f0]'}`}
               >
-                <span className="text-base font-black block">{statsCalculated.won}</span>
+                <span className="text-base font-black block">{vistaPJActual.won}</span>
                 <span className="text-[9px] uppercase font-bold opacity-80">Ganados</span>
               </button>
 
@@ -2039,16 +2658,19 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, allDinn
                 onClick={() => setSelectedStatCategory(selectedStatCategory === 'derrotas' ? null : 'derrotas')}
                 className={`border rounded-xl p-2 transition ${selectedStatCategory === 'derrotas' ? 'bg-[#6b3f29] text-white border-[#6b3f29]' : 'bg-[#f6ede6] border-[#ead3bf] text-[#6b3f29] hover:bg-[#f6ede6]'}`}
               >
-                <span className="text-base font-black block">{statsCalculated.lost}</span>
+                <span className="text-base font-black block">{vistaPJActual.lost}</span>
                 <span className="text-[9px] uppercase font-bold opacity-80">Perdidos</span>
               </button>
 
               <div className="bg-[#eef2f6] border border-[#c3d3e0] rounded-xl p-2 text-[#2c4a66]">
-                <span className="text-base font-black block">{statsCalculated.winRate}%</span>
+                <span className="text-base font-black block">{vistaPJActual.winRate}%</span>
                 <span className="text-[9px] uppercase font-bold opacity-80">% Éxito</span>
               </div>
             </div>
 
+            <span className="text-[10px] font-black text-stone-400 uppercase tracking-wider block pt-1">
+              Cenas y Rajadas (Liga Regular)
+            </span>
             <div className="grid grid-cols-2 gap-2 text-center pt-1">
               <button
                 type="button"
@@ -2185,7 +2807,7 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, allDinn
                   </div>
 
                   <div className="bg-[#faf3e7]/80 border border-[#efd9a9] p-2.5 rounded-2xl">
-                    <span className="text-[9px] font-black text-[#6b4d1c] uppercase block mb-1">⚔️ Como Rivales</span>
+                    <span className="text-[9px] font-black text-[#6b4d1c] uppercase mb-1 flex items-center gap-1"><PadelRacketsIcon /> Como Rivales</span>
                     {totalRivales > 0 ? (
                       <div>
                         <span className="font-extrabold text-stone-900 block">
@@ -2213,8 +2835,8 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, allDinn
                           🤝 Pareja · {r.ganaron ? 'Victoria' : 'Derrota'}
                         </span>
                       ) : (
-                        <span className={`font-bold ${r.ganaProfile ? 'text-[#6b3f29]' : 'text-[#2f5d50]'}`}>
-                          ⚔️ Rival · {r.ganaProfile ? `Ganó ${user.name?.split(' ')[0] || 'él/ella'}` : 'Ganaste tú'}
+                        <span className={`font-bold inline-flex items-center gap-1 ${r.ganaProfile ? 'text-[#6b3f29]' : 'text-[#2f5d50]'}`}>
+                          <PadelRacketsIcon /> Rival · {r.ganaProfile ? `Ganó ${user.name?.split(' ')[0] || 'él/ella'}` : 'Ganaste tú'}
                         </span>
                       )}
                     </div>
@@ -2261,7 +2883,7 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, allDinn
                     ) : 'date' in item ? (
                       <>
                         <div className="flex justify-between text-[10px] font-bold text-stone-300">
-                          <span>📅 {item.date}</span>
+                          <span>📅 {item.date}{item.esAmistoso && <span className="text-stone-500 font-semibold"> · 🤝 Amistoso</span>}</span>
                           {item.partner !== 'Solo Cena' && (
                             <span className={item.won ? 'text-[#a9c4ad]' : 'text-[#d9a582]'}>{item.won ? 'Victoria 🏆' : 'Derrota ❌'}</span>
                           )}
@@ -2318,8 +2940,8 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, allDinn
         {/* RENDIMIENTO Y MODALIDAD EN TORNEOS */}
         <div className="space-y-2 pt-1 border-t border-stone-100">
           <div className="flex justify-between items-center">
-            <span className="text-[10px] font-black text-[#4a3350] uppercase tracking-wider block">
-              ⚔️ Rendimiento en Torneos
+            <span className="text-[10px] font-black text-[#4a3350] uppercase tracking-wider flex items-center gap-1">
+              <PadelRacketsIcon /> Rendimiento en Torneos
             </span>
             <button
               type="button"
@@ -3855,6 +4477,17 @@ export default function App() {
 
   const [loadingDinnerId, setLoadingDinnerId] = useState(null);
 
+  // NUEVO (control de gasto de cena): un ticket (foto + líneas OCR revisadas) por cada cena de
+  // jueves/martes — ver GUARDAR_TICKET_CENA/OCR_TICKET_CENA en el backend.
+  const [dinnerTickets, setDinnerTickets] = useState(() => {
+    try {
+      const cached = localStorage.getItem('padel_cached_dinner_tickets');
+      return cached ? JSON.parse(cached) : [];
+    } catch {
+      return [];
+    }
+  });
+
   const [showTournamentWizard, setShowTournamentWizard] = useState(false);
   // NUEVO: el modal de creación de torneo permanece siempre montado (solo hace
   // "return null" internamente cuando isOpen=false), así que sus useState
@@ -4032,6 +4665,10 @@ export default function App() {
         if (json.alertasReserva) {
           setReservationAlerts(json.alertasReserva);
           localStorage.setItem('padel_cached_reservation_alerts', JSON.stringify(json.alertasReserva));
+        }
+        if (json.ticketsCena) {
+          setDinnerTickets(json.ticketsCena);
+          localStorage.setItem('padel_cached_dinner_tickets', JSON.stringify(json.ticketsCena));
         }
       }
     } catch (e) {
@@ -5388,6 +6025,12 @@ export default function App() {
     return found ? found.label : (activeDinnerKey || 'Jornada seleccionada');
   }, [availableDinnerDates, activeDinnerKey]);
 
+  // NUEVO (control de gasto de cena): ticket ya guardado para la cena que se está viendo ahora
+  // mismo (si lo hay) — clave (grupo, fechaClave), igual que en el backend.
+  const ticketCenaActual = useMemo(() => {
+    return (dinnerTickets || []).find(t => t.grupo === myGroup && t.fechaClave === activeDinnerKey) || null;
+  }, [dinnerTickets, myGroup, activeDinnerKey]);
+
   const allSelectableUsers = useMemo(() => {
     const list = [...players];
     activeTournaments.forEach(t => {
@@ -5400,7 +6043,7 @@ export default function App() {
             group: 'torneo',
             photo: p.photo || '',
             level: p.level || 3.0,
-            titulo: 'Jugador de Torneo ⚔️',
+            titulo: 'Jugador de Torneo',
             pin: '',
             pJ: 0, pG: 0, cSi: 0, cNo: 0,
             ptsDeportivo: 0, ptsBarandas: 0, hibrido: 0, deuda: 0
@@ -5430,7 +6073,7 @@ export default function App() {
         photo: invitedPlayerSlot.photo || '',
         pin: '',
         group: 'torneo',
-        titulo: 'Invitado al Torneo ⚔️',
+        titulo: 'Invitado al Torneo',
         level: invitedPlayerSlot.level || 3.0
       };
 
@@ -5476,7 +6119,7 @@ export default function App() {
         <div className="min-h-screen bg-stone-900 text-white flex flex-col justify-center items-center p-4 text-left">
           <div className="max-w-md w-full bg-stone-800 rounded-3xl p-6 border border-[#b893ba]/40 shadow-2xl space-y-4">
             <div className="text-center">
-              <span className="text-4xl block mb-1">⚔️</span>
+              <span className="text-4xl mb-1 flex justify-center"><PadelRacketsIcon /></span>
               <span className="text-[10px] font-black uppercase tracking-wider bg-[#b893ba]/20 text-[#b893ba] px-2.5 py-0.5 rounded-full">
                 Invitación a Torneo Privado
               </span>
@@ -5495,7 +6138,7 @@ export default function App() {
                   photo: p.photo || '',
                   pin: '',
                   group: 'torneo',
-                  titulo: 'Invitado al Torneo ⚔️',
+                  titulo: 'Invitado al Torneo',
                   level: p.level || 3.0
                 };
 
@@ -5642,7 +6285,7 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-stone-100 text-stone-900 pb-16">
+    <div className="min-h-screen text-stone-900 pb-16" style={ESTILO_FONDO_PISTA_PADEL}>
       <header className="bg-white border-b border-stone-200 sticky top-0 z-30 shadow-sm">
         <div className="max-w-xl mx-auto px-4 py-3 flex items-center justify-between gap-2">
           <div
@@ -5759,6 +6402,7 @@ export default function App() {
             currentUser={currentUser}
             matches={matches}
             activeTournaments={activeTournaments}
+            allDinnerGuests={allDinnerGuests}
             pendingAlerts={pendingAlerts}
             onNavigate={(tab) => setActiveTab(tab)}
             onOpenMatch={(id) => { setActiveTab('partidos'); setSelectedMatchId(id); }}
@@ -6102,7 +6746,7 @@ export default function App() {
                   { key: 'cenas', label: 'Cena', icon: '🍻', active: 'bg-white shadow-xs text-[#2f5d50]' },
                   { key: 'rankings', label: 'Rankings', icon: '🏆', active: 'bg-white shadow-xs text-stone-900' },
                   { key: 'bote', label: 'Bote', icon: '💶', active: 'bg-white shadow-xs text-stone-900' },
-                  { key: 'torneos', label: 'Torneos', icon: '⚔️', active: 'bg-[#4a3350] shadow-xs text-white' }
+                  { key: 'torneos', label: 'Torneos', icon: <PadelRacketsIcon />, active: 'bg-[#4a3350] shadow-xs text-white' }
                 ].map(tab => (
                   <button
                     key={tab.key}
@@ -6119,7 +6763,7 @@ export default function App() {
             ) : (
               <div className="bg-[#f2eef2] border border-[#ddc9de] text-[#4a3350] rounded-2xl p-3 flex items-center justify-between shadow-xs">
                 <div className="flex items-center gap-2.5">
-                  <span className="text-2xl">⚔️</span>
+                  <span className="text-2xl"><PadelRacketsIcon /></span>
                   <div>
                     <span className="font-black text-xs block">Acceso Exclusivo de Torneos CTC</span>
                     <span className="text-[10px] text-[#4a3350] font-medium">Visualizas únicamente los eventos a los que estás convocado</span>
@@ -6428,6 +7072,25 @@ export default function App() {
                     </button>
                   </div>
                 </div>
+
+                {/* NUEVO (control de gasto de cena): foto del ticket + OCR, importe por
+                    jueves/martes y por persona, y cuánto de la cuenta es alcohol. */}
+                <TicketCenaCard
+                  grupo={myGroup}
+                  fechaClave={activeDinnerKey}
+                  fechaLabel={currentVisualDinnerLabel}
+                  numPersonasActuales={dinnerYes.length + dinnerGuests.length}
+                  currentUser={currentUser}
+                  apiUrl={apiUrl}
+                  ticketExistente={ticketCenaActual}
+                  onSaved={(ticket) => {
+                    setDinnerTickets(prev => {
+                      const sinEsteGrupoYFecha = prev.filter(t => !(t.grupo === ticket.grupo && t.fechaClave === ticket.fechaClave));
+                      return [...sinEsteGrupoYFecha, ticket];
+                    });
+                    fetchData(true);
+                  }}
+                />
               </div>
             )}
 
@@ -6535,7 +7198,7 @@ export default function App() {
                       </span>
                       <h2 className="text-xl font-black mt-1">Torneos Especiales CTC</h2>
                     </div>
-                    <span className="text-3xl">⚔️</span>
+                    <span className="text-3xl"><PadelRacketsIcon /></span>
                   </div>
                   <button
                     onClick={() => { setTournamentWizardKey(k => k + 1); setShowTournamentWizard(true); }}
@@ -6855,9 +7518,9 @@ export default function App() {
                         <div className="flex bg-stone-100 p-1 rounded-xl text-[11px] font-bold">
                           <button
                             onClick={() => setTournamentSubTab(prev => ({ ...prev, [t.id]: 'partidos' }))}
-                            className={`flex-1 py-1.5 rounded-lg transition ${curSubTab === 'partidos' ? 'bg-white shadow text-[#4a3350]' : 'text-stone-600'}`}
+                            className={`flex-1 py-1.5 rounded-lg transition inline-flex items-center justify-center gap-1 ${curSubTab === 'partidos' ? 'bg-white shadow text-[#4a3350]' : 'text-stone-600'}`}
                           >
-                            ⚔️ Partidos
+                            <PadelRacketsIcon /> Partidos
                           </button>
                           <button
                             onClick={() => setTournamentSubTab(prev => ({ ...prev, [t.id]: 'jugadores' }))}
