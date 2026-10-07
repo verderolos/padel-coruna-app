@@ -24,6 +24,12 @@ function urlBase64ToUint8Array(base64String) {
 const FALLBACK_USERS = [];
 const FALLBACK_MATCHES = [];
 
+// NUEVO (control de acceso del administrador): id de jugador (columna A de "Jugadores", tal
+// cual lo guarda REGISTRAR_JUGADOR) fijado en el código como administrador — decisión
+// explícita de Marcos ("tu id de jugador, fijo en el código"), en vez de un rol almacenado
+// en la hoja. Es "u12", confirmado por Marcos.
+const ADMIN_PLAYER_ID = 'u12';
+
 // REGLAS OFICIALES DETALLADAS POR MODALIDAD PARA EL MOTOR DE GEMINI
 const OFFICIAL_TOURNAMENT_RULES = {
   pozo: `REGLAS OFICIALES: POZO CONTINUO (SUBE Y BAJA)
@@ -679,11 +685,23 @@ function CriteriosModal({ isOpen, onClose }) {
 
 function PinModal({ isOpen, onClose, targetUser, onPinSuccess, apiUrl }) {
   const [pin, setPin] = useState('');
+  const [pinConfirm, setPinConfirm] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
+  // MODO CREAR vs VERIFICAR: si el jugador todavía no tiene ningún PIN guardado (campo
+  // "pin" vacío) le toca ELEGIR uno nuevo, en vez de que le pidamos "adivinar" uno que nunca
+  // llegó a existir. Esto cubre dos casos reales: (1) un invitado de torneo que entra por
+  // primera vez por su enlace personalizado y todavía no tiene fila en "Jugadores" — antes
+  // esto dejaba a cualquier invitado nuevo completamente bloqueado, porque VERIFICAR_PIN
+  // nunca encuentra su ficha y el formulario solo sabía "verificar", nunca "crear"; y (2) un
+  // jugador al que el administrador acaba de promover de invitado a Chicos/Chicas, a quien le
+  // vaciamos el PIN a propósito para que confirme el cambio eligiendo uno nuevo.
+  const modoCrearPin = !targetUser || !targetUser.pin;
+
   useEffect(() => {
     setPin('');
+    setPinConfirm('');
     setError('');
   }, [isOpen, targetUser]);
 
@@ -695,6 +713,10 @@ function PinModal({ isOpen, onClose, targetUser, onPinSuccess, apiUrl }) {
       setError('El PIN debe tener 4 dígitos');
       return;
     }
+    if (modoCrearPin && pin !== pinConfirm) {
+      setError('Los dos PIN no coinciden');
+      return;
+    }
 
     setLoading(true);
     setError('');
@@ -703,19 +725,23 @@ function PinModal({ isOpen, onClose, targetUser, onPinSuccess, apiUrl }) {
       const res = await fetch(apiUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({ action: 'VERIFICAR_PIN', idJugador: targetUser.id, pin })
+        body: JSON.stringify(
+          modoCrearPin
+            ? { action: 'CREAR_PIN_JUGADOR', idJugador: targetUser.id, nombre: targetUser.name, grupo: targetUser.group || 'torneo', pin }
+            : { action: 'VERIFICAR_PIN', idJugador: targetUser.id, pin }
+        )
       });
       const data = await res.json();
       if (data.ok) {
-        onPinSuccess(data.jugador || targetUser);
+        onPinSuccess(data.jugador || { ...targetUser, pin });
       } else {
         setError(data.error || 'PIN incorrecto');
       }
     } catch (err) {
-      if (targetUser.pin && targetUser.pin === pin) {
+      if (!modoCrearPin && targetUser.pin && targetUser.pin === pin) {
         onPinSuccess(targetUser);
       } else {
-        setError('Error al verificar PIN');
+        setError(modoCrearPin ? 'Error al crear el PIN' : 'Error al verificar PIN');
       }
     } finally {
       setLoading(false);
@@ -728,7 +754,9 @@ function PinModal({ isOpen, onClose, targetUser, onPinSuccess, apiUrl }) {
         <UserAvatar name={targetUser.name} photo={targetUser.photo} size="lg" className="mx-auto" />
         <div>
           <h3 className="text-base font-black">{targetUser.name}</h3>
-          <p className="text-xs text-stone-400">Introduce tu PIN de 4 dígitos</p>
+          <p className="text-xs text-stone-400">
+            {modoCrearPin ? 'Todavía no tienes PIN: crea uno de 4 dígitos' : 'Introduce tu PIN de 4 dígitos'}
+          </p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-3">
@@ -741,6 +769,17 @@ function PinModal({ isOpen, onClose, targetUser, onPinSuccess, apiUrl }) {
             placeholder="••••"
             className="w-full bg-stone-900 border border-stone-700 rounded-2xl py-3 text-center text-2xl tracking-[0.5em] font-black text-white focus:outline-none focus:border-[#9fb4c7]"
           />
+
+          {modoCrearPin && (
+            <input
+              type="password"
+              maxLength={4}
+              value={pinConfirm}
+              onChange={e => setPinConfirm(e.target.value.replace(/\D/g, ''))}
+              placeholder="Repite el PIN"
+              className="w-full bg-stone-900 border border-stone-700 rounded-2xl py-3 text-center text-2xl tracking-[0.5em] font-black text-white focus:outline-none focus:border-[#9fb4c7]"
+            />
+          )}
 
           {error && <p className="text-xs text-[#d9a582] font-bold">{error}</p>}
 
@@ -757,7 +796,7 @@ function PinModal({ isOpen, onClose, targetUser, onPinSuccess, apiUrl }) {
               disabled={loading}
               className="flex-1 py-2.5 bg-[#2c4a66] hover:bg-[#9fb4c7] text-white rounded-xl text-xs font-bold shadow-lg"
             >
-              {loading ? 'Entrando...' : 'Entrar'}
+              {loading ? 'Entrando...' : (modoCrearPin ? 'Crear PIN y entrar' : 'Entrar')}
             </button>
           </div>
         </form>
@@ -1206,6 +1245,69 @@ function HomeScreen({ currentUser, matches, activeTournaments, pendingAlerts, on
   );
 }
 
+// NUEVO: pantalla de administración, solo visible para ADMIN_PLAYER_ID — reúne las dos tareas
+// de control que pidió Marcos: (1) validar altas nuevas de Chicos/Chicas antes de que entren a
+// la app, y (2) subir a un invitado de torneo al grupo real cuando corresponda, sin dejar que
+// esa decisión dependa del propio invitado.
+function AdminScreen({ onBack, pendingPlayers, promotableGroups, onApprove, onReject, onPromote }) {
+  return (
+    <div className="space-y-5">
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-black text-stone-800">🛡️ Administración</h2>
+        <button onClick={onBack} className="text-xs font-bold text-[#2c4a66] hover:underline">← Volver</button>
+      </div>
+
+      <div className="bg-white rounded-2xl border border-stone-200 p-4 space-y-3">
+        <h3 className="text-sm font-black text-stone-800">Altas pendientes de validar</h3>
+        {pendingPlayers.length === 0 ? (
+          <p className="text-xs text-stone-400">No hay altas esperando validación.</p>
+        ) : (
+          <div className="space-y-2">
+            {pendingPlayers.map(p => (
+              <div key={p.id} className="flex items-center justify-between gap-2 bg-stone-50 rounded-xl p-2.5 border border-stone-200">
+                <div className="min-w-0">
+                  <p className="text-sm font-bold text-stone-800 truncate">{p.name}</p>
+                  <p className="text-[10px] text-stone-500 uppercase font-bold">{p.group} {p.phone ? `· ${p.phone}` : ''}</p>
+                </div>
+                <div className="flex gap-1.5 shrink-0">
+                  <button onClick={() => onApprove(p.id)} className="px-2.5 py-1.5 bg-[#2f5d50] text-white rounded-lg text-[11px] font-bold">Aprobar</button>
+                  <button onClick={() => onReject(p.id)} className="px-2.5 py-1.5 bg-stone-200 text-stone-700 rounded-lg text-[11px] font-bold">Rechazar</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="bg-white rounded-2xl border border-stone-200 p-4 space-y-3">
+        <h3 className="text-sm font-black text-stone-800">Invitados de torneo → subir a Chicos/Chicas</h3>
+        {promotableGroups.length === 0 ? (
+          <p className="text-xs text-stone-400">No hay invitados de torneo pendientes de ascender.</p>
+        ) : (
+          <div className="space-y-4">
+            {promotableGroups.map(g => (
+              <div key={g.tournamentId}>
+                <p className="text-[11px] font-black text-stone-500 uppercase mb-1.5">{g.tournamentName}</p>
+                <div className="space-y-2">
+                  {g.guests.map(p => (
+                    <div key={p.id} className="flex items-center justify-between gap-2 bg-stone-50 rounded-xl p-2.5 border border-stone-200">
+                      <p className="text-sm font-bold text-stone-800 truncate">{p.name}</p>
+                      <div className="flex gap-1.5 shrink-0">
+                        <button onClick={() => onPromote(p.id, p.name, 'chicos')} className="px-2.5 py-1.5 bg-[#2c4a66] text-white rounded-lg text-[11px] font-bold">A Chicos</button>
+                        <button onClick={() => onPromote(p.id, p.name, 'chicas')} className="px-2.5 py-1.5 bg-[#4a3350] text-white rounded-lg text-[11px] font-bold">A Chicas</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function AlertsScreen({ alerts, onBack, currentUser, apiUrl, alertPreferences, reservationAlerts, onRefreshAlertPrefs, onUpdateAlertPreferences, onUpdateReservationAlerts }) {
   return (
     <div className="space-y-3">
@@ -1269,7 +1371,7 @@ function AlertsScreen({ alerts, onBack, currentUser, apiUrl, alertPreferences, r
 }
 
 // MODAL DE PERFIL DE JUGADOR CON SUBPANEL INTERACTIVO Y DETALLE DE BOTE/PUNTOS
-function UserProfileModal({ isOpen, onClose, user, matches, tournaments, allDinnerGuests, onPhotoUploaded, onUpdateUserData, isCurrentUser, isThursdayMember, viewerUser }) {
+function UserProfileModal({ isOpen, onClose, user, matches, tournaments, allDinnerGuests, onPhotoUploaded, onUpdateUserData, isCurrentUser, isThursdayMember, viewerUser, onRequestClubJoin, onValidateClubRequest }) {
   const fileInputRef = useRef(null);
   const [uploading, setUploading] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -1277,7 +1379,6 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, allDinn
 
   const [editName, setEditName] = useState('');
   const [editPhone, setEditPhone] = useState('');
-  const [editGroup, setEditGroup] = useState('Chicos');
   const [editPlaytomic, setEditPlaytomic] = useState('');
   const [editIsLeftHanded, setEditIsLeftHanded] = useState(false);
   const [savingData, setSavingData] = useState(false);
@@ -1286,7 +1387,6 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, allDinn
     if (user) {
       setEditName(user.name || '');
       setEditPhone(user.phone || '');
-      setEditGroup(user.group === 'torneo' ? 'Solo Torneo' : user.group === 'chicas' ? 'Chicas' : 'Chicos');
       setEditPlaytomic(user.playtomic || '');
       setEditIsLeftHanded(Boolean(user.isLeftHanded));
       setEditing(false);
@@ -1297,6 +1397,18 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, allDinn
   if (!isOpen || !user) return null;
 
   const normUserName = normalizeName(user.name);
+
+  // NUEVO (control de acceso del administrador): en qué torneos activos participa este
+  // perfil, junto con su propia ficha de participante (que trae "solicitudClub" — ver
+  // SOLICITAR_UNION_CLUB / VALIDAR_SOLICITUD_CLUB). Se usa para dos cosas distintas: que el
+  // propio invitado pueda pedir pasar al club desde su perfil, y que el organizador de ESE
+  // torneo (no el administrador) vea y valide esa petición cuando mire el perfil del invitado.
+  const participacionesTorneo = (tournaments || [])
+    .map(t => {
+      const participante = (t.participants || []).find(p => p.id === user.id || normalizeName(p.name) === normUserName);
+      return participante ? { tournament: t, participante } : null;
+    })
+    .filter(Boolean);
 
   const handleFileChange = (e) => {
     const file = e.target.files[0];
@@ -1326,7 +1438,7 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, allDinn
   const handleSaveProfileData = async (e) => {
     e.preventDefault();
     setSavingData(true);
-    await onUpdateUserData(user.id, { nombre: editName, telefono: editPhone, grupo: editGroup === 'Solo Torneo' ? 'torneo' : editGroup, playtomic: editPlaytomic, isLeftHanded: editIsLeftHanded });
+    await onUpdateUserData(user.id, { nombre: editName, telefono: editPhone, playtomic: editPlaytomic, isLeftHanded: editIsLeftHanded });
     setSavingData(false);
     setEditing(false);
   };
@@ -1802,23 +1914,12 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, allDinn
                 <span className="font-bold text-xs text-stone-800">Soy jugador Zurdo 👈</span>
               </label>
             </div>
-            <div>
-              <label className="block text-[10px] font-bold text-stone-600 mb-0.5">Grupo / Rol</label>
-              <div className="flex gap-1.5">
-                {['Chicos', 'Solo Torneo'].map(g => (
-                  <button
-                    type="button"
-                    key={g}
-                    onClick={() => setEditGroup(g)}
-                    className={`flex-1 py-1 rounded-lg font-bold border text-[11px] ${
-                      editGroup === g ? 'bg-[#2c4a66] text-white border-[#2c4a66]' : 'bg-white text-stone-700 border-stone-200'
-                    }`}
-                  >
-                    {g}
-                  </button>
-                ))}
-              </div>
-            </div>
+            {/* BUG CORREGIDO (control de acceso del administrador): este selector dejaba que
+                cualquiera, incluido un invitado de torneo, se cambiara a sí mismo a "Chicos"
+                con efecto inmediato y sin que nadie lo validara — justo la "decisión abierta"
+                que Marcos pidió eliminar. El grupo ya no se edita aquí nunca: solo se muestra
+                (debajo, fuera de este formulario) y solo cambia por la vía que corresponda —
+                aprobación del administrador o ascenso desde el torneo. */}
             <div>
               <label className="block text-[10px] font-bold text-stone-600 mb-0.5">Usuario de Playtomic</label>
               <input
@@ -1837,6 +1938,76 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, allDinn
               {savingData ? 'Guardando...' : 'Guardar Cambios'}
             </button>
           </form>
+        )}
+
+        {/* NUEVO (control de acceso del administrador): aquí vive TODO lo relacionado con pasar
+            de invitado de torneo al grupo real — nunca como una elección libre del invitado.
+            Dos vistas distintas del mismo dato (participante.solicitudClub), según quién mira
+            este perfil:
+            1. El propio invitado (isCurrentUser, grupo 'torneo'): puede solicitarlo, y ve el
+               estado de su solicitud en cada torneo donde participa.
+            2. El organizador de ESE torneo (viewerUser.id === creatorId o co-organizador),
+               mirando el perfil de un invitado con una solicitud pendiente: la valida o la
+               rechaza. Solo entonces (y solo después) le llega el aviso al administrador para
+               que la ejecute de verdad — ver PROMOVER_JUGADOR_GRUPO en el menú de Administración. */}
+        {isCurrentUser && user.group === 'torneo' && participacionesTorneo.length > 0 && (
+          <div className="bg-[#f2eef2] border border-[#b893ba]/40 rounded-2xl p-3 space-y-2">
+            <p className="text-[11px] font-black text-[#4a3350] uppercase tracking-wide">Unirme al club</p>
+            {participacionesTorneo.map(({ tournament, participante }) => (
+              <div key={tournament.id} className="flex items-center justify-between gap-2">
+                <p className="text-xs text-stone-700 flex-1">
+                  {participante.solicitudClub === 'VALIDADO'
+                    ? `✅ Validado por el organizador de "${tournament.name}" — el administrador confirmará tu alta en breve.`
+                    : participante.solicitudClub === 'SOLICITADO'
+                    ? `⏳ Solicitud enviada en "${tournament.name}", pendiente de que el organizador la valide.`
+                    : `¿Quieres entrar en Chicos/Chicas? Pídelo desde "${tournament.name}".`}
+                </p>
+                {!participante.solicitudClub && onRequestClubJoin && (
+                  <button
+                    onClick={() => onRequestClubJoin(tournament.id, user.id)}
+                    className="shrink-0 px-2.5 py-1.5 bg-[#4a3350] text-white rounded-lg text-[11px] font-bold"
+                  >
+                    Solicitar
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {viewerUser && onValidateClubRequest && participacionesTorneo.some(({ tournament, participante }) =>
+          participante.solicitudClub === 'SOLICITADO' &&
+          (tournament.creatorId === viewerUser.id || (tournament.coOrganizerIds || []).includes(viewerUser.id))
+        ) && (
+          <div className="bg-amber-50 border border-amber-300 rounded-2xl p-3 space-y-2">
+            <p className="text-[11px] font-black text-amber-800 uppercase tracking-wide">Solicitud para unirse al club</p>
+            {participacionesTorneo
+              .filter(({ tournament, participante }) =>
+                participante.solicitudClub === 'SOLICITADO' &&
+                (tournament.creatorId === viewerUser.id || (tournament.coOrganizerIds || []).includes(viewerUser.id))
+              )
+              .map(({ tournament }) => (
+                <div key={tournament.id} className="space-y-1.5">
+                  <p className="text-xs text-stone-700">
+                    {user.name} quiere unirse a Chicos/Chicas · Torneo "{tournament.name}"
+                  </p>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => onValidateClubRequest(tournament.id, user.id, true)}
+                      className="flex-1 py-1.5 bg-[#2f5d50] text-white rounded-lg text-[11px] font-bold"
+                    >
+                      Validar
+                    </button>
+                    <button
+                      onClick={() => onValidateClubRequest(tournament.id, user.id, false)}
+                      className="flex-1 py-1.5 bg-stone-200 text-stone-700 rounded-lg text-[11px] font-bold"
+                    >
+                      Rechazar
+                    </button>
+                  </div>
+                </div>
+              ))}
+          </div>
         )}
 
         {isThursdayMember && (
@@ -3467,14 +3638,17 @@ function RegisterPlayerForm({ onCancel, onRegister, syncing }) {
         <input type="tel" required value={newUserPhone} onChange={(e) => setNewUserPhone(e.target.value)} placeholder="Ej: 600123456" className="w-full bg-stone-700 border border-stone-600 rounded-xl p-2.5 text-xs text-white placeholder-stone-400 focus:outline-none focus:border-[#9fb4c7] font-semibold" />
       </div>
       <div>
-        <label className="block text-xs font-bold text-stone-300 mb-1">¿A qué grupo perteneces?</label>
+        <label className="block text-xs font-bold text-stone-300 mb-1">¿A qué grupo perteneces? (orientativo)</label>
         <div className="flex gap-2">
-          {[{ key: 'Chicos', label: 'Chicos (Jueves)' }, { key: 'Solo Torneo', label: 'Solo Torneo' }].map(g => (
+          {[{ key: 'Chicos', label: 'Chicos (Jueves)' }, { key: 'Chicas', label: 'Chicas (Martes)' }].map(g => (
             <button type="button" key={g.key} onClick={() => setNewUserGroup(g.key)} className={`flex-1 py-2 text-xs font-bold rounded-xl border transition ${newUserGroup === g.key ? 'bg-[#2c4a66] text-white border-[#2c4a66]' : 'bg-stone-700 text-stone-300 border-stone-600'}`}>
               {g.label}
             </button>
           ))}
         </div>
+        <p className="text-[10px] text-stone-400 mt-1">
+          Es solo orientativo: el administrador revisará y confirmará tu alta antes de que puedas entrar.
+        </p>
       </div>
       <div>
         <label className="block text-xs font-bold text-stone-300 mb-1">Crea tu PIN de 4 cifras (seguridad) *</label>
@@ -3741,18 +3915,74 @@ export default function App() {
     return false;
   }, [inviteTournamentId, currentUser]);
 
+  // BUG CORREGIDO: a pesar del nombre (heredado de cuando solo existía el grupo de los jueves),
+  // esta variable es la que da acceso a toda la app aislada de un grupo — Partidos, Cenas,
+  // Rankings, Bote e Inicio — para CUALQUIER grupo de club real, no solo "Chicos". Solo
+  // comprobaba 'chicos', así que cualquier jugador con grupo 'chicas' quedaba tratado exactamente
+  // igual que un invitado de torneo sin acceso a nada más: perdían toda su app aislada de los
+  // martes. El resto del código (myGroup, groupMatches, etc.) ya filtraba correctamente por el
+  // grupo real de cada uno; el único punto que lo cortaba en seco era este.
   const isThursdayMember = useMemo(() => {
     if (isTournamentGuestSession) return false;
     if (!currentUser) return false;
     const g = (currentUser.group || '').toLowerCase();
-    return g === 'chicos';
+    return g === 'chicos' || g === 'chicas';
   }, [currentUser, isTournamentGuestSession]);
 
+  // NUEVO: quién es el administrador (ver ADMIN_PLAYER_ID) — decide si se ve el menú de
+  // administración (altas pendientes + ascender invitados de torneo a Chicos/Chicas).
+  const isAdmin = Boolean(currentUser && currentUser.id === ADMIN_PLAYER_ID);
+
+  // NUEVO: altas (autorregistros de Chicos/Chicas) esperando a que el administrador las
+  // valide — usado tanto para el contador en la campanita de administración como dentro de
+  // la propia pantalla de administración.
+  const pendingApprovalPlayers = useMemo(
+    () => players.filter(p => p.estadoAprobacion === 'PENDIENTE'),
+    [players]
+  );
+  const pendingApprovalCount = pendingApprovalPlayers.length;
+
+  // NUEVO: invitados de torneo (participantes que no son ya socios de Chicos/Chicas)
+  // agrupados por torneo, para que el administrador pueda "subirlos" al grupo real desde su
+  // menú — sin tocar la pantalla de cada torneo, que ya es bastante compleja de por sí.
+  const promotableTournamentGuests = useMemo(() => {
+    const porTorneo = [];
+    activeTournaments.forEach(t => {
+      const candidatos = (t.participants || []).filter(p => {
+        const clubUser = players.find(u => u.id === p.id || normalizeName(u.name) === normalizeName(p.name));
+        const grupoActual = (clubUser ? clubUser.group : 'torneo') || 'torneo';
+        if (grupoActual === 'chicos' || grupoActual === 'chicas') return false;
+        // NUEVO: el administrador solo ve aquí a quien el organizador del torneo ya ha
+        // validado (ver handleValidateClubRequest) — nunca a todos los invitados sin más.
+        return p.solicitudClub === 'VALIDADO';
+      });
+      if (candidatos.length) {
+        porTorneo.push({ tournamentId: t.id, tournamentName: t.name || 'Torneo CTC', guests: candidatos });
+      }
+    });
+    return porTorneo;
+  }, [activeTournaments, players]);
+
+  // NUEVO: la campanita de Administración suma altas pendientes + invitados ya validados por
+  // su organizador — así el administrador ve de un vistazo que hay algo esperando en
+  // cualquiera de las dos listas, sin tener que entrar a comprobarlo.
+  const pendingAdminCount = pendingApprovalCount + promotableTournamentGuests.reduce((acc, g) => acc + g.guests.length, 0);
+
+  // NUEVO (control de altas): un alta de Chicos/Chicas que todavía no ha sido validada por el
+  // administrador no debe entrar a la app — solo a torneos/invitados no les afecta este
+  // control, porque a ellos no los valida nadie por aquí (los invita el propio administrador
+  // a mano, uno a uno, con el enlace personalizado).
+  const accesoBloqueadoPorAprobacion = Boolean(
+    currentUser &&
+    currentUser.group !== 'torneo' &&
+    (currentUser.estadoAprobacion === 'PENDIENTE' || currentUser.estadoAprobacion === 'RECHAZADO')
+  );
+
   useEffect(() => {
-    if (currentUser && !isThursdayMember) {
+    if (currentUser && !isThursdayMember && !accesoBloqueadoPorAprobacion) {
       setActiveTab('torneos');
     }
-  }, [currentUser, isThursdayMember]);
+  }, [currentUser, isThursdayMember, accesoBloqueadoPorAprobacion]);
 
   const fetchData = async (silent = false) => {
     try {
@@ -3874,7 +4104,10 @@ export default function App() {
 
   const handleRegisterUser = async (userData) => {
     setSyncing(true);
-    const assignedGroup = (userData.grupo === 'Solo Torneo' || userData.grupo === 'torneo') ? 'torneo' : 'chicos';
+    // "Solo Torneo" ya no es una opción de este formulario (ese acceso solo se concede por
+    // invitación personalizada, nunca se autoelige) — aquí solo cabe Chicos o Chicas, y ambas
+    // son orientativas: el administrador tiene que validar el alta de todas formas.
+    const assignedGroup = String(userData.grupo || '').trim().toLowerCase() === 'chicas' ? 'chicas' : 'chicos';
 
     try {
       const controller = new AbortController();
@@ -3909,15 +4142,19 @@ export default function App() {
           isLeftHanded: false,
           pJ: 0, pG: 0, cSi: 0, cNo: 0,
           ptsDeportivo: 0, ptsBarandas: 0, hibrido: 0,
-          titulo: assignedGroup === 'torneo' ? 'Jugador de Torneo ⚔️' : 'Fichaje Estrella ⭐',
+          titulo: 'Fichaje Estrella ⭐',
           deuda: 0,
-          pin: userData.pin
+          pin: userData.pin,
+          // NUEVO (control de altas): toda alta nueva por este formulario queda pendiente de
+          // que el administrador la valide desde su menú — por eso, aunque aquí mismo guardamos
+          // la sesión, la pantalla principal no se mostrará todavía (ver el control de
+          // "estadoAprobacion" justo antes del render de la app).
+          estadoAprobacion: 'PENDIENTE'
         };
 
         handlePinSuccess(createdUser);
         setShowRegisterForm(false);
         fetchData(true);
-        alert('¡Registro completado con éxito!');
       } else {
         alert('No se pudo registrar: ' + (json.error || 'Error en el servidor de Google Sheets.'));
       }
@@ -3931,6 +4168,51 @@ export default function App() {
     } finally {
       setSyncing(false);
     }
+  };
+
+  // NUEVO (control de altas por el administrador): aprobar o rechazar una alta pendiente.
+  // Actualización optimista local (igual que el resto de acciones de esta pantalla) y
+  // sincronización en segundo plano, para que el administrador vea el efecto al instante.
+  const handleApprovePlayer = (idJugador) => {
+    setPlayers(prev => prev.map(p => p.id === idJugador ? { ...p, estadoAprobacion: 'APROBADO' } : p));
+    fetch(apiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ action: 'APROBAR_JUGADOR', idJugador })
+    }).catch(e => console.warn('Error aprobando jugador:', e));
+  };
+
+  const handleRejectPlayer = (idJugador) => {
+    setPlayers(prev => prev.map(p => p.id === idJugador ? { ...p, estadoAprobacion: 'RECHAZADO' } : p));
+    fetch(apiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ action: 'RECHAZAR_JUGADOR', idJugador })
+    }).catch(e => console.warn('Error rechazando jugador:', e));
+  };
+
+  // NUEVO (control de acceso del administrador): sube a un invitado de torneo al grupo real
+  // de Chicos o Chicas. Le vaciamos el PIN local a propósito (igual que hace el backend), para
+  // que la próxima vez que ese jugador entre, PinModal lo detecte sin PIN y le toque crear uno
+  // nuevo — ver CREAR_PIN_JUGADOR y el "modoCrearPin" de PinModal.
+  const handlePromoteGuestToGroup = (idJugador, nombre, grupo) => {
+    setPlayers(prev => {
+      const existe = prev.some(p => p.id === idJugador);
+      if (existe) {
+        return prev.map(p => p.id === idJugador ? { ...p, group: grupo, pin: '', estadoAprobacion: 'APROBADO' } : p);
+      }
+      return [...prev, {
+        id: idJugador, name: nombre, group: grupo, photo: '', level: 3.5, isLeftHanded: false,
+        pJ: 0, pG: 0, cSi: 0, cNo: 0, ptsDeportivo: 0, ptsBarandas: 0, hibrido: 0,
+        titulo: 'Fichaje Estrella ⭐', deuda: 0, pin: '', estadoAprobacion: 'APROBADO'
+      }];
+    });
+    fetch(apiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ action: 'PROMOVER_JUGADOR_GRUPO', idJugador, nombre, grupo })
+    }).catch(e => console.warn('Error promocionando jugador:', e))
+      .finally(() => fetchData(true));
   };
 
   const handleUpdateUserData = async (idJugador, payload) => {
@@ -4566,6 +4848,42 @@ export default function App() {
     if (tournamentToSync) {
       await syncTorneoToCloud({ action: 'ACTUALIZAR_CENA_TORNEO', idTorneo: tId, idJugador: participantId, cena: newDinnerStatus });
     }
+  };
+
+  // NUEVO (control de acceso del administrador): un invitado de torneo pide pasar al grupo
+  // real de Chicos/Chicas. Esto NO lo mueve de grupo — solo avisa al organizador DE ESE
+  // TORNEO (no al administrador) para que valide que de verdad conoce a esta persona. El
+  // administrador solo se entera, y solo entonces, si el organizador valida la solicitud (ver
+  // handleValidateClubRequest) — así el aviso y la primera validación quedan en manos de quien
+  // conoce al invitado, y el administrador solo ejecuta el cambio de grupo final.
+  const handleRequestClubJoin = async (tId, idJugador) => {
+    const updatedTournaments = activeTournaments.map(t => {
+      if (t.id !== tId) return t;
+      return {
+        ...t,
+        participants: (t.participants || []).map(p => p.id === idJugador ? { ...p, solicitudClub: 'SOLICITADO' } : p)
+      };
+    });
+    setActiveTournaments(updatedTournaments);
+    localStorage.setItem('padel_ctc_tournaments', JSON.stringify(updatedTournaments));
+    await syncTorneoToCloud({ action: 'SOLICITAR_UNION_CLUB', idTorneo: tId, idJugador });
+  };
+
+  // NUEVO: el organizador del torneo valida (o rechaza) la solicitud de un invitado suyo.
+  // Si la valida, el backend avisa al administrador para que la ejecute desde su menú de
+  // Administración — el organizador nunca puede mover a nadie de grupo por sí mismo.
+  const handleValidateClubRequest = async (tId, idJugador, aprobado) => {
+    const nuevoEstado = aprobado ? 'VALIDADO' : '';
+    const updatedTournaments = activeTournaments.map(t => {
+      if (t.id !== tId) return t;
+      return {
+        ...t,
+        participants: (t.participants || []).map(p => p.id === idJugador ? { ...p, solicitudClub: nuevoEstado } : p)
+      };
+    });
+    setActiveTournaments(updatedTournaments);
+    localStorage.setItem('padel_ctc_tournaments', JSON.stringify(updatedTournaments));
+    await syncTorneoToCloud({ action: 'VALIDAR_SOLICITUD_CLUB', idTorneo: tId, idJugador, aprobado });
   };
 
   const handleShareTournamentDinnerWhatsapp = (tournamentItem) => {
@@ -5285,6 +5603,44 @@ export default function App() {
     );
   }
 
+  // NUEVO (control de altas): un alta de Chicos/Chicas pendiente (o rechazada) de validar por
+  // el administrador no llega a ver la app — se queda en esta pantalla intermedia. En cuanto
+  // el administrador la apruebe, la próxima sincronización (al pulsar "Comprobar de nuevo" o
+  // al reabrir la app) refresca currentUser con el estado nuevo y deja pasar automáticamente.
+  if (accesoBloqueadoPorAprobacion) {
+    const rechazado = currentUser.estadoAprobacion === 'RECHAZADO';
+    return (
+      <div className="min-h-screen bg-stone-900 text-white flex flex-col justify-center items-center p-4 text-center">
+        <div className="max-w-xs w-full bg-stone-800 rounded-3xl p-6 border border-stone-700 shadow-2xl space-y-4">
+          <span className="text-4xl block">{rechazado ? '🚫' : '⏳'}</span>
+          <div>
+            <h2 className="text-lg font-black">{currentUser.name}</h2>
+            <p className="text-xs text-stone-400 mt-1">
+              {rechazado
+                ? 'Tu alta no ha sido validada por el administrador. Si crees que es un error, habla con él.'
+                : 'Tu alta está pendiente de validación por el administrador. En cuanto te confirme podrás entrar.'}
+            </p>
+          </div>
+          {!rechazado && (
+            <button
+              onClick={() => fetchData(false)}
+              disabled={syncing}
+              className="w-full py-2.5 bg-[#2c4a66] hover:bg-[#9fb4c7] text-white rounded-xl text-xs font-bold shadow-lg transition"
+            >
+              {syncing ? 'Comprobando...' : 'Comprobar de nuevo'}
+            </button>
+          )}
+          <button
+            onClick={handleLogout}
+            className="w-full py-2.5 bg-stone-700 hover:bg-stone-600 text-stone-300 rounded-xl text-xs font-bold transition"
+          >
+            Salir
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-stone-100 text-stone-900 pb-16">
       <header className="bg-white border-b border-stone-200 sticky top-0 z-30 shadow-sm">
@@ -5347,6 +5703,20 @@ export default function App() {
               >
                 🔄
               </button>
+              {isAdmin && (
+                <button
+                  onClick={() => setActiveTab('admin')}
+                  className={`relative w-9 h-9 flex items-center justify-center text-base rounded-lg transition ${activeTab === 'admin' ? 'bg-[#2c4a66] text-white shadow-xs' : 'text-stone-600 hover:bg-white hover:shadow-xs'}`}
+                  title="Administración"
+                >
+                  🛡️
+                  {pendingAdminCount > 0 && (
+                    <span className="absolute top-0.5 right-0.5 bg-[#6b3f29] text-white text-[9px] font-black w-4 h-4 rounded-full flex items-center justify-center shadow-sm">
+                      {pendingAdminCount > 9 ? '9+' : pendingAdminCount}
+                    </span>
+                  )}
+                </button>
+              )}
             </div>
 
             {/* "Salir" se deja fuera de la píldora y con su texto, a propósito: es la única
@@ -5363,7 +5733,16 @@ export default function App() {
       </header>
 
       <main className="max-w-xl mx-auto px-4 py-4">
-        {activeTab === 'avisos' ? (
+        {activeTab === 'admin' && isAdmin ? (
+          <AdminScreen
+            onBack={() => setActiveTab(isThursdayMember ? 'inicio' : 'torneos')}
+            pendingPlayers={pendingApprovalPlayers}
+            promotableGroups={promotableTournamentGuests}
+            onApprove={handleApprovePlayer}
+            onReject={handleRejectPlayer}
+            onPromote={handlePromoteGuestToGroup}
+          />
+        ) : activeTab === 'avisos' ? (
           <AlertsScreen
             alerts={pendingAlerts}
             onBack={() => setActiveTab(isThursdayMember ? 'inicio' : 'torneos')}
@@ -6807,6 +7186,8 @@ export default function App() {
         isCurrentUser={inspectedUser?.id === currentUser?.id}
         isThursdayMember={isThursdayMember}
         viewerUser={currentUser}
+        onRequestClubJoin={handleRequestClubJoin}
+        onValidateClubRequest={handleValidateClubRequest}
       />
 
       {/* MODAL: REGLAS OFICIALES */}
