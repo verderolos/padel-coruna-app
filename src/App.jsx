@@ -123,16 +123,64 @@ const OFFICIAL_TOURNAMENT_RULES = {
    - En caso de empate al finalizar todas las rondas: se disputa un super tie-break a 10 puntos en Pista Central con la pareja designada por cada capitán.`
 };
 
-function extractCleanDate(dateStr) {
-  if (!dateStr) return 'Sin fecha';
-  return String(dateStr)
-    .toLowerCase()
-    .replace(/★.*$/g, '')
-    .replace(/\(.*?\)/g, '')
-    .replace(/\b\d{1,2}:\d{2}\b/g, '')
-    .replace(/[📅🗓️📍,]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
+// CLAVE DE DÍA "AAAA-MM-DD" — identifica un día en cenas, invitados, tickets, etc. Antes era un
+// texto sin año ("jueves 08 oct") que se repite cada año; ahora todas las fechas del sistema
+// llevan año, mes y día.
+//  - Si se conoce la fecha completa del partido (fechaISO) se usa esa.
+//  - Si el texto ya es AAAA-MM-DD, se devuelve tal cual.
+//  - Si es un texto antiguo sin año ("jueves, 08 oct, 19:00") se usa el año actual.
+//  - Si no hay día/mes reconocibles devuelve 'sin fecha'.
+function extractCleanDate(dateStr, fechaISO) {
+  if (fechaISO && /^\d{4}-\d{2}-\d{2}/.test(String(fechaISO))) return String(fechaISO).slice(0, 10);
+  if (!dateStr) return 'sin fecha';
+  const t = String(dateStr).trim();
+  if (/^\d{4}-\d{2}-\d{2}/.test(t)) return t.slice(0, 10);
+  const conAnio = t.match(/(\d{1,2})\s+([a-zA-ZáéíóúÁÉÍÓÚ]+)\.?,?\s+(20\d{2})/);
+  const meses = { ene: 0, feb: 1, mar: 2, abr: 3, may: 4, jun: 5, jul: 6, ago: 7, sep: 8, oct: 9, nov: 10, dic: 11 };
+  const sinAnio = t.match(/(\d{1,2})\s+([a-zA-ZáéíóúÁÉÍÓÚ]+)/);
+  const m = conAnio || sinAnio;
+  if (!m) return 'sin fecha';
+  const mes = meses[m[2].toLowerCase().slice(0, 3)];
+  if (mes === undefined) return 'sin fecha';
+  const anio = conAnio ? parseInt(m[3], 10) : new Date().getFullYear();
+  const d = new Date(anio, mes, parseInt(m[1], 10));
+  if (d.getMonth() !== mes) return 'sin fecha';
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+// "2026-10-08" → "Jueves, 08 oct 2026" (etiqueta visible de un día de cena).
+function etiquetaFechaDia(claveISO) {
+  const m = String(claveISO || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return String(claveISO || '');
+  const d = new Date(+m[1], +m[2] - 1, +m[3]);
+  const dias = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+  const meses = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+  return `${dias[d.getDay()]}, ${String(d.getDate()).padStart(2, '0')} ${meses[d.getMonth()]} ${d.getFullYear()}`;
+}
+
+// Texto de fecha SIEMPRE con año para mostrar en pantalla. Si el texto ya trae año se deja tal cual;
+// si no, se inserta el año de fechaISO justo detrás del "dd mes" ("jueves, 08 oct 2026, 19:00").
+function fechaCompleta(dateStr, fechaISO) {
+  const t = String(dateStr || '').trim();
+  if (!t) return t;
+  if (/\b20\d{2}\b/.test(t)) return t;
+  const anio = (String(fechaISO || '').match(/^(20\d{2})-\d{2}-\d{2}/) || [])[1];
+  if (!anio) return t;
+  const conAnio = t.replace(/(\d{1,2}\s+(?:de\s+)?[a-zA-ZáéíóúÁÉÍÓÚ]+\.?)(?=[,\s]|$)/, `$1 ${anio}`);
+  return conAnio !== t ? conAnio : `${t} · ${anio}`;
+}
+
+// Sufijo aleatorio corto para ids generados en el navegador: evita que dos ids creados en el mismo
+// milisegundo (o por dos personas a la vez) coincidan.
+function sufijoAleatorioId() {
+  try {
+    if (window.crypto && window.crypto.getRandomValues) {
+      const b = new Uint8Array(4);
+      window.crypto.getRandomValues(b);
+      return Array.from(b).map(x => x.toString(16).padStart(2, '0')).join('');
+    }
+  } catch { /* usa el respaldo */ }
+  return Math.random().toString(16).slice(2, 10).padEnd(8, '0');
 }
 
 function normalizeName(str) {
@@ -401,6 +449,9 @@ function parseMatchDateObject(dateStr, fechaISO) {
     if (iso) return new Date(+iso[1], +iso[2] - 1, +iso[3], +iso[4], +iso[5], 0, 0);
   }
   if (!dateStr) return null;
+  // Fecha ISO sin hora (clave de día "2026-10-08"): se interpreta con su año.
+  const soloDia = String(dateStr).match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2}))?/);
+  if (soloDia) return new Date(+soloDia[1], +soloDia[2] - 1, +soloDia[3], soloDia[4] ? +soloDia[4] : 21, soloDia[5] ? +soloDia[5] : 0, 0, 0);
   const timeMatch = dateStr.match(/(\d{1,2}):(\d{2})/);
   const hours = timeMatch ? parseInt(timeMatch[1], 10) : 21;
   const minutes = timeMatch ? parseInt(timeMatch[2], 10) : 0;
@@ -420,7 +471,8 @@ function parseMatchDateObject(dateStr, fechaISO) {
     if (foundMonth !== undefined) {
       // Se construye con (año, mes, día) de una vez: encadenar setMonth() y setDate() sobre "hoy"
       // se desbordaba a veces (p.ej. el día 31 + mes de 30 días saltaba al mes siguiente).
-      matchDate = new Date(hoy.getFullYear(), meses[foundMonth], day);
+      const anioTexto = dateStr.match(/\b(20\d{2})\b/);
+      matchDate = new Date(anioTexto ? parseInt(anioTexto[1], 10) : hoy.getFullYear(), meses[foundMonth], day);
     }
   }
   matchDate.setHours(hours, minutes, 0, 0);
@@ -501,7 +553,7 @@ function calcularRachasSemanales(currentUser, matches, tournaments, allDinnerGue
   (allDinnerGuests || []).forEach(g => {
     if (g.id === currentUser.id || normalizeName(g.name) === normUserName) {
       const cleanDate = extractCleanDate(g.target || g.cleanTarget);
-      if (!esCenaComputable(cleanDate)) return;
+      if (cleanDate === 'sin fecha' || !esCenaComputable(cleanDate)) return;
       const fecha = parseMatchDateObject(cleanDate);
       if (fecha && fecha.getDay() === diaCenaEsperado) eventosCena.push({ fecha });
     }
@@ -1783,7 +1835,7 @@ function HomeScreen({ currentUser, matches, activeTournaments, allDinnerGuests, 
               className="w-full text-left bg-stone-50 hover:bg-stone-100 transition rounded-xl p-2.5 flex items-center justify-between gap-2"
             >
               <div className="min-w-0">
-                <span className="font-bold text-stone-800 text-[11px] block truncate">{match.date}</span>
+                <span className="font-bold text-stone-800 text-[11px] block truncate">{fechaCompleta(match.date, match.fechaISO)}</span>
                 <span className="text-[10px] text-stone-500">
                   {totalJugadores}/4 apuntados
                   {cenaPendiente > 0
@@ -1891,17 +1943,155 @@ function HomeScreen({ currentUser, matches, activeTournaments, allDinnerGuests, 
   );
 }
 
+// Botón estándar de "atrás": círculo blanco con chevron, legible sobre cualquier fondo (incluida la
+// tierra batida). Se usa SIEMPRE en la misma posición (arriba a la izquierda) en todas las pantallas.
+function BotonAtras({ onClick, titulo = 'Volver' }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={titulo}
+      title={titulo}
+      className="w-10 h-10 shrink-0 rounded-full bg-white border border-stone-200 shadow-md text-[#2c4a66] hover:bg-[#eef2f6] active:scale-95 transition flex items-center justify-center"
+    >
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <polyline points="15 5 8 12 15 19" />
+      </svg>
+    </button>
+  );
+}
+
+// Cabecera común de las pantallas secundarias: [← atrás] + título en una píldora legible.
+function CabeceraPantalla({ onBack, titulo, tituloAtras }) {
+  return (
+    <div className="flex items-center gap-3">
+      <BotonAtras onClick={onBack} titulo={tituloAtras} />
+      <h2 className="text-sm font-black text-stone-800 bg-white/90 border border-stone-200 shadow-sm rounded-full px-3.5 py-1.5 min-w-0 truncate">
+        {titulo}
+      </h2>
+    </div>
+  );
+}
+
+// ============================================================================
+// BOTÓN / GESTO "ATRÁS" DEL MÓVIL
+// En vez de dejar que el atrás del móvil saque al usuario de la app, se mantiene una entrada de
+// historial "centinela": cada vez que se pulsa atrás se intenta primero cerrar lo que haya encima
+// (ventana, detalle de partido, pestaña secundaria → inicio). Solo en la pantalla raíz el primer
+// atrás avisa ("Pulsa atrás otra vez para salir") y el segundo, en menos de 2 s, sale.
+// manejadorAtrasRef lo rellena la app principal en cada render (devuelve true si cerró algo).
+// ============================================================================
+const manejadorAtrasRef = { current: null };
+
+function GestorAtras() {
+  const [aviso, setAviso] = useState(false);
+
+  useEffect(() => {
+    let armado = false;     // ya se avisó de "pulsa otra vez para salir"
+    let saliendo = false;
+    let timer = null;
+    let oyentesActivos = false;
+
+    const estaArmada = () => window.history.state && window.history.state.ctc === 'app';
+
+    // Chrome salta las entradas de historial creadas sin interacción del usuario, así que el
+    // centinela se crea en la primera pulsación/toque, no al cargar.
+    const armarCentinela = () => {
+      if (estaArmada()) return;
+      try {
+        window.history.replaceState({ ctc: 'raiz' }, '');
+        window.history.pushState({ ctc: 'app' }, '');
+      } catch { /* entornos sin History API */ }
+    };
+
+    const alInteractuar = () => {
+      armarCentinela();
+      quitarOyentesInteraccion();
+    };
+    const quitarOyentesInteraccion = () => {
+      if (!oyentesActivos) return;
+      oyentesActivos = false;
+      window.removeEventListener('pointerdown', alInteractuar, true);
+      window.removeEventListener('touchstart', alInteractuar, true);
+      window.removeEventListener('keydown', alInteractuar, true);
+    };
+
+    if (estaArmada() || (navigator.userActivation && navigator.userActivation.hasBeenActive)) {
+      armarCentinela();
+    } else {
+      oyentesActivos = true;
+      window.addEventListener('pointerdown', alInteractuar, true);
+      window.addEventListener('touchstart', alInteractuar, true);
+      window.addEventListener('keydown', alInteractuar, true);
+    }
+
+    const alPop = () => {
+      if (saliendo) return;
+      if (estaArmada()) return; // movimiento hacia delante: se ignora
+      if (!window.history.state || window.history.state.ctc !== 'raiz') return; // no es nuestra entrada
+
+      let cerrado = false;
+      try { cerrado = Boolean(manejadorAtrasRef.current && manejadorAtrasRef.current()); } catch { cerrado = false; }
+      if (cerrado) {
+        window.history.pushState({ ctc: 'app' }, '');
+        return;
+      }
+      if (armado) {
+        saliendo = true;
+        clearTimeout(timer);
+        setAviso(false);
+        window.history.back(); // sale de la app (PWA) o vuelve a la página anterior del navegador
+        return;
+      }
+      armado = true;
+      setAviso(true);
+      window.history.pushState({ ctc: 'app' }, '');
+      timer = setTimeout(() => { armado = false; setAviso(false); }, 2000);
+    };
+
+    window.addEventListener('popstate', alPop);
+    return () => {
+      window.removeEventListener('popstate', alPop);
+      quitarOyentesInteraccion();
+      clearTimeout(timer);
+    };
+  }, []);
+
+  if (!aviso) return null;
+  return (
+    <div className="fixed left-0 right-0 bottom-20 z-[9998] flex justify-center px-6 pointer-events-none" role="status" aria-live="polite">
+      <div className="bg-stone-900/90 text-white text-xs font-bold px-4 py-2.5 rounded-full shadow-xl">
+        Pulsa atrás otra vez para salir
+      </div>
+    </div>
+  );
+}
+
 // NUEVO: pantalla de administración, solo visible para ADMIN_PLAYER_ID — reúne las dos tareas
 // de control que pidió Marcos: (1) validar altas nuevas de Chicos/Chicas antes de que entren a
 // la app, y (2) subir a un invitado de torneo al grupo real cuando corresponda, sin dejar que
 // esa decisión dependa del propio invitado.
-function AdminScreen({ onBack, pendingPlayers, promotableGroups, onApprove, onReject, onPromote }) {
+function AdminScreen({ onBack, pendingPlayers, promotableGroups, onApprove, onReject, onPromote, idsDuplicados = [] }) {
   return (
     <div className="space-y-5">
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-black text-stone-800">🛡️ Administración</h2>
-        <button onClick={onBack} className="text-xs font-bold text-[#2c4a66] hover:underline">← Volver</button>
-      </div>
+      <CabeceraPantalla onBack={onBack} titulo="🛡️ Administración" tituloAtras="Volver al inicio" />
+
+      {idsDuplicados.length > 0 && (
+        <div className="bg-[#fbf1e8] rounded-2xl border border-[#e3b894] p-4 space-y-2">
+          <h3 className="text-sm font-black text-[#6b3f29]">⚠️ Ids repetidos en el Sheet</h3>
+          <p className="text-[11px] text-[#6b3f29]">
+            Hay registros distintos con el mismo id. Mientras no se corrija, una persona puede ver o modificar datos de otra. Revísalo en la hoja indicada (no se repara solo).
+          </p>
+          <ul className="text-[11px] text-stone-700 space-y-1">
+            {idsDuplicados.slice(0, 12).map((d, i) => (
+              <li key={`${d.hoja}-${d.id}-${i}`} className="bg-white rounded-lg border border-[#ead3bf] px-2.5 py-1.5">
+                <span className="font-black">{d.hoja}</span> · id <span className="font-mono">{d.id}</span> · filas {Array.isArray(d.filas) ? d.filas.join(', ') : ''}
+              </li>
+            ))}
+          </ul>
+          {idsDuplicados.length > 12 && <p className="text-[10px] text-stone-500">…y {idsDuplicados.length - 12} más (ejecuta previsualizarIdsDuplicados en Apps Script).</p>}
+        </div>
+      )}
 
       <div className="bg-white rounded-2xl border border-stone-200 p-4 space-y-3">
         <h3 className="text-sm font-black text-stone-800">Altas pendientes de validar</h3>
@@ -1960,9 +2150,7 @@ function AlertsScreen({ alerts, onBack, currentUser, apiUrl, alertPreferences, r
   // configuración de avisos del usuario, ambas con más aire que antes.
   return (
     <div className="space-y-3">
-      <button onClick={onBack} className="text-xs font-bold text-[#2c4a66] hover:underline flex items-center gap-1">
-        ← Volver
-      </button>
+      <CabeceraPantalla onBack={onBack} titulo="🔔 Avisos" tituloAtras="Volver al inicio" />
 
       <div className="bg-gradient-to-r from-[#d9b97c] to-[#6b4d1c] rounded-2xl px-4 py-2.5 text-white shadow-sm flex items-center gap-2.5">
         <span className="text-xl shrink-0">🔔</span>
@@ -2238,17 +2426,17 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, allDinn
       // COMPROBAMOS TAMBIÉN POR ID
       if (g.id === user.id || normalizeName(g.name) === normUserName) {
         const cleanDate = extractCleanDate(g.target || g.cleanTarget);
-        if (!esCenaComputable(cleanDate)) return;
+        if (cleanDate === 'sin fecha' || !esCenaComputable(cleanDate)) return;
 
         // Evitar duplicar si ya se ha sumado una cena ese mismo día por partido
-        const yaTieneCenaEseDia = dinnerYesList.some(d => d.date === cleanDate);
+        const yaTieneCenaEseDia = dinnerYesList.some(d => extractCleanDate(d.date, d.fechaISO) === cleanDate);
 
         if (!yaTieneCenaEseDia) {
           dinnerYesList.push({
-            date: cleanDate, partner: 'Solo Cena', rivals: '-', score: '-', dinner: 'SI', won: false
+            date: etiquetaFechaDia(cleanDate), fechaISO: cleanDate, partner: 'Solo Cena', rivals: '-', score: '-', dinner: 'SI', won: false
           });
           puntosDetalle.push({
-            date: cleanDate, title: 'Asistencia 3º Tiempo (Sin jugar)', pts: 5, desc: 'Solo Cena (+5)'
+            date: etiquetaFechaDia(cleanDate), fechaISO: cleanDate, title: 'Asistencia 3º Tiempo (Sin jugar)', pts: 5, desc: 'Solo Cena (+5)'
           });
         }
       }
@@ -2953,7 +3141,7 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, allDinn
                   <span className="text-[9px] font-black text-stone-500 uppercase block mb-1">🕑 Últimos cruces</span>
                   {[...hh.recent].reverse().slice(0, 5).map((r, idx) => (
                     <div key={idx} className="flex justify-between items-center text-[10px] border-b border-stone-200/70 last:border-0 pb-1 last:pb-0">
-                      <span className="text-stone-500">{r.date}</span>
+                      <span className="text-stone-500">{fechaCompleta(r.date, r.fechaISO)}</span>
                       {r.tipo === 'pareja' ? (
                         <span className={`font-bold ${r.ganaron ? 'text-[#2f5d50]' : 'text-[#6b3f29]'}`}>
                           🤝 Pareja · {r.ganaron ? 'Victoria' : 'Derrota'}
@@ -2996,7 +3184,7 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, allDinn
                     {'pts' in item || 'bote' in item ? (
                       <>
                         <div className="flex justify-between text-[10px] font-bold text-stone-300">
-                          <span>📅 {item.date}</span>
+                          <span>📅 {fechaCompleta(item.date, item.fechaISO)}</span>
                           <span className={'pts' in item ? 'text-[#9fb4c7]' : 'text-[#d9a582]'}>
                             {'pts' in item ? `Suma: ${item.pts > 0 ? '+'+item.pts : item.pts} pts` : `Añade: +${item.bote} €`}
                           </span>
@@ -3007,7 +3195,7 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, allDinn
                     ) : 'date' in item ? (
                       <>
                         <div className="flex justify-between text-[10px] font-bold text-stone-300">
-                          <span>📅 {item.date}{item.esAmistoso && <span className="text-stone-500 font-semibold"> · 🤝 Amistoso</span>}</span>
+                          <span>📅 {fechaCompleta(item.date, item.fechaISO)}{item.esAmistoso && <span className="text-stone-500 font-semibold"> · 🤝 Amistoso</span>}</span>
                           {item.partner !== 'Solo Cena' && (
                             <span className={item.won ? 'text-[#a9c4ad]' : 'text-[#d9a582]'}>{item.won ? 'Victoria 🏆' : 'Derrota ❌'}</span>
                           )}
@@ -3285,7 +3473,7 @@ function TournamentCreatorModal({ isOpen, onClose, allPlayers, tournaments, onTo
     if (!guestName.trim()) return;
     setParticipants(prev => [
       {
-        id: 'guest_' + Date.now(),
+        id: 'guest_' + Date.now() + '_' + sufijoAleatorioId(),
         name: guestName.trim() + ' (Invitado)',
         photo: '',
         level: parseFloat(guestLevel),
@@ -3608,7 +3796,7 @@ function TournamentCreatorModal({ isOpen, onClose, allPlayers, tournaments, onTo
     const finalStatus = typeof statusOverwrite === 'string' ? statusOverwrite : 'ACTIVO';
     
     onTournamentCreated({
-      id: 'TORNEO_' + Date.now(),
+      id: 'TORNEO_' + Date.now() + '_' + sufijoAleatorioId(),
       name: tName,
       mode: tournamentMode,
       startDate: tDate,
@@ -4414,7 +4602,8 @@ function RegisterPlayerForm({ onCancel, onRegister, syncing }) {
 
 function AddPlaytomicMatchModal({ isOpen, onClose, onAddMatch, onOpenExisting, syncing }) {
   const [playtomicText, setPlaytomicText] = useState('');
-  const [manualDate, setManualDate] = useState('');
+  const [manualDate, setManualDate] = useState('');   // AAAA-MM-DD (selector de fecha)
+  const [manualTime, setManualTime] = useState('21:00'); // HH:mm
   const [manualLocation, setManualLocation] = useState('Real Club de Tenis de La Coruña');
   const [manualP1, setManualP1] = useState('');
   const [manualP2, setManualP2] = useState('');
@@ -4438,7 +4627,7 @@ const isOnlyPlaytomicLink = useMemo(() => {
 
   useEffect(() => {
     if (!isOpen) {
-      setPlaytomicText(''); setManualDate(''); setManualP1(''); setManualP2(''); setManualP3(''); setManualP4(''); setFormError('');
+      setPlaytomicText(''); setManualDate(''); setManualTime('21:00'); setManualP1(''); setManualP2(''); setManualP3(''); setManualP4(''); setFormError('');
       setEnviando(false); setAviso(null);
     }
   }, [isOpen]);
@@ -4459,8 +4648,8 @@ const isOnlyPlaytomicLink = useMemo(() => {
     // nada en el bloque de "Datos adicionales requeridos". Ahora lo bloqueamos: si faltan la
     // fecha/hora o al menos 2 jugadores, no se envía nada y se explica qué falta.
     if (isOnlyPlaytomicLink) {
-      if (!manualDate.trim()) {
-        setFormError('Indica la fecha y hora del partido (el enlace que has pegado no las trae).');
+      if (!manualDate || !manualTime) {
+        setFormError('Indica el día y la hora del partido (el enlace que has pegado no los trae).');
         return;
       }
       if (jugadoresManualesRellenos < 2) {
@@ -4474,7 +4663,7 @@ const isOnlyPlaytomicLink = useMemo(() => {
     setEnviando(true);
     let resultado;
     try {
-      resultado = await onAddMatch({ playtomicText, isOnlyPlaytomicLink, manualDate, manualLocation, manualP1, manualP2, manualP3, manualP4 });
+      resultado = await onAddMatch({ playtomicText, isOnlyPlaytomicLink, manualDate, manualTime, manualLocation, manualP1, manualP2, manualP3, manualP4 });
     } finally {
       setEnviando(false);
     }
@@ -4494,7 +4683,10 @@ const isOnlyPlaytomicLink = useMemo(() => {
               <span className="text-[10px] text-stone-500 block -mt-1">
                 Has pegado solo un enlace, sin los detalles del partido. Rellena esto a mano o no se creará el partido.
               </span>
-              <input type="text" disabled={enviando} value={manualDate} onChange={e => { setManualDate(e.target.value); setFormError(''); }} placeholder="Fecha y Hora (Ej: Jueves 21:00)" className="w-full border rounded-lg p-1.5 text-xs font-semibold" />
+              <div className="grid grid-cols-2 gap-1.5">
+                <input type="date" disabled={enviando} value={manualDate} onChange={e => { setManualDate(e.target.value); setFormError(''); }} className="w-full border rounded-lg p-1.5 text-xs font-semibold" aria-label="Día del partido" />
+                <input type="time" disabled={enviando} value={manualTime} onChange={e => { setManualTime(e.target.value); setFormError(''); }} className="w-full border rounded-lg p-1.5 text-xs font-semibold" aria-label="Hora del partido" />
+              </div>
               <div className="grid grid-cols-2 gap-1.5">
                 <input type="text" disabled={enviando} value={manualP1} onChange={e => { setManualP1(e.target.value); setFormError(''); }} placeholder="Jugador 1" className="border rounded-lg p-1.5 text-xs" />
                 <input type="text" disabled={enviando} value={manualP2} onChange={e => { setManualP2(e.target.value); setFormError(''); }} placeholder="Jugador 2" className="border rounded-lg p-1.5 text-xs" />
@@ -4578,8 +4770,156 @@ function usePadelApi(apiUrl) {
 
   return { syncing, setSyncing, fetchWithTimeout };
 }
-// APLICACIÓN PRINCIPAL COMPLETA
+// ============================================================================
+// ACTUALIZACIÓN FORZADA DE VERSIÓN
+// Cuando se despliega una versión nueva en Vercel, el HTML apunta a un bundle con otro hash
+// (/assets/index-XXXX.js). Comparamos el bundle que está corriendo con el que sirve ahora el
+// servidor y, si difieren, bloqueamos la pantalla y recargamos para que nadie siga trabajando
+// con una versión vieja. En desarrollo (sin hash en el script) no hace nada.
+// ============================================================================
+const CLAVE_RECARGA_VERSION = 'padel_recarga_version_intentada';
+const INTERVALO_COMPROBAR_VERSION_MS = 5 * 60 * 1000;
+
+function bundleEnEjecucion() {
+  try {
+    const scripts = Array.from(document.querySelectorAll('script[type="module"][src]'));
+    const s = scripts.map(x => x.getAttribute('src') || '').find(src => /\/assets\/[^"']+\.js/.test(src));
+    return s ? s.replace(/^https?:\/\/[^/]+/, '') : null;
+  } catch {
+    return null;
+  }
+}
+
+async function bundlePublicado() {
+  const resp = await fetch(`/?v=${Date.now()}`, { cache: 'no-store', headers: { 'Cache-Control': 'no-cache' } });
+  if (!resp.ok) return null;
+  const html = await resp.text();
+  const m = html.match(/<script[^>]+type="module"[^>]+src="([^"]*\/assets\/[^"]+\.js)"/i)
+        || html.match(/<script[^>]+src="([^"]*\/assets\/[^"]+\.js)"[^>]+type="module"/i);
+  return m ? m[1].replace(/^https?:\/\/[^/]+/, '') : null;
+}
+
+async function recargarConVersionNueva() {
+  try {
+    if ('serviceWorker' in navigator) {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.map(r => r.update().catch(() => {})));
+    }
+    if (window.caches?.keys) {
+      const claves = await caches.keys();
+      await Promise.all(claves.map(k => caches.delete(k)));
+    }
+  } catch { /* si falla la limpieza igualmente recargamos */ }
+  window.location.reload();
+}
+
+function ActualizadorVersion() {
+  const [versionNueva, setVersionNueva] = useState(null); // ruta del bundle nuevo
+  const [segundos, setSegundos] = useState(5);
+  const [atascado, setAtascado] = useState(false);
+  const comprobando = useRef(false);
+
+  useEffect(() => {
+    const actual = bundleEnEjecucion();
+    if (!actual) return undefined; // desarrollo o entorno sin hash: no se comprueba
+
+    const comprobar = async () => {
+      if (comprobando.current) return;
+      comprobando.current = true;
+      try {
+        const publicado = await bundlePublicado();
+        if (publicado && publicado !== actual) {
+          setVersionNueva(publicado);
+        }
+      } catch { /* sin red: se reintenta en la próxima ocasión */ }
+      finally { comprobando.current = false; }
+    };
+
+    const t0 = setTimeout(comprobar, 4000);
+    const iv = setInterval(comprobar, INTERVALO_COMPROBAR_VERSION_MS);
+    const alVolver = () => { if (document.visibilityState === 'visible') comprobar(); };
+    document.addEventListener('visibilitychange', alVolver);
+    window.addEventListener('online', comprobar);
+    window.addEventListener('focus', comprobar);
+    return () => {
+      clearTimeout(t0);
+      clearInterval(iv);
+      document.removeEventListener('visibilitychange', alVolver);
+      window.removeEventListener('online', comprobar);
+      window.removeEventListener('focus', comprobar);
+    };
+  }, []);
+
+  // Cuenta atrás + recarga. Antes de recargar se comprueba que no se haya intentado ya recargar
+  // por esta misma versión (evita bucles si el navegador/Service Worker sigue sirviendo la vieja).
+  useEffect(() => {
+    if (!versionNueva) return undefined;
+    let yaIntentada = null;
+    try { yaIntentada = sessionStorage.getItem(CLAVE_RECARGA_VERSION); } catch { /* ignore */ }
+    if (yaIntentada === versionNueva) {
+      setAtascado(true);
+      return undefined;
+    }
+    setSegundos(5);
+    const iv = setInterval(() => {
+      setSegundos(s => {
+        if (s <= 1) {
+          clearInterval(iv);
+          try { sessionStorage.setItem(CLAVE_RECARGA_VERSION, versionNueva); } catch { /* ignore */ }
+          recargarConVersionNueva();
+          return 0;
+        }
+        return s - 1;
+      });
+    }, 1000);
+    return () => clearInterval(iv);
+  }, [versionNueva]);
+
+  if (!versionNueva) return null;
+
+  const actualizarAhora = () => {
+    try { sessionStorage.setItem(CLAVE_RECARGA_VERSION, versionNueva); } catch { /* ignore */ }
+    recargarConVersionNueva();
+  };
+
+  return (
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-stone-900/80 backdrop-blur-sm p-6" role="alertdialog" aria-modal="true">
+      <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 text-center">
+        <div className="text-4xl mb-2">🔄</div>
+        <h2 className="text-lg font-black text-stone-900">Hay una versión nueva de la app</h2>
+        {atascado ? (
+          <p className="text-sm text-stone-600 mt-2">
+            Tu navegador sigue mostrando la versión anterior. Pulsa el botón para forzar la actualización; si persiste, cierra y vuelve a abrir la app.
+          </p>
+        ) : (
+          <p className="text-sm text-stone-600 mt-2">
+            Para evitar que trabajes con una versión antigua, la app se actualizará automáticamente en {segundos} s.
+          </p>
+        )}
+        <button
+          onClick={actualizarAhora}
+          className="mt-4 w-full py-3 bg-[#2c4a66] hover:bg-[#9fb4c7] text-white rounded-xl text-sm font-bold shadow transition"
+        >
+          Actualizar ahora
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// Envoltorio: el actualizador vive fuera de la app para funcionar también en login / pantallas de espera.
 export default function App() {
+  return (
+    <>
+      <ActualizadorVersion />
+      <GestorAtras />
+      <AppPrincipal />
+    </>
+  );
+}
+
+// APLICACIÓN PRINCIPAL COMPLETA
+function AppPrincipal() {
   const [apiUrl] = useState(() => localStorage.getItem('padel_api_url') || DEFAULT_API_URL);
   const { syncing, setSyncing, fetchWithTimeout } = usePadelApi(apiUrl);
   // NUEVO: la app arranca en la pantalla de "Inicio" (resumen + accesos directos) en vez de
@@ -4682,6 +5022,8 @@ export default function App() {
 
   // NUEVO: preferencias de avisos push personalizables por usuario — el aviso de los
   // lunes (opt-in) y las combinaciones día+hora para los avisos de reserva en Playtomic.
+  // Ids repetidos detectados por el backend en hojas clave (se avisa al administrador).
+  const [idsDuplicados, setIdsDuplicados] = useState([]);
   const [alertPreferences, setAlertPreferences] = useState(() => {
     try {
       const cached = localStorage.getItem('padel_cached_alert_prefs');
@@ -4737,6 +5079,34 @@ export default function App() {
   // NUEVO: quién es el administrador (ver ADMIN_PLAYER_ID) — decide si se ve el menú de
   // administración (altas pendientes + ascender invitados de torneo a Chicos/Chicas).
   const isAdmin = Boolean(currentUser && currentUser.id === ADMIN_PLAYER_ID);
+
+  // Qué hace el "atrás" del móvil: cierra lo que haya encima, de arriba abajo. Devuelve true si
+  // cerró algo; false si ya estamos en la pantalla raíz (entonces GestorAtras gestiona la salida).
+  manejadorAtrasRef.current = () => {
+    // Pantalla de acceso (sin usuario)
+    if (!currentUser) {
+      if (targetPinUser) { setTargetPinUser(null); return true; }
+      if (showRegisterForm) { setShowRegisterForm(false); return true; }
+      return false;
+    }
+    // Ventanas / modales, el último abierto primero
+    if (swapModalData) { setSwapModalData(null); return true; }
+    if (linkingSlot) { setLinkingSlot(null); return true; }
+    if (showScoreModal) { setShowScoreModal(false); return true; }
+    if (showEditPlayersModal) { setShowEditPlayersModal(false); return true; }
+    if (showReloadPlaytomicModal) { setShowReloadPlaytomicModal(false); return true; }
+    if (showAddModal) { setShowAddModal(false); return true; }
+    if (reportingTournamentMatch) { setReportingTournamentMatch(null); return true; }
+    if (showTournamentWizard) { setShowTournamentWizard(false); return true; }
+    if (showRulesModal) { setShowRulesModal(false); return true; }
+    if (inspectedUser) { setInspectedUser(null); return true; }
+    // Detalle de partido → lista
+    if (selectedMatchId && activeTab === 'partidos') { setSelectedMatchId(null); return true; }
+    // Cualquier otra pestaña → pantalla raíz
+    const pestanaRaiz = isThursdayMember ? 'inicio' : 'torneos';
+    if (activeTab !== pestanaRaiz) { setActiveTab(pestanaRaiz); return true; }
+    return false;
+  };
 
   // NUEVO: altas (autorregistros de Chicos/Chicas) esperando a que el administrador las
   // valide — usado tanto para el contador en la campanita de administración como dentro de
@@ -4800,7 +5170,13 @@ export default function App() {
           setPlayers(json.jugadores);
           localStorage.setItem('padel_cached_players', JSON.stringify(json.jugadores));
           if (currentUser) {
-            const fresh = json.jugadores.find(u => u.id === currentUser.id);
+            // Si por un error de datos hubiera dos jugadores con el mismo id, no nos quedamos a
+            // ciegas con el primero (así una persona acababa viendo el perfil de otra): nos
+            // quedamos con el que coincide en nombre; si ninguno coincide, con el primero.
+            const mismasId = json.jugadores.filter(u => u.id === currentUser.id);
+            const fresh = mismasId.length > 1
+              ? (mismasId.find(u => normalizeName(u.name) === normalizeName(currentUser.name)) || mismasId[0])
+              : mismasId[0];
             if (fresh) {
               setCurrentUser(fresh);
               localStorage.setItem('padel_current_user', JSON.stringify(fresh));
@@ -4838,6 +5214,7 @@ export default function App() {
           setReservationAlerts(json.alertasReserva);
           localStorage.setItem('padel_cached_reservation_alerts', JSON.stringify(json.alertasReserva));
         }
+        setIdsDuplicados(Array.isArray(json.idsDuplicados) ? json.idsDuplicados : []);
         if (json.ticketsCena) {
           setDinnerTickets(json.ticketsCena);
           localStorage.setItem('padel_cached_dinner_tickets', JSON.stringify(json.ticketsCena));
@@ -4940,7 +5317,7 @@ export default function App() {
       const json = await response.json();
 
       if (json && json.ok) {
-        const newUserId = json.id || 'u_' + Date.now();
+        const newUserId = json.id || 'u_' + Date.now() + '_' + sufijoAleatorioId();
         const createdUser = {
           id: newUserId,
           name: userData.nombre,
@@ -4964,8 +5341,11 @@ export default function App() {
         handlePinSuccess(createdUser);
         setShowRegisterForm(false);
         fetchData(true);
+      } else if (json && json.codigo === 'TELEFONO_DUPLICADO') {
+        // Ese teléfono ya pertenece a otra persona registrada: no se entra con su id.
+        alert('⚠️ ' + (json.error || 'Este teléfono ya está registrado con otro nombre.'));
       } else {
-        alert('No se pudo registrar: ' + (json.error || 'Error en el servidor de Google Sheets.'));
+        alert('No se pudo registrar: ' + ((json && json.error) || 'Error en el servidor de Google Sheets.'));
       }
     } catch (err) {
       console.error('Error en registro:', err);
@@ -5088,7 +5468,12 @@ export default function App() {
       // El modal ya valida que manualDate y al menos 2 jugadores estén rellenos antes de
       // llegar aquí, así que ya no hace falta (ni conviene) un valor de relleno tipo
       // "Jueves 21:00" que antes se colaba en silencio cuando el usuario dejaba esto vacío.
-      const d = data.manualDate.trim();
+      // Se manda con día, mes y AÑO completos: p.ej. "jueves, 08 oct 2026, 21:00".
+      const dObj = parseMatchDateObject(`${data.manualDate} ${data.manualTime || '21:00'}`);
+      const diasTxt = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+      const mesesTxt = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+      const hhmm = `${String(dObj.getHours()).padStart(2, '0')}:${String(dObj.getMinutes()).padStart(2, '0')}`;
+      const d = `${diasTxt[dObj.getDay()]}, ${String(dObj.getDate()).padStart(2, '0')} ${mesesTxt[dObj.getMonth()]} ${dObj.getFullYear()}, ${hhmm}`;
       const loc = data.manualLocation.trim() || 'Real Club de Tenis de La Coruña';
       const p1 = data.manualP1.trim() ? `✅ ${data.manualP1.trim()}` : '';
       const p2 = data.manualP2.trim() ? `✅ ${data.manualP2.trim()}` : '';
@@ -5226,7 +5611,7 @@ export default function App() {
     const normMe = normalizeName(currentUser.name);
 
     const userMatchToday = groupMatches.find(m => {
-      const matchDateClean = extractCleanDate(m.date);
+      const matchDateClean = extractCleanDate(m.date, m.fechaISO);
       if (matchDateClean !== cleanDate) return false;
       return (m.players || []).some(p => p.id === currentUser.id || normalizeName(p.name) === normMe);
     });
@@ -5235,7 +5620,7 @@ export default function App() {
       const mySlot = userMatchToday.players.find(p => p.id === currentUser.id || normalizeName(p.name) === normMe);
       if (mySlot) {
         await handleUpdateDinner(userMatchToday.id, mySlot.id, mySlot.name, newState);
-        alert(`¡Entendido ${currentUser.name}! Como juegas partido el ${cleanDate}, hemos confirmado tu cena directamente en tu partido.`);
+        alert(`¡Entendido ${currentUser.name}! Como juegas partido el ${etiquetaFechaDia(cleanDate)}, hemos confirmado tu cena directamente en tu partido.`);
         return;
       }
     }
@@ -6024,7 +6409,7 @@ export default function App() {
           id: `cena-${m.id}`,
           icon: '🍻',
           title: 'Falta por confirmar la cena',
-          description: `${m.date} · ¿Te quedas al 3º tiempo?`,
+          description: `${fechaCompleta(m.date, m.fechaISO)} · ¿Te quedas al 3º tiempo?`,
           action: () => { setActiveTab('partidos'); setSelectedMatchId(m.id); }
         });
       }
@@ -6096,7 +6481,7 @@ export default function App() {
           id: `resultado-${m.id}`,
           icon: '✍️',
           title: 'Falta el resultado de un partido',
-          description: `${m.date} · Pon el marcador`,
+          description: `${fechaCompleta(m.date, m.fechaISO)} · Pon el marcador`,
           action: () => { setActiveTab('partidos'); setSelectedMatchId(m.id); }
         });
       }
@@ -6126,10 +6511,10 @@ export default function App() {
     const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
 
     groupMatches.forEach(m => {
-      const cleanKey = extractCleanDate(m.date);
+      const cleanKey = extractCleanDate(m.date, m.fechaISO);
       if (cleanKey && cleanKey !== 'sin fecha') {
         if (!datesMap.has(cleanKey)) {
-          const niceLabel = cleanKey.charAt(0).toUpperCase() + cleanKey.slice(1);
+          const niceLabel = etiquetaFechaDia(cleanKey);
           const dateObj = parseMatchDateObject(m.date, m.fechaISO) || new Date();
           datesMap.set(cleanKey, { key: cleanKey, label: niceLabel, dateObj });
         }
@@ -6174,7 +6559,7 @@ export default function App() {
   const activeDinnerKey = selectedDinnerDate || defaultSmartDinnerKey;
   const matchesForDinner = useMemo(() => {
     if (!activeDinnerKey) return [];
-    return groupMatches.filter(m => extractCleanDate(m.date) === activeDinnerKey);
+    return groupMatches.filter(m => extractCleanDate(m.date, m.fechaISO) === activeDinnerKey);
   }, [groupMatches, activeDinnerKey]);
 
   // Aquí faltaba la apertura del useMemo y la inicialización de los Map
@@ -6225,11 +6610,8 @@ export default function App() {
 
     (allDinnerGuests || []).forEach(g => {
       const gTargetClean = extractCleanDate(g.target || g.cleanTarget);
-      const isDateMatch = (
-        gTargetClean === targetDateClean ||
-        gTargetClean.includes(targetDateClean) ||
-        targetDateClean.includes(gTargetClean)
-      );
+      // Comparación exacta de día (AAAA-MM-DD).
+      const isDateMatch = gTargetClean !== 'sin fecha' && gTargetClean === targetDateClean;
 
       const isGroupMatch = (g.group || 'chicos').toLowerCase() === myGroup;
 
@@ -6622,6 +7004,7 @@ export default function App() {
             onApprove={handleApprovePlayer}
             onReject={handleRejectPlayer}
             onPromote={handlePromoteGuestToGroup}
+            idsDuplicados={idsDuplicados}
           />
         ) : activeTab === 'avisos' ? (
           <AlertsScreen
@@ -6648,12 +7031,7 @@ export default function App() {
         ) : selectedMatchId && currentMatch && isThursdayMember ? (
           /* DETALLE DEL PARTIDO REGULAR */
           <div className="space-y-4">
-            <button
-              onClick={() => setSelectedMatchId(null)}
-              className="text-xs font-bold text-[#2c4a66] hover:underline flex items-center gap-1"
-            >
-              ← Volver a la lista de partidos
-            </button>
+            <CabeceraPantalla onBack={() => setSelectedMatchId(null)} titulo="🎾 Partidos" tituloAtras="Volver a la lista de partidos" />
 
             {/* BANNER CUANDO EL PARTIDO ESTÁ LISTO PARA ANOTAR */}
             {(() => {
@@ -6732,10 +7110,7 @@ export default function App() {
               </div>
 
               <h2 className="text-xl font-black text-stone-900 mt-1">
-                {currentMatch.date}
-                {currentMatch.fechaISO && (
-                  <span className="text-xs font-bold text-stone-400 ml-1.5">{currentMatch.fechaISO.slice(0, 4)}</span>
-                )}
+                {fechaCompleta(currentMatch.date, currentMatch.fechaISO)}
               </h2>
               <p className="text-xs text-stone-500 flex items-center gap-1 mt-0.5">
                 📍 {currentMatch.location}
@@ -7147,7 +7522,7 @@ export default function App() {
                                 </span>
                               )}
                             </div>
-                            <h3 className="text-base font-black text-stone-900 mt-1">{m.date}</h3>
+                            <h3 className="text-base font-black text-stone-900 mt-1">{fechaCompleta(m.date, m.fechaISO)}</h3>
                             <p className="text-xs text-stone-500 mt-0.5">📍 {m.location}</p>
                           </div>
                           <span className={`text-[10px] font-black uppercase px-2.5 py-1 rounded-full border ${badgeColors[dynamicStatus] || badgeColors['PROGRAMADO']}`}>
