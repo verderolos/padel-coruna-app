@@ -1,5 +1,33 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 
+// NUEVO (trazabilidad: quién hace qué): a toda petición POST de la app a Apps Script (cuerpo JSON con
+// "action") se le añade automáticamente el usuario que la hace (actorId / actorName), leído en ese
+// momento de la sesión guardada. El backend lo usa para anotar "creado por / última modificación
+// por" en cada partido y para llevar el registro de la hoja "Auditoria". Se hace aquí, en un único
+// sitio, para no tener que tocar los más de cincuenta fetch repartidos por la app. No toca ninguna
+// otra petición (p.ej. la de /api/send-push no lleva "action").
+(function instalarActorEnPeticiones() {
+  if (typeof window === 'undefined' || window.__ctcActorInstalado) return;
+  window.__ctcActorInstalado = true;
+  const fetchOriginal = window.fetch.bind(window);
+  window.fetch = (input, init) => {
+    try {
+      if (init && String(init.method || '').toUpperCase() === 'POST' && typeof init.body === 'string' && init.body.charAt(0) === '{') {
+        const cuerpo = JSON.parse(init.body);
+        if (cuerpo && typeof cuerpo.action === 'string' && !cuerpo.actorId) {
+          const u = JSON.parse(localStorage.getItem('padel_current_user') || 'null');
+          if (u && u.id) {
+            cuerpo.actorId = u.id;
+            cuerpo.actorName = u.name || '';
+            init = { ...init, body: JSON.stringify(cuerpo) };
+          }
+        }
+      }
+    } catch (e) { /* si algo falla, la petición sale tal cual */ }
+    return fetchOriginal(input, init);
+  };
+})();
+
 // URL REAL DE TU BACKEND
 const DEFAULT_API_URL = 'https://script.google.com/macros/s/AKfycbxkd-BmLpYxmLtev5wcxwsyda94bG1mFW9gtDpEAgsmhV1HCfDwn2-syPDEvBUPwiiiGw/exec';
 
@@ -114,6 +142,52 @@ function normalizeName(str) {
     .replace(/[\u0300-\u036f]/g, '')
     .trim()
     .toLowerCase();
+}
+
+// NUEVO (control anti-duplicados al crear partidos): misma lógica que el backend
+// (normalizarLinkPartido / esLinkGenericoPlaytomic en el Apps Script). Dos enlaces se
+// consideran el mismo aunque cambien http/https, "www.", la barra final, el #hash o los
+// parámetros de seguimiento (utm_*, fbclid, gclid, ref).
+function normalizarLinkPartido(link) {
+  if (!link) return '';
+  const l = String(link).trim().toLowerCase().replace(/^https?:\/\/(www\.)?/, '').split('#')[0];
+  const partes = l.split('?');
+  const base = partes[0].replace(/\/+$/, '');
+  const query = (partes[1] || '').split('&').filter(q => q && !/^(utm_|fbclid|gclid|ref=)/.test(q)).sort().join('&');
+  return query ? `${base}?${query}` : base;
+}
+
+// El enlace genérico de reserva/login de Playtomic (o solo el dominio) no identifica ningún
+// partido concreto: nunca se usa para decidir si algo está duplicado.
+function esLinkGenericoPlaytomic(linkNormalizado) {
+  if (!linkNormalizado) return true;
+  if (linkNormalizado.includes('/api/web-app/login')) return true;
+  return !linkNormalizado.includes('/');
+}
+
+// NUEVO (trazabilidad): "Marcos (u24)" + "2026-10-08 10:15:00" → "Marcos · 08/10/2026 10:15".
+// Devuelve '' si no hay dato (partidos anteriores a esta función).
+function formatearAutoria(porTxt, enTxt) {
+  const quien = String(porTxt || '').replace(/\s*\([^)]*\)\s*$/, '').trim();
+  if (!quien) return '';
+  const m = String(enTxt || '').match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);
+  return m ? `${quien} · ${m[3]}/${m[2]}/${m[1]} ${m[4]}:${m[5]}` : quien;
+}
+
+function extraerLinkDeTexto(texto) {
+  const m = String(texto || '').match(/https?:\/\/\S+/i);
+  return m ? m[0] : '';
+}
+
+// Busca entre los partidos ya cargados en la app uno con el mismo enlace de Playtomic (sin
+// contar los cancelados). Es la comprobación "instantánea" en el móvil; el backend repite
+// esta comprobación (y otra por fecha+jugadores) por si la lista local está desactualizada.
+function buscarPartidoConMismoLink(matches, texto) {
+  const linkNorm = normalizarLinkPartido(extraerLinkDeTexto(texto));
+  if (esLinkGenericoPlaytomic(linkNorm)) return null;
+  return (matches || []).find(m =>
+    String(m.status || '').toUpperCase() !== 'CANCELADO' && normalizarLinkPartido(m.url) === linkNorm
+  ) || null;
 }
 
 // Rota un array un n\u00famero de posiciones (m\u00e9todo del "c\u00edrculo" usado para generar
@@ -298,11 +372,11 @@ function isMatchOfficial(m) {
 
   if (group === 'chicos') {
     if (combined.includes('jue')) return true;
-    const d = parseMatchDateObject(m.date);
+    const d = parseMatchDateObject(m.date, m.fechaISO);
     return d ? d.getDay() === 4 : false;
   } else if (group === 'chicas') {
     if (combined.includes('mar')) return true;
-    const d = parseMatchDateObject(m.date);
+    const d = parseMatchDateObject(m.date, m.fechaISO);
     return d ? d.getDay() === 2 : false;
   }
   return false;
@@ -317,13 +391,22 @@ function extractMatchDurationMinutes(dateStr, rawText) {
   return 90;
 }
 
-function parseMatchDateObject(dateStr) {
+// Fecha de un partido como objeto Date. Si se conoce la fecha completa con año ("AAAA-MM-DD HH:mm",
+// columna FechaISO del Sheet, que llega como fechaISO) se usa esa: es la única fiable entre
+// años. Si no (partidos antiguos sin migrar, o textos sin día/mes como "Jueves 21:00"), se
+// mantiene el comportamiento de siempre: se interpreta el texto con el AÑO ACTUAL.
+function parseMatchDateObject(dateStr, fechaISO) {
+  if (fechaISO) {
+    const iso = String(fechaISO).match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);
+    if (iso) return new Date(+iso[1], +iso[2] - 1, +iso[3], +iso[4], +iso[5], 0, 0);
+  }
   if (!dateStr) return null;
   const timeMatch = dateStr.match(/(\d{1,2}):(\d{2})/);
   const hours = timeMatch ? parseInt(timeMatch[1], 10) : 21;
   const minutes = timeMatch ? parseInt(timeMatch[2], 10) : 0;
 
-  const matchDate = new Date();
+  const hoy = new Date();
+  let matchDate = new Date(hoy.getTime());
   const meses = {
     ene: 0, feb: 1, mar: 2, abr: 3, may: 4, jun: 5,
     jul: 6, ago: 7, sep: 8, sept: 8, oct: 9, nov: 10, dic: 11
@@ -335,8 +418,9 @@ function parseMatchDateObject(dateStr) {
     const monthKey = dayMonthMatch[2].toLowerCase().slice(0, 4);
     const foundMonth = Object.keys(meses).find(k => monthKey.startsWith(k));
     if (foundMonth !== undefined) {
-      matchDate.setMonth(meses[foundMonth]);
-      matchDate.setDate(day);
+      // Se construye con (año, mes, día) de una vez: encadenar setMonth() y setDate() sobre "hoy"
+      // se desbordaba a veces (p.ej. el día 31 + mes de 30 días saltaba al mes siguiente).
+      matchDate = new Date(hoy.getFullYear(), meses[foundMonth], day);
     }
   }
   matchDate.setHours(hours, minutes, 0, 0);
@@ -349,7 +433,7 @@ function computeMatchStatus(m) {
     return baseStatus;
   }
 
-  const matchDate = parseMatchDateObject(m.date);
+  const matchDate = parseMatchDateObject(m.date, m.fechaISO);
   if (!matchDate) return 'PROGRAMADO';
 
   const now = new Date();
@@ -372,8 +456,8 @@ function computeMatchStatus(m) {
 // cuanto el jugador marcaba "Sí" o en cuanto se apuntaba a una cena sin partido, aunque esa
 // cena fuera esta misma noche o incluso un día futuro, dando una sensación de puntos/cenas ya
 // "ganados" que en realidad el ranking todavía no contaba hasta pasado ese corte.
-function esCenaComputable(dateStr) {
-  const fechaBase = parseMatchDateObject(dateStr);
+function esCenaComputable(dateStr, fechaISO) {
+  const fechaBase = parseMatchDateObject(dateStr, fechaISO);
   if (!fechaBase) return false;
   const limite = new Date(fechaBase.getTime());
   limite.setDate(limite.getDate() + 1);
@@ -406,10 +490,10 @@ function calcularRachasSemanales(currentUser, matches, tournaments, allDinnerGue
     if (m.status !== 'FINALIZADO') return;
     const mySlot = (m.players || []).find(p => p.id === currentUser.id || normalizeName(p.name) === normUserName);
     if (!mySlot) return;
-    const fecha = parseMatchDateObject(m.date);
+    const fecha = parseMatchDateObject(m.date, m.fechaISO);
     if (!fecha) return;
     eventosPartido.push({ fecha, ganado: mySlot.won === 'SI' });
-    if (mySlot.dinner === 'SI' && esCenaComputable(m.date) && fecha.getDay() === diaCenaEsperado) {
+    if (mySlot.dinner === 'SI' && esCenaComputable(m.date, m.fechaISO) && fecha.getDay() === diaCenaEsperado) {
       eventosCena.push({ fecha });
     }
   });
@@ -465,12 +549,29 @@ function calcularRachasSemanales(currentUser, matches, tournaments, allDinnerGue
     return Math.floor(diffMs / (7 * 24 * 60 * 60 * 1000));
   };
 
+  // Semanas NATURALES (lunes-domingo) entre la semana de una fecha y la semana actual. Solo se
+  // usa cuando "nunca ha pasado" lo que se cuenta (nunca has perdido / nunca has ganado): ahí no
+  // hay una "última vez" desde la que contar, así que (a petición de Marcos) se cuenta desde la
+  // semana de tu primer partido en la app — antes salía una raya "–" en ese caso.
+  const inicioSemana = (d) => {
+    const x = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    x.setDate(x.getDate() - ((x.getDay() + 6) % 7)); // retrocede hasta el lunes
+    return x;
+  };
+  const semanasNaturalesDesde = (fecha) => {
+    if (!fecha) return null;
+    return Math.max(0, Math.round((inicioSemana(ahora) - inicioSemana(fecha)) / (7 * 24 * 60 * 60 * 1000)));
+  };
+
   const victorias = eventosPartido.filter(e => e.ganado);
   const derrotas = eventosPartido.filter(e => !e.ganado);
   const fechaUltimoPartido = masReciente(eventosPartido);
   const fechaUltimaVictoria = masReciente(victorias);
   const fechaUltimaDerrota = masReciente(derrotas);
   const fechaUltimaCena = masReciente(eventosCena);
+  const fechaPrimerPartido = eventosPartido.length
+    ? eventosPartido.reduce((min, e) => (e.fecha < min ? e.fecha : min), eventosPartido[0].fecha)
+    : null;
 
   // Hueco compartido "sin ganar / sin perder" en el Home: se decide según tu último resultado
   // (si lo último que jugaste fue una derrota, te interesa más ver cuánto llevas sin ganar, y
@@ -484,16 +585,18 @@ function calcularRachasSemanales(currentUser, matches, tournaments, allDinnerGue
 
   return {
     semanasSinJugar: semanasDesde(fechaUltimoPartido),
-    semanasSinGanar: semanasDesde(fechaUltimaVictoria),
-    semanasSinPerder: semanasDesde(fechaUltimaDerrota),
+    // Si nunca has ganado / nunca has perdido, se cuenta desde la semana de tu primer partido
+    // (en vez de mostrar "–"). Si ya hay una última victoria/derrota, se sigue contando desde ella.
+    semanasSinGanar: fechaUltimaVictoria ? semanasDesde(fechaUltimaVictoria) : semanasNaturalesDesde(fechaPrimerPartido),
+    semanasSinPerder: fechaUltimaDerrota ? semanasDesde(fechaUltimaDerrota) : semanasNaturalesDesde(fechaPrimerPartido),
     semanasSinCena: semanasDesde(fechaUltimaCena),
     ultimoResultado,
     tieneHistorial: eventosPartido.length > 0
   };
 }
 
-function parseMatchTiming(dateStr) {
-  const matchDate = parseMatchDateObject(dateStr);
+function parseMatchTiming(dateStr, fechaISO) {
+  const matchDate = parseMatchDateObject(dateStr, fechaISO);
   if (!matchDate) return { canReport: true, shouldPrompt: false };
 
   const now = new Date();
@@ -504,8 +607,8 @@ function parseMatchTiming(dateStr) {
   };
 }
 
-function isCurrentWeek(dateStr) {
-  const matchDate = parseMatchDateObject(dateStr);
+function isCurrentWeek(dateStr, fechaISO) {
+  const matchDate = parseMatchDateObject(dateStr, fechaISO);
   if (!matchDate) return true;
 
   const now = new Date();
@@ -523,81 +626,104 @@ function isCurrentWeek(dateStr) {
   return matchDate >= monday && matchDate <= sunday;
 }
 
-function isUpcoming(dateStr) {
-  const matchDate = parseMatchDateObject(dateStr);
+function isUpcoming(dateStr, fechaISO) {
+  const matchDate = parseMatchDateObject(dateStr, fechaISO);
   if (!matchDate) return true;
   const startOfToday = new Date();
   startOfToday.setHours(0, 0, 0, 0);
   return matchDate >= startOfToday;
 }
 
-// NUEVO (tema visual): icono propio de "2 palas de padel" cruzadas, para sustituir el emoji
-// ⚔️ (dos espadas) que usábamos para todo lo relacionado con Torneos — no existe un emoji
-// estándar de palas de padel, así que a petición de Marcos se dibuja como SVG propio. Usa
-// currentColor para heredar el color del texto donde se coloque (igual de versátil que un
-// emoji tanto en botones claros como oscuros) y "1em" de tamaño por defecto para poder
-// colocarlo igual que un emoji dentro de cualquier texto/span (hereda el font-size de alrededor).
+// NUEVO (tema visual): icono de "2 palas de padel" cruzadas (amarillas) para sustituir el emoji
+// ⚔️ que se usaba para todo lo relacionado con Torneos — no existe un emoji estándar de palas de
+// padel. Imagen PNG/WebP con fondo transparente (128 px, ~7 KB) incrustada en el archivo: se ve
+// bien tanto en botones claros como oscuros. Tamaño "1em" por defecto para colocarlo igual que
+// un emoji dentro de cualquier texto/span (hereda el font-size de alrededor).
+const ICONO_PALAS_SRC = 'data:image/webp;base64,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';
+
 function PadelRacketsIcon({ className = '', size = '1em' }) {
   return (
-    <svg
-      viewBox="0 0 24 24"
+    <img
+      src={ICONO_PALAS_SRC}
+      alt=""
+      aria-hidden="true"
       width={size}
       height={size}
-      className={`inline-block align-[-0.15em] shrink-0 ${className}`}
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      aria-hidden="true"
-    >
-      <g transform="rotate(45 12 12)">
-        <path d="M12 2.6c-2.5 0-4.4 2-4.4 4.6 0 2.8 2 4.9 4.4 4.9s4.4-2.1 4.4-4.9c0-2.6-1.9-4.6-4.4-4.6z" stroke="currentColor" strokeWidth="1.5" fill="currentColor" fillOpacity="0.22"/>
-        <circle cx="10.5" cy="6.2" r="0.5" fill="currentColor"/>
-        <circle cx="13.5" cy="6.2" r="0.5" fill="currentColor"/>
-        <circle cx="12" cy="8.3" r="0.5" fill="currentColor"/>
-        <circle cx="10.5" cy="10.4" r="0.5" fill="currentColor"/>
-        <circle cx="13.5" cy="10.4" r="0.5" fill="currentColor"/>
-        <line x1="12" y1="12.1" x2="12" y2="21" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
-      </g>
-      <g transform="rotate(-45 12 12)">
-        <path d="M12 2.6c-2.5 0-4.4 2-4.4 4.6 0 2.8 2 4.9 4.4 4.9s4.4-2.1 4.4-4.9c0-2.6-1.9-4.6-4.4-4.6z" stroke="currentColor" strokeWidth="1.5" fill="currentColor" fillOpacity="0.22"/>
-        <circle cx="10.5" cy="6.2" r="0.5" fill="currentColor"/>
-        <circle cx="13.5" cy="6.2" r="0.5" fill="currentColor"/>
-        <circle cx="12" cy="8.3" r="0.5" fill="currentColor"/>
-        <circle cx="10.5" cy="10.4" r="0.5" fill="currentColor"/>
-        <circle cx="13.5" cy="10.4" r="0.5" fill="currentColor"/>
-        <line x1="12" y1="12.1" x2="12" y2="21" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
-      </g>
-    </svg>
+      draggable={false}
+      style={{ width: size, height: size }}
+      className={`inline-block align-[-0.15em] shrink-0 object-contain ${className}`}
+    />
   );
 }
 
-// NUEVO (tema visual, fondo general de la app): pista de padel de muro en tono tierra batida.
-// A propósito NO es una foto real — eso añadiría una dependencia externa (enlace que se puede
-// caer, dudas de licencia de uso) para un detalle puramente decorativo — sino una ilustración
-// generada en SVG/CSS: base en gradiente tierra batida + un patrón repetido en crema muy tenue
-// con la malla/valla superior ("muro") y las líneas típicas de una pista (límite, línea
-// central, líneas de servicio). Se calcula una sola vez (constante de módulo) porque no
-// depende de ningún dato de la app. Los colores de las tarjetas no cambian: todas siguen con
-// fondo blanco/stone sólido, así que este fondo solo se ve en los huecos entre tarjetas.
+// NUEVO (tema visual, fondo general de la app): pista de pádel vista desde arriba, en vertical.
+// A propósito NO es una foto real (evita dependencias externas y dudas de licencia): es una
+// ilustración SVG con las proporciones reales de una pista (10 x 20 m): suelo de tierra batida
+// con grano, líneas blancas de límite, líneas de servicio a 6,95 m de la red, línea central entre
+// ellas, red con sus postes en medio y el cristal/muro perimetral. Se pinta en una capa fija a
+// pantalla completa, centrada y ajustada al alto (contain); el color de fondo coincide con el
+// "suelo exterior" del SVG para que no se vea ningún corte. Las tarjetas siguen siendo blancas,
+// así que la pista solo se ve en los huecos entre tarjetas.
 const FONDO_PISTA_PADEL_SVG = (() => {
-  const mallaVerticales = Array.from({ length: 31 }, (_, i) => `<line x1="${i * 20}" y1="0" x2="${i * 20}" y2="40"/>`).join('');
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="600" height="600" viewBox="0 0 600 600">`
-    + `<g stroke="#fdf6ec" stroke-width="2" opacity="0.32"><line x1="0" y1="40" x2="600" y2="40"/>${mallaVerticales}</g>`
-    + `<g stroke="#fdf6ec" stroke-width="3" fill="none" opacity="0.26">`
-    + `<rect x="60" y="110" width="480" height="430" rx="10"/>`
-    + `<line x1="300" y1="110" x2="300" y2="540"/>`
-    + `<line x1="60" y1="222" x2="540" y2="222"/>`
-    + `<line x1="60" y1="428" x2="540" y2="428"/>`
-    + `</g></svg>`;
+  const px = 48; // píxeles del dibujo por metro de pista (480 x 960 para 10 x 20 m)
+  const x0 = 60, x1 = 540, y0 = 120, y1 = 1080, yRed = 600;
+  const ySrv1 = yRed - 6.95 * px, ySrv2 = yRed + 6.95 * px;
+  const postesCristal = Array.from({ length: 11 }, (_, i) => {
+    const y = 96 + i * 100.8;
+    return `<line x1="36" y1="${y}" x2="${x0}" y2="${y}"/><line x1="${x1}" y1="${y}" x2="564" y2="${y}"/>`;
+  }).join('');
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="600" height="1200" viewBox="0 0 600 1200">`
+    + `<defs>`
+    + `<linearGradient id="s" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#d9814f"/><stop offset="0.5" stop-color="#cf7746"/><stop offset="1" stop-color="#c06a3c"/></linearGradient>`
+    + `<filter id="g" x="0" y="0" width="100%" height="100%"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" seed="7"/><feColorMatrix values="0 0 0 0 0.35  0 0 0 0 0.15  0 0 0 0 0.05  0 0 0 0.55 -0.12"/></filter>`
+    + `</defs>`
+    // suelo exterior (zona de cristal y fuera de pista)
+    + `<rect width="600" height="1200" fill="#a95a3a"/>`
+    // superficie de juego + grano
+    + `<rect x="${x0}" y="${y0}" width="${x1 - x0}" height="${y1 - y0}" fill="url(#s)"/>`
+    + `<rect x="${x0}" y="${y0}" width="${x1 - x0}" height="${y1 - y0}" filter="url(#g)" opacity="0.5"/>`
+    // cristal / muro perimetral
+    + `<rect x="36" y="96" width="528" height="1008" rx="6" fill="none" stroke="#d9eef2" stroke-opacity="0.55" stroke-width="10"/>`
+    + `<g stroke="#e8f5f7" stroke-opacity="0.55" stroke-width="3">${postesCristal}</g>`
+    // líneas blancas
+    + `<g stroke="#ffffff" stroke-width="6" fill="none" stroke-linecap="square" opacity="0.95">`
+    + `<rect x="${x0}" y="${y0}" width="${x1 - x0}" height="${y1 - y0}"/>`
+    + `<line x1="${x0}" y1="${ySrv1}" x2="${x1}" y2="${ySrv1}"/>`
+    + `<line x1="${x0}" y1="${ySrv2}" x2="${x1}" y2="${ySrv2}"/>`
+    + `<line x1="300" y1="${ySrv1}" x2="300" y2="${ySrv2}"/>`
+    + `</g>`
+    // red: banda de malla con su sombra y los dos postes
+    + `<rect x="${x0 - 14}" y="${yRed - 4}" width="${x1 - x0 + 28}" height="14" fill="#000" opacity="0.18"/>`
+    + `<rect x="${x0 - 14}" y="${yRed - 7}" width="${x1 - x0 + 28}" height="8" fill="#2f3b46"/>`
+    + `<line x1="${x0 - 14}" y1="${yRed - 3}" x2="${x1 + 14}" y2="${yRed - 3}" stroke="#f1f5f7" stroke-width="2"/>`
+    + `<circle cx="${x0 - 14}" cy="${yRed - 3}" r="9" fill="#46515c" stroke="#f1f5f7" stroke-width="2"/>`
+    + `<circle cx="${x1 + 14}" cy="${yRed - 3}" r="9" fill="#46515c" stroke="#f1f5f7" stroke-width="2"/>`
+    + `</svg>`;
   return `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
 })();
 
+// Capa fija a pantalla completa (se pinta detrás de todo el contenido de la app).
 const ESTILO_FONDO_PISTA_PADEL = {
-  backgroundColor: '#c97b4a',
-  backgroundImage: `${FONDO_PISTA_PADEL_SVG}, linear-gradient(160deg, #e2975f 0%, #c97b4a 55%, #b5693f 100%)`,
-  backgroundRepeat: 'repeat, no-repeat',
-  backgroundSize: '600px 600px, auto',
-  backgroundAttachment: 'fixed, fixed'
+  backgroundColor: '#a95a3a',
+  backgroundImage: FONDO_PISTA_PADEL_SVG,
+  backgroundRepeat: 'no-repeat',
+  backgroundPosition: 'center',
+  backgroundSize: 'contain'
 };
+
+// NUEVO: logo oficial de los torneos CTC (trofeo con corona + 2 palas + laureles). Imagen
+// incrustada (WebP ~28 KB, recortada) para no depender de ningún enlace externo. Como el dibujo
+// es azul marino sobre fondo blanco, se muestra siempre dentro de una insignia blanca redondeada
+// para que se vea bien tanto sobre los banners azules como sobre las pantallas oscuras.
+const LOGO_TORNEO_SRC = 'data:image/webp;base64,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';
+
+function LogoTorneo({ className = '', plano = false }) {
+  return (
+    <span className={`inline-block ${plano ? '' : 'bg-white rounded-2xl p-1.5 shadow-sm'} ${className}`}>
+      <img src={LOGO_TORNEO_SRC} alt="Logo Torneos CTC" className="block w-full h-auto" draggable={false} />
+    </span>
+  );
+}
 
 function UserAvatar({ name, photo, size = 'md', className = '' }) {
   const sizeClasses = {
@@ -803,7 +929,7 @@ function CriteriosModal({ isOpen, onClose }) {
           <h4 className="font-extrabold text-stone-700 text-xs uppercase tracking-wide">📱 Cómo se usa la app</h4>
           <ul className="text-xs text-stone-600 space-y-1.5 list-disc list-inside">
             <li><strong>🏠 Inicio:</strong> lo primero que ves al entrar — el próximo partido de la semana, si falta gente por confirmar cena y tus torneos activos, con accesos directos al resto de secciones.</li>
-            <li><strong>🎾 Partidos:</strong> pulsa "Añadir Partido (Pegar desde Playtomic)" y pega el texto que Playtomic genera al compartir el partido (con los jugadores marcados con ✅). Si solo pegas el enlace, sin ese texto, la app te pedirá la fecha/hora y al menos 2 jugadores a mano antes de crearlo.</li>
+            <li><strong>🎾 Partidos:</strong> pulsa "Añadir Partido (Pegar desde Playtomic)" y pega el texto que Playtomic genera al compartir el partido (con los jugadores marcados con ✅). Si solo pegas el enlace, sin ese texto, la app te pedirá la fecha/hora y al menos 2 jugadores a mano antes de crearlo. Si ese partido ya está en la app (mismo enlace de Playtomic) no se crea otro: te lo avisa y te lleva al existente. Para encontrar un partido usa el buscador: por jugador, estado o fecha exacta.</li>
             <li><strong>🍻 Cena &amp; Club:</strong> confirma si te quedas a cenar. En los torneos puedes ver, por nombre, quién cena, quién está pendiente de confirmar y quién se raja.</li>
             <li><strong>🏆 Rankings:</strong> toca el perfil de cualquier jugador para ver sus estadísticas: partidos jugados, % de victorias, cenas, rajadas, historial de puntos y desglose del bote.</li>
             <li><strong>💶 Bote:</strong> lo que cada uno debe aportar, según las reglas de abajo.</li>
@@ -1086,33 +1212,34 @@ function PushNotificationsCard({ currentUser, apiUrl }) {
     );
   }
 
+  // Fila compacta (una sola línea de título + subtítulo corto + botón pequeño a la derecha) en
+  // vez de la tarjeta grande de antes, para que arriba quepa lo importante: los pendientes y la
+  // configuración de avisos.
   return (
-    <div className="bg-white rounded-2xl p-3.5 border border-stone-200 shadow-xs space-y-2">
-      <div className="flex items-center gap-2">
-        <span className="text-xl shrink-0">{status === 'on' ? '🔔' : '🔕'}</span>
-        <div className="flex-1 min-w-0">
-          <span className="font-black text-stone-900 text-xs block">Notificaciones en este dispositivo</span>
-          <span className="text-[10px] text-stone-500 block">
-            {status === 'on'
-              ? 'Activadas — te avisaremos aquí de lo importante, aunque tengas la app cerrada.'
-              : status === 'denied'
-                ? 'Las bloqueaste en el navegador; actívalas desde los ajustes del sitio para volver a usarlas.'
-                : 'Actívalas para enterarte de lo importante sin tener que abrir la app.'}
-          </span>
-        </div>
+    <div className="bg-white rounded-2xl px-3 py-2 border border-stone-200 shadow-xs flex items-center gap-2.5">
+      <span className="text-lg shrink-0">{status === 'on' ? '🔔' : '🔕'}</span>
+      <div className="flex-1 min-w-0">
+        <span className="font-black text-stone-900 text-[11px] block leading-tight">
+          {status === 'on' ? 'Notificaciones activadas' : status === 'denied' ? 'Notificaciones bloqueadas' : 'Notificaciones desactivadas'}
+        </span>
+        <span className="text-[10px] text-stone-500 block leading-tight">
+          {status === 'on'
+            ? 'En este dispositivo, aunque tengas la app cerrada.'
+            : status === 'denied'
+              ? 'Actívalas desde los ajustes del sitio en el navegador.'
+              : 'Actívalas para enterarte sin abrir la app.'}
+        </span>
       </div>
       {status !== 'denied' && (
-        <div className="flex gap-2">
-          {status !== 'on' ? (
-            <button onClick={handleEnable} disabled={busy} className="flex-1 py-2 bg-[#d9b97c] hover:bg-[#6b4d1c] text-white font-bold rounded-xl text-[11px] disabled:opacity-50 transition">
-              {busy ? 'Activando...' : '🔔 Activar notificaciones'}
-            </button>
-          ) : (
-            <button onClick={handleTestPush} disabled={busy} className="flex-1 py-2 bg-stone-100 hover:bg-stone-200 text-stone-700 font-bold rounded-xl text-[11px] disabled:opacity-50 transition">
-              {busy ? 'Enviando...' : '🧪 Enviar notificación de prueba'}
-            </button>
-          )}
-        </div>
+        status !== 'on' ? (
+          <button onClick={handleEnable} disabled={busy} className="shrink-0 px-3 py-1.5 bg-[#d9b97c] hover:bg-[#6b4d1c] text-white font-bold rounded-lg text-[11px] disabled:opacity-50 transition">
+            {busy ? 'Activando...' : 'Activar'}
+          </button>
+        ) : (
+          <button onClick={handleTestPush} disabled={busy} className="shrink-0 px-2.5 py-1.5 bg-stone-100 hover:bg-stone-200 text-stone-700 font-bold rounded-lg text-[10px] disabled:opacity-50 transition">
+            {busy ? 'Enviando...' : '🧪 Probar'}
+          </button>
+        )
       )}
     </div>
   );
@@ -1231,16 +1358,16 @@ function PushPreferencesCard({ currentUser, apiUrl, alertPreferences, reservatio
   };
 
   return (
-    <div className="bg-white rounded-2xl p-3.5 border border-stone-200 shadow-xs space-y-3">
+    <div className="bg-white rounded-2xl p-4 border border-stone-200 shadow-xs space-y-3.5">
       <div className="flex items-center gap-2">
-        <span className="text-xl shrink-0">⚙️</span>
-        <span className="font-black text-stone-900 text-xs">Qué avisos quieres recibir</span>
+        <span className="text-2xl shrink-0">⚙️</span>
+        <span className="font-black text-stone-900 text-sm">Qué avisos quieres recibir</span>
       </div>
 
-      <div className="flex items-center justify-between gap-2 bg-stone-50 rounded-xl p-2.5">
+      <div className="flex items-center justify-between gap-2 bg-stone-50 rounded-xl p-3">
         <div className="min-w-0">
-          <span className="font-bold text-stone-800 text-[11px] block">📋 Aviso de los lunes</span>
-          <span className="text-[10px] text-stone-500 block">Si para esta semana no te localizamos en ningún partido subido a la app</span>
+          <span className="font-bold text-stone-800 text-xs block">📋 Aviso de los lunes</span>
+          <span className="text-[11px] text-stone-500 block mt-0.5">Si para esta semana no te localizamos en ningún partido subido a la app</span>
         </div>
         <button
           onClick={handleToggleLunes}
@@ -1251,16 +1378,16 @@ function PushPreferencesCard({ currentUser, apiUrl, alertPreferences, reservatio
         </button>
       </div>
 
-      <div className="bg-stone-50 rounded-xl p-2.5 space-y-2">
-        <span className="font-bold text-stone-800 text-[11px] block">🎾 Avisos de reserva en Playtomic</span>
-        <span className="text-[10px] text-stone-500 block">
+      <div className="bg-stone-50 rounded-xl p-3 space-y-2.5">
+        <span className="font-bold text-stone-800 text-xs block">🎾 Avisos de reserva en Playtomic</span>
+        <span className="text-[11px] text-stone-500 block">
           Te avisamos unos minutos antes de que se abra la reserva (se abre una semana antes, al mismo día y hora que configures aquí)
         </span>
 
         {misReservas.length > 0 && (
           <div className="flex flex-wrap gap-1.5">
             {misReservas.map(r => (
-              <span key={r.id} className="inline-flex items-center gap-1 bg-[#faf3e7] text-[#6b4d1c] text-[10px] font-bold px-2 py-1 rounded-full">
+              <span key={r.id} className="inline-flex items-center gap-1 bg-[#faf3e7] text-[#6b4d1c] text-[11px] font-bold px-2.5 py-1 rounded-full">
                 {(DIAS_SEMANA_ALERTAS.find(d => d.v === Number(r.diaSemana)) || {}).l || r.diaSemana} {r.hora}
                 <button onClick={() => handleDeleteReserva(r.id)} disabled={busy} className="text-[#6b4d1c] hover:text-[#6b4d1c] font-black disabled:opacity-50">✕</button>
               </span>
@@ -1269,14 +1396,14 @@ function PushPreferencesCard({ currentUser, apiUrl, alertPreferences, reservatio
         )}
 
         <div className="flex gap-1.5 items-center">
-          <select value={diaNuevo} onChange={(e) => setDiaNuevo(e.target.value)} className="flex-1 text-[11px] border border-stone-300 rounded-lg px-2 py-1.5 bg-white">
+          <select value={diaNuevo} onChange={(e) => setDiaNuevo(e.target.value)} className="flex-1 text-xs border border-stone-300 rounded-lg px-2 py-2 bg-white">
             {DIAS_SEMANA_ALERTAS.map(d => <option key={d.v} value={d.v}>{d.l}</option>)}
           </select>
           <div className="flex items-center gap-1 shrink-0">
             <select
               value={horaSelActual}
               onChange={(e) => setHoraNueva(`${e.target.value}:${minSelActual}`)}
-              className="text-[11px] border border-stone-300 rounded-lg pl-1.5 pr-0.5 py-1.5 bg-white"
+              className="text-xs border border-stone-300 rounded-lg pl-1.5 pr-0.5 py-2 bg-white"
             >
               {HORAS_SELECTOR_ALERTA.map(h => <option key={h} value={h}>{h}</option>)}
             </select>
@@ -1284,12 +1411,12 @@ function PushPreferencesCard({ currentUser, apiUrl, alertPreferences, reservatio
             <select
               value={minSelActual}
               onChange={(e) => setHoraNueva(`${horaSelActual}:${e.target.value}`)}
-              className="text-[11px] border border-stone-300 rounded-lg pl-1.5 pr-0.5 py-1.5 bg-white"
+              className="text-xs border border-stone-300 rounded-lg pl-1.5 pr-0.5 py-2 bg-white"
             >
               {MINUTOS_SELECTOR_ALERTA.map(m => <option key={m} value={m}>{m}</option>)}
             </select>
           </div>
-          <button onClick={handleAddReserva} disabled={busy} className="shrink-0 px-3 py-1.5 bg-[#d9b97c] hover:bg-[#6b4d1c] text-white font-bold rounded-lg text-[11px] disabled:opacity-50 transition">
+          <button onClick={handleAddReserva} disabled={busy} className="shrink-0 px-3 py-2 bg-[#d9b97c] hover:bg-[#6b4d1c] text-white font-bold rounded-lg text-xs disabled:opacity-50 transition">
             + Añadir
           </button>
         </div>
@@ -1603,7 +1730,7 @@ function HomeScreen({ currentUser, matches, activeTournaments, allDinnerGuests, 
 
     const partidosSemana = (matches || [])
       .filter(m => isMatchOfficial(m) && m.status !== 'CANCELADO')
-      .map(m => ({ m, fecha: parseMatchDateObject(m.date) }))
+      .map(m => ({ m, fecha: parseMatchDateObject(m.date, m.fechaISO) }))
       .filter(x => x.fecha && x.fecha >= ahora && x.fecha <= finSemana)
       .sort((a, b) => a.fecha - b.fecha)
       .map(x => {
@@ -1722,11 +1849,11 @@ function HomeScreen({ currentUser, matches, activeTournaments, allDinnerGuests, 
         <div className="bg-white rounded-2xl p-3.5 border border-stone-200 shadow-xs space-y-2">
           <div className="flex items-center justify-between">
             <span className="font-black text-stone-900 text-xs flex items-center gap-1"><PadelRacketsIcon /> Tus torneos activos</span>
-            <button onClick={() => onNavigate('torneos')} className="text-[10px] font-bold text-[#4a3350] hover:underline">Ver todo →</button>
+            <button onClick={() => onNavigate('torneos')} className="text-[10px] font-bold text-[#2c4a66] hover:underline">Ver todo →</button>
           </div>
           <div className="flex flex-wrap gap-1.5">
             {resumen.misTorneos.map(t => (
-              <span key={t.id} className="bg-[#f2eef2] text-[#4a3350] text-[10px] font-bold px-2 py-1 rounded-full">{t.name}</span>
+              <span key={t.id} className="bg-[#eef2f6] text-[#2c4a66] text-[10px] font-bold px-2 py-1 rounded-full">{t.name}</span>
             ))}
           </div>
         </div>
@@ -1755,9 +1882,9 @@ function HomeScreen({ currentUser, matches, activeTournaments, allDinnerGuests, 
           <span className="text-xl block mb-0.5">💶</span>
           <span className="text-[11px] font-bold text-stone-700">Bote</span>
         </button>
-        <button onClick={() => onNavigate('torneos')} className="bg-[#4a3350] text-white rounded-2xl p-3 text-center hover:bg-[#4a3350] transition">
-          <span className="text-xl block mb-0.5"><PadelRacketsIcon /></span>
-          <span className="text-[11px] font-bold">Torneos</span>
+        <button onClick={() => onNavigate('torneos')} className="bg-white border border-stone-200 rounded-2xl p-3 text-center hover:bg-stone-50 transition">
+          <span className="text-xl block mb-0.5"><PadelRacketsIcon size="1.25em" /></span>
+          <span className="text-[11px] font-bold text-stone-700">Torneos</span>
         </button>
       </div>
     </div>
@@ -1828,27 +1955,48 @@ function AdminScreen({ onBack, pendingPlayers, promotableGroups, onApprove, onRe
 }
 
 function AlertsScreen({ alerts, onBack, currentUser, apiUrl, alertPreferences, reservationAlerts, onRefreshAlertPrefs, onUpdateAlertPreferences, onUpdateReservationAlerts }) {
+  // Orden pensado para dar protagonismo a lo importante: cabecera y estado de notificaciones en
+  // dos filas compactas arriba; después tus pendientes por leer/hacer y, debajo, la
+  // configuración de avisos del usuario, ambas con más aire que antes.
   return (
     <div className="space-y-3">
       <button onClick={onBack} className="text-xs font-bold text-[#2c4a66] hover:underline flex items-center gap-1">
         ← Volver
       </button>
 
-      <div className="bg-gradient-to-r from-[#d9b97c] to-[#6b4d1c] rounded-3xl p-5 text-white shadow-md">
-        <div className="flex items-center gap-2.5">
-          <span className="text-3xl">🔔</span>
-          <div>
-            <h2 className="text-xl font-black">Tus pendientes</h2>
-            <p className="text-[11px] opacity-90 font-semibold">
-              {alerts.length === 0
-                ? 'No tienes nada pendiente ahora mismo 🎉'
-                : `${alerts.length} ${alerts.length === 1 ? 'cosa pendiente' : 'cosas pendientes'}`}
-            </p>
-          </div>
-        </div>
+      <div className="bg-gradient-to-r from-[#d9b97c] to-[#6b4d1c] rounded-2xl px-4 py-2.5 text-white shadow-sm flex items-center gap-2.5">
+        <span className="text-xl shrink-0">🔔</span>
+        <h2 className="text-base font-black flex-1 min-w-0">Tus pendientes</h2>
+        <span className="text-[11px] font-black bg-white/25 px-2.5 py-1 rounded-full shrink-0">
+          {alerts.length === 0 ? 'Todo al día 🎉' : `${alerts.length} ${alerts.length === 1 ? 'pendiente' : 'pendientes'}`}
+        </span>
       </div>
 
       {currentUser && <PushNotificationsCard currentUser={currentUser} apiUrl={apiUrl} />}
+
+      {alerts.length === 0 ? (
+        <div className="bg-white rounded-2xl p-6 text-center border border-stone-200">
+          <p className="text-3xl mb-1">✅</p>
+          <p className="text-sm font-bold text-stone-700">¡Estás al día! No tienes ninguna acción pendiente.</p>
+        </div>
+      ) : (
+        <div className="space-y-2.5">
+          {alerts.map(a => (
+            <button
+              key={a.id}
+              onClick={a.action}
+              className="w-full text-left bg-white rounded-2xl p-4 border border-stone-200 shadow-xs hover:border-[#d9b97c] transition flex items-center gap-3"
+            >
+              <span className="text-3xl shrink-0">{a.icon}</span>
+              <div className="min-w-0 flex-1">
+                <span className="font-black text-stone-900 text-sm block">{a.title}</span>
+                <span className="text-xs text-stone-500 block mt-0.5">{a.description}</span>
+              </div>
+              <span className="text-stone-300 text-xl shrink-0">→</span>
+            </button>
+          ))}
+        </div>
+      )}
 
       {currentUser && (
         <PushPreferencesCard
@@ -1860,30 +2008,6 @@ function AlertsScreen({ alerts, onBack, currentUser, apiUrl, alertPreferences, r
           onUpdateAlertPreferences={onUpdateAlertPreferences}
           onUpdateReservationAlerts={onUpdateReservationAlerts}
         />
-      )}
-
-      {alerts.length === 0 ? (
-        <div className="bg-white rounded-2xl p-8 text-center border border-stone-200">
-          <p className="text-3xl mb-1">✅</p>
-          <p className="text-sm font-bold text-stone-700">¡Estás al día! No tienes ninguna acción pendiente.</p>
-        </div>
-      ) : (
-        <div className="space-y-2">
-          {alerts.map(a => (
-            <button
-              key={a.id}
-              onClick={a.action}
-              className="w-full text-left bg-white rounded-2xl p-3.5 border border-stone-200 shadow-xs hover:border-[#d9b97c] transition flex items-center gap-3"
-            >
-              <span className="text-2xl shrink-0">{a.icon}</span>
-              <div className="min-w-0 flex-1">
-                <span className="font-black text-stone-900 text-xs block truncate">{a.title}</span>
-                <span className="text-[11px] text-stone-500 truncate block">{a.description}</span>
-              </div>
-              <span className="text-stone-300 text-lg shrink-0">→</span>
-            </button>
-          ))}
-        </div>
       )}
     </div>
   );
@@ -2018,11 +2142,11 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, allDinn
           if (pTeam === myTeam) {
             headToHead.partnerPlayed++;
             if (mySlot.won === 'SI') headToHead.partnerWon++; else headToHead.partnerLost++;
-            headToHead.recent.push({ date: m.date, tipo: 'pareja', ganaron: mySlot.won === 'SI' });
+            headToHead.recent.push({ date: m.date, fechaISO: m.fechaISO, tipo: 'pareja', ganaron: mySlot.won === 'SI' });
           } else {
             headToHead.rivalPlayed++;
             if (mySlot.won === 'SI') headToHead.profileWonVsViewer++; else headToHead.viewerWonVsProfile++;
-            headToHead.recent.push({ date: m.date, tipo: 'rival', ganaProfile: mySlot.won === 'SI' });
+            headToHead.recent.push({ date: m.date, fechaISO: m.fechaISO, tipo: 'rival', ganaProfile: mySlot.won === 'SI' });
           }
         }
       });
@@ -2044,18 +2168,18 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, allDinn
         // para que la vista "Amistosos y Torneos" pueda mostrar sus propios PJ/V/D.
         acumularQuimica(m, mySlot);
         const friendlyDetail = {
-          id: m.id, date: m.date, location: m.location || 'Club', score: m.score || 'Finalizado',
+          id: m.id, date: m.date, fechaISO: m.fechaISO, location: m.location || 'Club', score: m.score || 'Finalizado',
           myTeam: mySlot.team, won: mySlot.won === 'SI', dinner: mySlot.dinner, partner, rivals, esAmistoso: true
         };
         friendliesList.push(friendlyDetail);
         if (friendlyDetail.won) friendliesWonList.push(friendlyDetail); else friendliesLostList.push(friendlyDetail);
-        puntosDetalle.push({ date: m.date, title: `Partido vs ${rivals} (amistoso)`, pts: 0, desc: 'Amistoso — no computa para la liga' });
-        boteDetalle.push({ date: m.date, title: `Partido vs ${rivals} (amistoso)`, bote: 0, desc: 'Amistoso — no computa para la liga' });
+        puntosDetalle.push({ date: m.date, fechaISO: m.fechaISO, title: `Partido vs ${rivals} (amistoso)`, pts: 0, desc: 'Amistoso — no computa para la liga' });
+        boteDetalle.push({ date: m.date, fechaISO: m.fechaISO, title: `Partido vs ${rivals} (amistoso)`, bote: 0, desc: 'Amistoso — no computa para la liga' });
         return;
       }
 
       const matchDetail = {
-        id: m.id, date: m.date, location: m.location || 'Club', score: m.score || 'Finalizado',
+        id: m.id, date: m.date, fechaISO: m.fechaISO, location: m.location || 'Club', score: m.score || 'Finalizado',
         myTeam: mySlot.team, won: mySlot.won === 'SI', dinner: mySlot.dinner, partner, rivals
       };
 
@@ -2079,7 +2203,7 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, allDinn
       // partir de las 09:00 del día siguiente. Antes de ese corte, aunque ya hayas marcado si
       // te quedas o no, no se suma ni a la lista de Cenas/Rajadas ni a los puntos — así el
       // detalle de tu perfil no te da ya por "ganados" puntos que el ranking todavía no cuenta.
-      const cenaDeEstePartidoComputable = esCenaComputable(m.date);
+      const cenaDeEstePartidoComputable = esCenaComputable(m.date, m.fechaISO);
       if (mySlot.dinner === 'SI') {
         if (cenaDeEstePartidoComputable) {
           dinnerYesList.push(matchDetail);
@@ -2099,9 +2223,9 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, allDinn
         breakdownPts.push('Cena Pendiente (0)');
       }
 
-      puntosDetalle.push({ date: m.date, title: `Partido vs ${rivals}`, pts: matchPts, desc: breakdownPts.join(' | ') });
+      puntosDetalle.push({ date: m.date, fechaISO: m.fechaISO, title: `Partido vs ${rivals}`, pts: matchPts, desc: breakdownPts.join(' | ') });
       if (matchBote > 0) {
-        boteDetalle.push({ date: m.date, title: `Partido vs ${rivals}`, bote: matchBote, desc: breakdownBote.join(' | ') });
+        boteDetalle.push({ date: m.date, fechaISO: m.fechaISO, title: `Partido vs ${rivals}`, bote: matchBote, desc: breakdownBote.join(' | ') });
       }
 
       acumularQuimica(m, mySlot);
@@ -2132,8 +2256,8 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, allDinn
 
     // ORDENACIÓN CRONOLÓGICA (Reemplazamos el puntosDetalle.reverse() estático)
     const sortByDate = (a, b) => {
-      const dateA = parseMatchDateObject(a.date) || new Date(0);
-      const dateB = parseMatchDateObject(b.date) || new Date(0);
+      const dateA = parseMatchDateObject(a.date, a.fechaISO) || new Date(0);
+      const dateB = parseMatchDateObject(b.date, b.fechaISO) || new Date(0);
       return dateB - dateA; // Más recientes primero
     };
     
@@ -2221,7 +2345,7 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, allDinn
     // (formato "15 oct", parseado por parseMatchDateObject).
     statsCalculated.playedList.forEach(m => {
       if (m.partner === 'Solo Cena') return; // las cenas sueltas no cuentan como partido
-      const d = parseMatchDateObject(m.date);
+      const d = parseMatchDateObject(m.date, m.fechaISO);
       if (!d) return;
       const bucket = monthMap[monthKeyOf(d.getFullYear(), d.getMonth())];
       if (!bucket) return;
@@ -2358,7 +2482,7 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, allDinn
   // cronológicamente para el subpanel de detalle (mezclando partidos de liga/amistoso, que
   // llevan fecha en texto, con partidos de torneo, que llevan "fecha" como objeto Date).
   const vistasPJ = (() => {
-    const fechaDeItem = (item) => (item.fecha !== undefined ? item.fecha : parseMatchDateObject(item.date));
+    const fechaDeItem = (item) => (item.fecha !== undefined ? item.fecha : parseMatchDateObject(item.date, item.fechaISO));
     const mergeOrdenado = (...listas) => [].concat(...listas).sort((a, b) => {
       const da = fechaDeItem(a) || new Date(0);
       const db = fechaDeItem(b) || new Date(0);
@@ -4288,7 +4412,7 @@ function RegisterPlayerForm({ onCancel, onRegister, syncing }) {
   );
 }
 
-function AddPlaytomicMatchModal({ isOpen, onClose, onAddMatch, syncing }) {
+function AddPlaytomicMatchModal({ isOpen, onClose, onAddMatch, onOpenExisting, syncing }) {
   const [playtomicText, setPlaytomicText] = useState('');
   const [manualDate, setManualDate] = useState('');
   const [manualLocation, setManualLocation] = useState('Real Club de Tenis de La Coruña');
@@ -4297,6 +4421,11 @@ function AddPlaytomicMatchModal({ isOpen, onClose, onAddMatch, syncing }) {
   const [manualP3, setManualP3] = useState('');
   const [manualP4, setManualP4] = useState('');
   const [formError, setFormError] = useState('');
+  // NUEVO: estado de "enviando" propio del modal + aviso de resultado (duplicado / tardanza / error).
+  // Antes, mientras el servidor tardaba, el modal parecía no hacer nada (el botón no cambiaba y
+  // no había ningún mensaje), así que se volvía a pegar el mismo partido.
+  const [enviando, setEnviando] = useState(false);
+  const [aviso, setAviso] = useState(null);
 
 const isOnlyPlaytomicLink = useMemo(() => {
     const trimmed = playtomicText.trim();
@@ -4310,6 +4439,7 @@ const isOnlyPlaytomicLink = useMemo(() => {
   useEffect(() => {
     if (!isOpen) {
       setPlaytomicText(''); setManualDate(''); setManualP1(''); setManualP2(''); setManualP3(''); setManualP4(''); setFormError('');
+      setEnviando(false); setAviso(null);
     }
   }, [isOpen]);
 
@@ -4318,8 +4448,9 @@ const isOnlyPlaytomicLink = useMemo(() => {
   // Cuántos de los 4 huecos de jugador manual se han rellenado.
   const jugadoresManualesRellenos = [manualP1, manualP2, manualP3, manualP4].filter(p => p.trim()).length;
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
+    if (enviando) return; // protección contra doble toque
     if (!playtomicText.trim()) return;
 
     // Si solo se ha pegado el enlace (sin el texto plano con fecha/jugadores de Playtomic),
@@ -4339,7 +4470,16 @@ const isOnlyPlaytomicLink = useMemo(() => {
     }
 
     setFormError('');
-    onAddMatch({ playtomicText, isOnlyPlaytomicLink, manualDate, manualLocation, manualP1, manualP2, manualP3, manualP4 });
+    setAviso(null);
+    setEnviando(true);
+    let resultado;
+    try {
+      resultado = await onAddMatch({ playtomicText, isOnlyPlaytomicLink, manualDate, manualLocation, manualP1, manualP2, manualP3, manualP4 });
+    } finally {
+      setEnviando(false);
+    }
+    // Si se creó bien, el componente principal cierra el modal (y el efecto de arriba lo limpia).
+    if (resultado && resultado.status !== 'ok') setAviso(resultado);
   };
 
   return (
@@ -4347,19 +4487,19 @@ const isOnlyPlaytomicLink = useMemo(() => {
       <div className="bg-white rounded-3xl max-w-sm w-full p-5 shadow-2xl space-y-3">
         <h3 className="text-base font-black text-stone-900">Añadir Partido Playtomic</h3>
         <form onSubmit={handleSubmit} className="space-y-3">
-          <textarea rows={4} required value={playtomicText} onChange={e => { setPlaytomicText(e.target.value); setFormError(''); }} placeholder="Pega el texto copiado de Playtomic o el enlace..." className="w-full border rounded-xl p-2.5 text-xs font-semibold" />
+          <textarea rows={4} required disabled={enviando} value={playtomicText} onChange={e => { setPlaytomicText(e.target.value); setFormError(''); setAviso(null); }} placeholder="Pega el texto copiado de Playtomic o el enlace..." className="w-full border rounded-xl p-2.5 text-xs font-semibold disabled:bg-stone-50 disabled:text-stone-500" />
           {isOnlyPlaytomicLink && (
             <div className="bg-stone-50 p-2.5 rounded-xl border border-stone-200 space-y-2">
               <span className="text-[10px] font-black uppercase text-[#2c4a66] block">Datos adicionales requeridos</span>
               <span className="text-[10px] text-stone-500 block -mt-1">
                 Has pegado solo un enlace, sin los detalles del partido. Rellena esto a mano o no se creará el partido.
               </span>
-              <input type="text" value={manualDate} onChange={e => { setManualDate(e.target.value); setFormError(''); }} placeholder="Fecha y Hora (Ej: Jueves 21:00)" className="w-full border rounded-lg p-1.5 text-xs font-semibold" />
+              <input type="text" disabled={enviando} value={manualDate} onChange={e => { setManualDate(e.target.value); setFormError(''); }} placeholder="Fecha y Hora (Ej: Jueves 21:00)" className="w-full border rounded-lg p-1.5 text-xs font-semibold" />
               <div className="grid grid-cols-2 gap-1.5">
-                <input type="text" value={manualP1} onChange={e => { setManualP1(e.target.value); setFormError(''); }} placeholder="Jugador 1" className="border rounded-lg p-1.5 text-xs" />
-                <input type="text" value={manualP2} onChange={e => { setManualP2(e.target.value); setFormError(''); }} placeholder="Jugador 2" className="border rounded-lg p-1.5 text-xs" />
-                <input type="text" value={manualP3} onChange={e => { setManualP3(e.target.value); setFormError(''); }} placeholder="Jugador 3" className="border rounded-lg p-1.5 text-xs" />
-                <input type="text" value={manualP4} onChange={e => { setManualP4(e.target.value); setFormError(''); }} placeholder="Jugador 4" className="border rounded-lg p-1.5 text-xs" />
+                <input type="text" disabled={enviando} value={manualP1} onChange={e => { setManualP1(e.target.value); setFormError(''); }} placeholder="Jugador 1" className="border rounded-lg p-1.5 text-xs" />
+                <input type="text" disabled={enviando} value={manualP2} onChange={e => { setManualP2(e.target.value); setFormError(''); }} placeholder="Jugador 2" className="border rounded-lg p-1.5 text-xs" />
+                <input type="text" disabled={enviando} value={manualP3} onChange={e => { setManualP3(e.target.value); setFormError(''); }} placeholder="Jugador 3" className="border rounded-lg p-1.5 text-xs" />
+                <input type="text" disabled={enviando} value={manualP4} onChange={e => { setManualP4(e.target.value); setFormError(''); }} placeholder="Jugador 4" className="border rounded-lg p-1.5 text-xs" />
               </div>
             </div>
           )}
@@ -4368,9 +4508,37 @@ const isOnlyPlaytomicLink = useMemo(() => {
               ⚠️ {formError}
             </div>
           )}
+          {enviando && (
+            <div className="bg-[#eef2f6] border border-[#c3d3e0] text-[#2c4a66] text-[11px] font-bold rounded-xl p-2.5">
+              ⏳ Creando el partido… puede tardar unos segundos. Por favor, no lo vuelvas a pegar: aparecerá en la lista en cuanto termine.
+            </div>
+          )}
+          {aviso && aviso.status === 'duplicado' && (
+            <div className="bg-[#faf3e7] border border-[#d9b97c] text-[#6b4d1c] rounded-xl p-3 space-y-2">
+              <p className="text-xs font-black">✋ Este partido ya está en la app{aviso.fecha ? ` (${aviso.fecha})` : ''}.</p>
+              <p className="text-[11px] font-medium">
+                No se ha creado otro. Si necesitas actualizar algo (jugadores, fecha, hora…), hazlo desde dentro de ese partido con «🔄 Recargar Playtomic» o editando los jugadores.
+              </p>
+              {aviso.id && (
+                <button type="button" onClick={() => onOpenExisting(aviso.id)} className="w-full py-2 bg-[#2c4a66] text-white font-bold text-xs rounded-xl">
+                  Ver ese partido
+                </button>
+              )}
+            </div>
+          )}
+          {aviso && aviso.status === 'timeout' && (
+            <div className="bg-[#faf3e7] border border-[#d9b97c] text-[#6b4d1c] text-[11px] font-bold rounded-xl p-2.5">
+              ⏱️ El servidor está tardando más de lo normal. Es posible que el partido SÍ se haya creado: cierra esta ventana y mira la lista antes de volver a pegarlo (si lo pegas otra vez y ya existe, la app te avisará y no lo duplicará).
+            </div>
+          )}
+          {aviso && aviso.status === 'error' && (
+            <div className="bg-[#f6ede6] border border-[#ead3bf] text-[#6b3f29] text-[11px] font-bold rounded-xl p-2.5">
+              ⚠️ {aviso.message || 'No se ha podido crear el partido. Revisa tu conexión e inténtalo de nuevo.'}
+            </div>
+          )}
           <div className="flex gap-2">
-            <button type="button" onClick={onClose} className="flex-1 py-2 bg-stone-100 font-bold text-xs rounded-xl">Cancelar</button>
-            <button type="submit" disabled={syncing} className="flex-1 py-2 bg-[#2c4a66] text-white font-bold text-xs rounded-xl shadow-xs">Crear Partido</button>
+            <button type="button" onClick={onClose} disabled={enviando} className="flex-1 py-2 bg-stone-100 font-bold text-xs rounded-xl disabled:opacity-50">{aviso ? 'Cerrar' : 'Cancelar'}</button>
+            <button type="submit" disabled={syncing || enviando || (aviso && aviso.status === 'duplicado')} className="flex-1 py-2 bg-[#2c4a66] text-white font-bold text-xs rounded-xl shadow-xs disabled:opacity-50">{enviando ? 'Creando…' : 'Crear Partido'}</button>
           </div>
         </form>
       </div>
@@ -4449,6 +4617,10 @@ export default function App() {
   });
 
   const [filterTime, setFilterTime] = useState('semana');
+  // NUEVO: buscador de la pantalla de Partidos — por jugador(es), estado y fecha exacta.
+  const [searchPlayer, setSearchPlayer] = useState('');
+  const [searchStatus, setSearchStatus] = useState('todos');
+  const [searchDate, setSearchDate] = useState('');
   const [targetPinUser, setTargetPinUser] = useState(null);
 
   const [showRegisterForm, setShowRegisterForm] = useState(false);
@@ -4901,7 +5073,15 @@ export default function App() {
   };
 
 
+  // Candado contra envíos dobles: mientras una creación está en curso, cualquier otro intento
+  // (doble toque, o volver a pegar el mismo partido porque tarda) se ignora.
+  const creandoPartidoRef = useRef(false);
+
+  // Devuelve { status: 'ok' | 'duplicado' | 'timeout' | 'error' | 'ocupado', ... } para que el
+  // modal enseñe qué ha pasado en vez de quedarse "mudo".
   const handleAddPlaytomicMatch = async (data) => {
+    if (creandoPartidoRef.current) return { status: 'ocupado' };
+
     let payloadText = data.playtomicText.trim();
 
     if (data.isOnlyPlaytomicLink) {
@@ -4918,24 +5098,57 @@ export default function App() {
       payloadText = `📅 ${d}\n📍 ${loc}\n${data.playtomicText.trim()}\n${p1}\n${p2}\n${p3}\n${p4}`.trim();
     }
 
+    // CONTROL ANTI-DUPLICADOS (1/2): comprobación inmediata con los partidos ya cargados en la
+    // app — mismo enlace de Playtomic que uno existente (no cancelado). Sin llamar al servidor.
+    const yaExiste = buscarPartidoConMismoLink(matches, payloadText);
+    if (yaExiste) return { status: 'duplicado', id: yaExiste.id, fecha: yaExiste.date };
+
+    creandoPartidoRef.current = true;
     setSyncing(true);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 45000);
     try {
       const res = await fetch(apiUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({ action: 'CREAR_PARTIDO_PLAYTOMIC', textoCrudo: payloadText, grupo: myGroup })
+        body: JSON.stringify({ action: 'CREAR_PARTIDO_PLAYTOMIC', textoCrudo: payloadText, grupo: myGroup }),
+        signal: controller.signal
       });
       const responseData = await res.json();
+      // CONTROL ANTI-DUPLICADOS (2/2): el backend (con candado, así que ve también lo que otra
+      // persona acaba de subir) también comprueba enlace y, sin enlace, fecha+jugadores.
+      if (responseData.ok && responseData.duplicado) {
+        fetchData(true);
+        return { status: 'duplicado', id: responseData.idExistente, fecha: responseData.fechaExistente };
+      }
       if (responseData.ok) {
         setShowAddModal(false);
         fetchData();
+        return { status: 'ok' };
       }
+      return { status: 'error', message: responseData.error || 'El servidor no ha podido crear el partido.' };
     } catch (err) {
       console.error(err);
+      if (err && err.name === 'AbortError') {
+        // Puede que el servidor sí lo haya creado aunque no nos haya dado tiempo a verlo.
+        setTimeout(() => fetchData(true), 4000);
+        return { status: 'timeout' };
+      }
+      return { status: 'error', message: 'No se ha podido conectar con el servidor. Revisa tu conexión e inténtalo de nuevo.' };
     } finally {
+      clearTimeout(timeoutId);
+      creandoPartidoRef.current = false;
       setSyncing(false);
     }
   };
+
+  // Abre el detalle de un partido ya existente (desde el aviso de "ya está en la app").
+  const handleOpenExistingMatch = (id) => {
+    setShowAddModal(false);
+    setActiveTab('partidos');
+    setSelectedMatchId(id);
+  };
+
   const handleReloadPlaytomic = async (e) => {
     e.preventDefault();
     if (!reloadPlaytomicText.trim() || !selectedMatchId) return;
@@ -5689,15 +5902,39 @@ export default function App() {
   const currentMatch = matches.find(m => m.id === selectedMatchId);
   const myGroup = (currentUser?.group || 'chicos').toLowerCase();
 
+  // Buscador: cuando hay algún filtro activo (jugador, estado o fecha) se busca en TODO el
+  // histórico y se ignoran las pestañas "Esta semana / Próximos" — si no, buscar a alguien o una
+  // fecha concreta daría "sin resultados" solo por estar fuera de la pestaña elegida.
+  const hayBusquedaPartidos = searchPlayer.trim() !== '' || searchStatus !== 'todos' || searchDate !== '';
+
   const filteredMatches = useMemo(() => {
+    // "marcos juan" → hace falta que cada palabra aparezca en el nombre de algún jugador del
+    // partido (sin tildes ni mayúsculas), p.ej. para encontrar los partidos de dos personas.
+    const tokens = normalizeName(searchPlayer).split(/[\s,]+/).filter(Boolean);
     return matches.filter(m => {
       if ((m.grupo || 'chicos').toLowerCase() !== myGroup) return false;
+
+      if (hayBusquedaPartidos) {
+        if (tokens.length > 0) {
+          const nombres = (m.players || []).map(p => normalizeName(p.name));
+          if (!tokens.every(t => nombres.some(n => n.includes(t)))) return false;
+        }
+        if (searchStatus !== 'todos' && computeMatchStatus(m) !== searchStatus) return false;
+        if (searchDate) {
+          const d = parseMatchDateObject(m.date, m.fechaISO);
+          if (!d) return false;
+          const clave = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+          if (clave !== searchDate) return false;
+        }
+        return true;
+      }
+
       if (filterTime === 'todos') return true;
-      if (filterTime === 'semana') return isCurrentWeek(m.date);
-      if (filterTime === 'proximos') return isUpcoming(m.date);
+      if (filterTime === 'semana') return isCurrentWeek(m.date, m.fechaISO);
+      if (filterTime === 'proximos') return isUpcoming(m.date, m.fechaISO);
       return true;
     });
-  }, [matches, myGroup, filterTime]);
+  }, [matches, myGroup, filterTime, searchPlayer, searchStatus, searchDate, hayBusquedaPartidos]);
 
   const groupPlayers = useMemo(() => {
     return players.filter(p => (p.group || 'chicos').toLowerCase() === myGroup);
@@ -5893,7 +6130,7 @@ export default function App() {
       if (cleanKey && cleanKey !== 'sin fecha') {
         if (!datesMap.has(cleanKey)) {
           const niceLabel = cleanKey.charAt(0).toUpperCase() + cleanKey.slice(1);
-          const dateObj = parseMatchDateObject(m.date) || new Date();
+          const dateObj = parseMatchDateObject(m.date, m.fechaISO) || new Date();
           datesMap.set(cleanKey, { key: cleanKey, label: niceLabel, dateObj });
         }
       }
@@ -6119,7 +6356,7 @@ export default function App() {
         <div className="min-h-screen bg-stone-900 text-white flex flex-col justify-center items-center p-4 text-left">
           <div className="max-w-md w-full bg-stone-800 rounded-3xl p-6 border border-[#b893ba]/40 shadow-2xl space-y-4">
             <div className="text-center">
-              <span className="text-4xl mb-1 flex justify-center"><PadelRacketsIcon /></span>
+              <LogoTorneo className="w-32 mb-2" />
               <span className="text-[10px] font-black uppercase tracking-wider bg-[#b893ba]/20 text-[#b893ba] px-2.5 py-0.5 rounded-full">
                 Invitación a Torneo Privado
               </span>
@@ -6285,7 +6522,8 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen text-stone-900 pb-16" style={ESTILO_FONDO_PISTA_PADEL}>
+    <div className="relative isolate min-h-screen text-stone-900 pb-16">
+      <div aria-hidden="true" className="fixed inset-0 -z-10 pointer-events-none" style={ESTILO_FONDO_PISTA_PADEL} />
       <header className="bg-white border-b border-stone-200 sticky top-0 z-30 shadow-sm">
         <div className="max-w-xl mx-auto px-4 py-3 flex items-center justify-between gap-2">
           <div
@@ -6420,7 +6658,7 @@ export default function App() {
             {/* BANNER CUANDO EL PARTIDO ESTÁ LISTO PARA ANOTAR */}
             {(() => {
               const dynamicStatus = computeMatchStatus(currentMatch);
-              const { canReport } = parseMatchTiming(currentMatch.date);
+              const { canReport } = parseMatchTiming(currentMatch.date, currentMatch.fechaISO);
               const isMatchReady = (dynamicStatus === 'EN JUEGO' || dynamicStatus === 'SIN RESULTADO' || canReport) && currentMatch.status !== 'CANCELADO';
 
               if (isMatchReady && currentMatch.status !== 'FINALIZADO') {
@@ -6493,10 +6731,21 @@ export default function App() {
                 </div>
               </div>
 
-              <h2 className="text-xl font-black text-stone-900 mt-1">{currentMatch.date}</h2>
+              <h2 className="text-xl font-black text-stone-900 mt-1">
+                {currentMatch.date}
+                {currentMatch.fechaISO && (
+                  <span className="text-xs font-bold text-stone-400 ml-1.5">{currentMatch.fechaISO.slice(0, 4)}</span>
+                )}
+              </h2>
               <p className="text-xs text-stone-500 flex items-center gap-1 mt-0.5">
                 📍 {currentMatch.location}
               </p>
+              {(currentMatch.creadoPor || currentMatch.modificadoPor) && (
+                <div className="mt-1.5 text-[10px] text-stone-400 leading-snug">
+                  {currentMatch.creadoPor && <p>🆕 Subido por {formatearAutoria(currentMatch.creadoPor, currentMatch.creadoEn)}</p>}
+                  {currentMatch.modificadoPor && <p>✏️ Última modificación: {formatearAutoria(currentMatch.modificadoPor, currentMatch.modificadoEn)}</p>}
+                </div>
+              )}
 
               {/* BLOQUE DE MARCADOR FINAL */}
               {currentMatch.status === 'FINALIZADO' && (
@@ -6746,7 +6995,7 @@ export default function App() {
                   { key: 'cenas', label: 'Cena', icon: '🍻', active: 'bg-white shadow-xs text-[#2f5d50]' },
                   { key: 'rankings', label: 'Rankings', icon: '🏆', active: 'bg-white shadow-xs text-stone-900' },
                   { key: 'bote', label: 'Bote', icon: '💶', active: 'bg-white shadow-xs text-stone-900' },
-                  { key: 'torneos', label: 'Torneos', icon: <PadelRacketsIcon />, active: 'bg-[#4a3350] shadow-xs text-white' }
+                  { key: 'torneos', label: 'Torneos', icon: <PadelRacketsIcon />, active: 'bg-white shadow-xs text-[#2c4a66]' }
                 ].map(tab => (
                   <button
                     key={tab.key}
@@ -6761,15 +7010,15 @@ export default function App() {
                 ))}
               </div>
             ) : (
-              <div className="bg-[#f2eef2] border border-[#ddc9de] text-[#4a3350] rounded-2xl p-3 flex items-center justify-between shadow-xs">
+              <div className="bg-[#eef2f6] border border-[#c3d3e0] text-[#2c4a66] rounded-2xl p-3 flex items-center justify-between shadow-xs">
                 <div className="flex items-center gap-2.5">
                   <span className="text-2xl"><PadelRacketsIcon /></span>
                   <div>
                     <span className="font-black text-xs block">Acceso Exclusivo de Torneos CTC</span>
-                    <span className="text-[10px] text-[#4a3350] font-medium">Visualizas únicamente los eventos a los que estás convocado</span>
+                    <span className="text-[10px] text-[#2c4a66] font-medium">Visualizas únicamente los eventos a los que estás convocado</span>
                   </div>
                 </div>
-                <span className="text-[10px] font-bold bg-[#f2eef2] text-[#4a3350] px-2 py-0.5 rounded-md">
+                <span className="text-[10px] font-bold bg-[#dbe6ef] text-[#2c4a66] px-2 py-0.5 rounded-md">
                   Modo Torneo
                 </span>
               </div>
@@ -6801,10 +7050,64 @@ export default function App() {
                   ))}
                 </div>
 
+                {/* BUSCADOR DE PARTIDOS: jugador(es) + estado + fecha exacta */}
+                <div className="bg-white rounded-2xl p-3 border border-stone-200 shadow-xs space-y-2">
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm pointer-events-none">🔍</span>
+                    <input
+                      type="search"
+                      value={searchPlayer}
+                      onChange={e => setSearchPlayer(e.target.value)}
+                      placeholder="Buscar por jugador (ej: marcos o marcos juan)"
+                      className="w-full border border-stone-200 rounded-xl pl-9 pr-3 py-2 text-xs font-semibold bg-stone-50 focus:outline-none focus:border-[#9fb4c7]"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <select
+                      value={searchStatus}
+                      onChange={e => setSearchStatus(e.target.value)}
+                      className="border border-stone-200 rounded-xl px-2 py-2 text-xs font-semibold bg-stone-50 focus:outline-none focus:border-[#9fb4c7]"
+                      aria-label="Filtrar por estado del partido"
+                    >
+                      <option value="todos">Todos los estados</option>
+                      <option value="PROGRAMADO">Programado</option>
+                      <option value="EN JUEGO">En juego</option>
+                      <option value="SIN RESULTADO">Sin resultado</option>
+                      <option value="FINALIZADO">Finalizado</option>
+                      <option value="CANCELADO">Cancelado</option>
+                    </select>
+                    <input
+                      type="date"
+                      value={searchDate}
+                      onChange={e => setSearchDate(e.target.value)}
+                      className="border border-stone-200 rounded-xl px-2 py-2 text-xs font-semibold bg-stone-50 focus:outline-none focus:border-[#9fb4c7]"
+                      aria-label="Filtrar por fecha exacta"
+                    />
+                  </div>
+                  {hayBusquedaPartidos && (
+                    <div className="flex items-center justify-between gap-2 text-[11px]">
+                      <span className="text-stone-500 font-semibold">
+                        {filteredMatches.length} {filteredMatches.length === 1 ? 'partido' : 'partidos'} · buscando en todo el histórico
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => { setSearchPlayer(''); setSearchStatus('todos'); setSearchDate(''); }}
+                        className="font-bold text-[#2c4a66] hover:underline shrink-0"
+                      >
+                        ✕ Limpiar filtros
+                      </button>
+                    </div>
+                  )}
+                </div>
+
                 {filteredMatches.length === 0 ? (
                   <div className="bg-white rounded-2xl p-8 text-center border border-stone-200">
-                    <p className="text-2xl mb-1">🎾</p>
-                    <p className="text-sm font-bold text-stone-700">No hay partidos de {currentUser.group} en esta vista</p>
+                    <p className="text-2xl mb-1">{hayBusquedaPartidos ? '🔍' : '🎾'}</p>
+                    <p className="text-sm font-bold text-stone-700">
+                      {hayBusquedaPartidos
+                        ? 'Ningún partido coincide con esa búsqueda'
+                        : `No hay partidos de ${currentUser.group} en esta vista`}
+                    </p>
                   </div>
                 ) : (
                   filteredMatches.map(m => {
@@ -7190,19 +7493,19 @@ export default function App() {
             {/* TAB 5: MÓDULO TORNEOS CTC */}
             {activeTab === 'torneos' && (
               <div className="space-y-3">
-                <div className="bg-gradient-to-r from-[#4a3350] to-[#2c4a66] rounded-3xl p-5 text-white shadow-md">
+                <div className="bg-white border border-stone-200 rounded-3xl p-5 shadow-xs">
                   <div className="flex justify-between items-start mb-2">
                     <div>
-                      <span className="text-[10px] uppercase font-black bg-white/20 px-2 py-0.5 rounded-md tracking-wider">
+                      <span className="text-[10px] uppercase font-black bg-[#eef2f6] text-[#2c4a66] px-2 py-0.5 rounded-md tracking-wider">
                         Modo Torneo Aislado
                       </span>
-                      <h2 className="text-xl font-black mt-1">Torneos Especiales CTC</h2>
+                      <h2 className="text-xl font-black mt-1 text-stone-900">Torneos Especiales CTC</h2>
                     </div>
-                    <span className="text-3xl"><PadelRacketsIcon /></span>
+                    <LogoTorneo plano className="w-24 shrink-0" />
                   </div>
                   <button
                     onClick={() => { setTournamentWizardKey(k => k + 1); setShowTournamentWizard(true); }}
-                    className="w-full mt-3 py-2.5 bg-white text-[#4a3350] hover:bg-[#f2eef2] font-black rounded-xl text-xs transition shadow-sm flex items-center justify-center gap-1.5"
+                    className="w-full mt-3 py-2.5 bg-[#2c4a66] text-white hover:bg-[#244058] font-black rounded-xl text-xs transition shadow-sm flex items-center justify-center gap-1.5"
                   >
                     <span>✨</span> Crear Nuevo Torneo con Gemini
                   </button>
@@ -7726,6 +8029,7 @@ export default function App() {
         isOpen={showAddModal} 
         onClose={() => setShowAddModal(false)} 
         onAddMatch={handleAddPlaytomicMatch} 
+        onOpenExisting={handleOpenExistingMatch}
         syncing={syncing} 
       />
 
