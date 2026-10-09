@@ -2088,6 +2088,18 @@ function HomeScreen({ currentUser, matches, activeTournaments, allDinnerGuests, 
         return { match: x.m, estado: x.estado, cenaSi, cenaPendiente, totalJugadores: jugadores.length };
       });
 
+    // Partidos de esta semana (lunes a domingo) que ya se han jugado: para que, si no queda ninguno por
+    // delante, se vea que la semana ya tuvo partido y no que "no hubo".
+    const lunes = new Date(ahora.getTime());
+    lunes.setDate(lunes.getDate() - ((lunes.getDay() + 6) % 7));
+    lunes.setHours(0, 0, 0, 0);
+    const jugadosSemana = (matches || [])
+      .filter(m => isMatchOfficial(m) && m.status !== 'CANCELADO')
+      .map(m => ({ m, fecha: parseMatchDateObject(m.date, m.fechaISO), estado: computeMatchStatus(m) }))
+      .filter(x => x.fecha && x.fecha >= lunes && x.fecha < ahora && (x.estado === 'FINALIZADO' || x.estado === 'SIN RESULTADO'))
+      .sort((a, b) => a.fecha - b.fecha)
+      .map(x => ({ match: x.m, estado: x.estado }));
+
     const myNameNorm = normalizeName(currentUser?.name || '');
     const misTorneos = (activeTournaments || []).filter(t => (
       (t.participants || []).some(p => p.id === currentUser?.id || normalizeName(p.name) === myNameNorm) ||
@@ -2095,7 +2107,7 @@ function HomeScreen({ currentUser, matches, activeTournaments, allDinnerGuests, 
       (t.coOrganizerIds || []).includes(currentUser?.id)
     ));
 
-    return { partidosSemana, misTorneos };
+    return { partidosSemana, jugadosSemana, misTorneos };
   }, [matches, activeTournaments, currentUser]);
 
   const saludo = (() => {
@@ -2119,12 +2131,43 @@ function HomeScreen({ currentUser, matches, activeTournaments, allDinnerGuests, 
         </div>
 
         {resumen.partidosSemana.length === 0 ? (
-          <div className="bg-[#faf3e7] border border-[#efd9a9] rounded-xl p-3 text-center space-y-1.5">
-            <span className="text-[11px] font-bold text-[#6b4d1c] block">Todavía no hay partido subido para esta semana</span>
-            <button onClick={() => onNavigate('partidos')} className="text-[10px] font-black text-[#6b4d1c] underline">Subir partido</button>
-          </div>
+          resumen.jugadosSemana.length > 0 ? (
+            <div className="space-y-2">
+              <div className="bg-[#eef4f0] border border-[#c7ddc9] rounded-xl p-3 space-y-1">
+                <span className="text-[11px] font-black text-[#2f5d50] block">
+                  ✅ {resumen.jugadosSemana.length} {resumen.jugadosSemana.length === 1 ? 'partido jugado' : 'partidos jugados'} esta semana
+                </span>
+                <span className="text-[11px] font-semibold text-[#2f5d50] block">Sin más partidos planificados para el resto de la semana.</span>
+              </div>
+              {resumen.jugadosSemana.map(({ match, estado }) => (
+                <button
+                  key={match.id}
+                  onClick={() => onOpenMatch(match.id)}
+                  className="w-full text-left bg-stone-50 hover:bg-stone-100 transition rounded-xl p-2.5 flex items-center justify-between gap-2"
+                >
+                  <span className="min-w-0">
+                    <span className="font-bold text-stone-800 text-[11px] block truncate">{fechaCompleta(match.date, match.fechaISO)}</span>
+                    <span className="text-[10px] text-stone-500">{estado === 'FINALIZADO' ? `Finalizado${match.score ? ` · ${match.score}` : ''}` : 'Jugado · sin resultado anotado'}</span>
+                  </span>
+                  <span className="text-stone-400 text-xs shrink-0">→</span>
+                </button>
+              ))}
+              <button onClick={() => onNavigate('partidos')} className="text-[10px] font-black text-[#2c4a66] underline block mx-auto">Subir otro partido</button>
+            </div>
+          ) : (
+            <div className="bg-[#faf3e7] border border-[#efd9a9] rounded-xl p-3 text-center space-y-1.5">
+              <span className="text-[11px] font-bold text-[#6b4d1c] block">Todavía no hay partido subido para esta semana</span>
+              <button onClick={() => onNavigate('partidos')} className="text-[10px] font-black text-[#6b4d1c] underline">Subir partido</button>
+            </div>
+          )
         ) : (
-          resumen.partidosSemana.map(({ match, estado, cenaSi, cenaPendiente, totalJugadores }) => (
+          [
+            resumen.jugadosSemana.length > 0 && (
+              <span key="jugados" className="text-[10px] font-bold text-[#2f5d50] block">
+                ✅ {resumen.jugadosSemana.length} {resumen.jugadosSemana.length === 1 ? 'partido ya jugado' : 'partidos ya jugados'} esta semana
+              </span>
+            ),
+            ...resumen.partidosSemana.map(({ match, estado, cenaSi, cenaPendiente, totalJugadores }) => (
             <button
               key={match.id}
               onClick={() => onOpenMatch(match.id)}
@@ -2148,7 +2191,8 @@ function HomeScreen({ currentUser, matches, activeTournaments, allDinnerGuests, 
               </div>
               <span className="text-stone-400 text-xs shrink-0">→</span>
             </button>
-          ))
+            ))
+          ]
         )}
       </div>
 
@@ -2222,12 +2266,9 @@ function HomeScreen({ currentUser, matches, activeTournaments, allDinnerGuests, 
         <span className="text-[11px] text-stone-600 font-medium block">
           {convocatoriasAbiertas > 0
             ? `Hay ${convocatoriasAbiertas} ${convocatoriasAbiertas === 1 ? 'propuesta de partido abierta' : 'propuestas de partido abiertas'}.`
-            : '¿Te falta gente o tienes un hueco libre? Propón un partido y avisamos al resto.'}
+            : '¿Te falta gente para un partido? Propónlo y avisamos al resto.'}
         </span>
-        <div className="grid grid-cols-2 gap-2">
-          <button onClick={() => onProponer('FALTAN')} className="bg-[#2c4a66] text-white font-bold text-[11px] rounded-xl py-2">🆘 Me faltan jugadores</button>
-          <button onClick={() => onProponer('HUECO')} className="bg-[#eef2f6] text-[#2c4a66] border border-[#c3d3e0] font-bold text-[11px] rounded-xl py-2">🕒 Tengo un hueco</button>
-        </div>
+        <button onClick={() => onProponer()} className="w-full bg-[#2c4a66] text-white font-bold text-[11px] rounded-xl py-2">🙌 Proponer un partido</button>
       </div>
 
       {pendingAlerts.length > 0 && (
@@ -2322,9 +2363,12 @@ function textoPartidoDesdeConvocatoria(c, players) {
   return lineas.join('\n');
 }
 
-function NuevaConvocatoriaModal({ isOpen, onClose, onSubmit, tipoInicial = 'FALTAN', destinatarios = [], fechaInicial = '', horaInicial = '', players = [], currentUser = null }) {
+// "partido" (opcional): si se abre desde un partido ya creado, la propuesta ofrece plazas de ESE partido
+// (día, hora y sitio son los suyos). Forma: { id, dia:'AAAA-MM-DD', hora:'HH:MM', lugar, url, jugadores:[{id,name}] }.
+function NuevaConvocatoriaModal({ isOpen, onClose, onSubmit, destinatarios = [], fechaInicial = '', horaInicial = '', players = [], currentUser = null, partido = null }) {
   const dirigida = destinatarios.length > 0;
-  const [tipo, setTipo] = useState('FALTAN');
+  const deUnPartido = Boolean(partido && partido.id);
+  const [retirados, setRetirados] = useState([]);
   const [fecha, setFecha] = useState('');
   const [hora, setHora] = useState('21:00');
   const [plazas, setPlazas] = useState(1);
@@ -2338,15 +2382,14 @@ function NuevaConvocatoriaModal({ isOpen, onClose, onSubmit, tipoInicial = 'FALT
 
   useEffect(() => {
     if (isOpen) {
-      const t = dirigida ? 'DIRIGIDA' : (tipoInicial === 'HUECO' ? 'HUECO' : 'FALTAN');
-      setTipo(t);
-      setPlazas(t === 'HUECO' ? 3 : (dirigida ? Math.min(3, Math.max(1, destinatarios.length)) : 1));
-      setFecha(fechaInicial || ''); setHora(horaInicial || '21:00'); setLugar('');
-      setVetados([]);
-      setPista(false); setLink(''); setNota(''); setError(''); setEnviando(false);
+      setPlazas(dirigida ? Math.min(3, Math.max(1, destinatarios.length)) : 1);
+      setFecha(deUnPartido ? partido.dia : (fechaInicial || '')); setHora(deUnPartido ? partido.hora : (horaInicial || '21:00'));
+      setLugar(deUnPartido ? (partido.lugar || '') : '');
+      setVetados([]); setRetirados([]);
+      setPista(deUnPartido); setLink(''); setNota(''); setError(''); setEnviando(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, tipoInicial]);
+  }, [isOpen, partido && partido.id]);
 
   if (!isOpen) return null;
 
@@ -2355,14 +2398,15 @@ function NuevaConvocatoriaModal({ isOpen, onClose, onSubmit, tipoInicial = 'FALT
     return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}-${String(n.getDate()).padStart(2, '0')}`;
   })();
 
-  const cambiarTipo = (t) => {
-    setTipo(t);
-    setPlazas(t === 'HUECO' ? 3 : 1);
-  };
+  // Con un partido de por medio, las plazas son las que ya estaban libres más las de quienes se han caído.
+  const jugadoresPartido = deUnPartido ? (partido.jugadores || []) : [];
+  const libresPartido = deUnPartido ? Math.max(0, 4 - jugadoresPartido.length) : 0;
+  const plazasPartido = deUnPartido ? Math.min(3, libresPartido + retirados.length) : 0;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (enviando) return;
+    if (deUnPartido && plazasPartido < 1) { setError('Marca quién ha fallado en el partido.'); return; }
     if (!fecha || !hora) { setError('Indica el día y la hora.'); return; }
     const cuando = new Date(`${fecha}T${hora}`);
     if (isNaN(cuando.getTime()) || cuando.getTime() <= Date.now()) { setError('Esa fecha y hora ya han pasado.'); return; }
@@ -2372,8 +2416,11 @@ function NuevaConvocatoriaModal({ isOpen, onClose, onSubmit, tipoInicial = 'FALT
     let res;
     try {
       res = await onSubmit({
-        tipo, fechaISO: `${fecha} ${hora}`, plazas, lugar: lugar.trim(), pistaReservada: pista,
-        link: link.trim(), nota: nota.trim(), destinatarios: destinatarios.map(d => d.id), vetados: dirigida ? [] : vetados
+        tipo: dirigida ? 'DIRIGIDA' : 'FALTAN', fechaISO: `${fecha} ${hora}`,
+        plazas: deUnPartido ? plazasPartido : plazas, lugar: lugar.trim(), pistaReservada: pista,
+        link: deUnPartido ? (/^https?:\/\//i.test(partido.url || '') ? partido.url : '') : link.trim(),
+        nota: nota.trim(), destinatarios: destinatarios.map(d => d.id), vetados: dirigida ? [] : vetados,
+        ...(deUnPartido ? { partidoId: partido.id, retirados } : {})
       });
     } finally {
       setEnviando(false);
@@ -2385,59 +2432,85 @@ function NuevaConvocatoriaModal({ isOpen, onClose, onSubmit, tipoInicial = 'FALT
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
       <form onSubmit={handleSubmit} className="bg-white rounded-3xl max-w-sm w-full p-5 shadow-2xl space-y-3 max-h-[92vh] overflow-y-auto">
         <h3 className="text-base font-black text-stone-900">
-          {dirigida ? '💌 Proponer partido' : '🙌 Nueva propuesta de partido'}
+          {deUnPartido ? '🆘 Ofrecer plaza en este partido' : (dirigida ? '💌 Proponer partido' : '🙌 Proponer partido')}
         </h3>
 
-        {dirigida ? (
+        {dirigida && (
           <div className="bg-[#eef2f6] border border-[#c3d3e0] rounded-xl p-2.5 text-[11px] font-bold text-[#2c4a66]">
             Para: {destinatarios.map(d => d.name).join(', ')}. Solo les llegará a ellos.
           </div>
-        ) : (
-          <div className="grid grid-cols-2 gap-1.5 bg-stone-100 p-1 rounded-xl text-[11px] font-black">
-            <button type="button" onClick={() => cambiarTipo('FALTAN')} className={`py-2 rounded-lg transition ${tipo === 'FALTAN' ? 'bg-white shadow-xs text-stone-900' : 'text-stone-500'}`}>🆘 Me faltan jugadores</button>
-            <button type="button" onClick={() => cambiarTipo('HUECO')} className={`py-2 rounded-lg transition ${tipo === 'HUECO' ? 'bg-white shadow-xs text-stone-900' : 'text-stone-500'}`}>🕒 Tengo un hueco libre</button>
-          </div>
         )}
 
-        <div className="grid grid-cols-2 gap-1.5">
-          <label className="block">
-            <span className="text-[10px] font-black uppercase text-stone-500">Día</span>
-            <input type="date" required min={hoyISO} value={fecha} onChange={e => { setFecha(e.target.value); setError(''); }} className="w-full border rounded-lg p-1.5 text-xs font-semibold" />
-          </label>
-          <label className="block">
-            <span className="text-[10px] font-black uppercase text-stone-500">Hora</span>
-            <input type="time" required value={hora} onChange={e => { setHora(e.target.value); setError(''); }} className="w-full border rounded-lg p-1.5 text-xs font-semibold" />
-          </label>
-        </div>
+        {deUnPartido ? (
+          <>
+            <div className="bg-[#eef2f6] border border-[#c3d3e0] rounded-xl p-2.5 text-[11px] font-bold text-[#2c4a66] space-y-0.5">
+              <span className="block">📅 {etiquetaFechaDia(fecha)} · {hora}</span>
+              {lugar && <span className="block">📍 {lugar}</span>}
+              <span className="block font-semibold text-stone-600">Avisamos a quien no tenga partido ese día. Quien pueda te lo dice, tú confirmas a quién y entra directamente en este partido.</span>
+            </div>
+            <div className="block">
+              <span className="text-[10px] font-black uppercase text-stone-500">¿Quién ha fallado?{libresPartido > 0 ? ' (si ya hay hueco libre, no hace falta)' : ''}</span>
+              <div className="flex flex-wrap gap-1.5 mt-1">
+                {jugadoresPartido.map(j => {
+                  const marcado = retirados.includes(j.id);
+                  return (
+                    <button
+                      key={j.id}
+                      type="button"
+                      onClick={() => { setRetirados(prev => prev.includes(j.id) ? prev.filter(x => x !== j.id) : [...prev, j.id]); setError(''); }}
+                      className={`px-2.5 py-1 rounded-full text-[11px] font-bold border transition ${marcado ? 'bg-[#6b3f29] text-white border-[#6b3f29]' : 'bg-white text-stone-600 border-stone-200'}`}
+                    >
+                      {marcado ? '✗ ' : ''}{j.name}{currentUser && j.id === currentUser.id ? ' (tú)' : ''}
+                    </button>
+                  );
+                })}
+              </div>
+              <span className="text-[11px] font-black text-[#2c4a66] block mt-1.5">
+                {plazasPartido > 0 ? `Buscas ${plazasPartido} ${plazasPartido === 1 ? 'jugador' : 'jugadores'}.` : 'Marca a quien no va a poder jugar.'}
+              </span>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="grid grid-cols-2 gap-1.5">
+              <label className="block">
+                <span className="text-[10px] font-black uppercase text-stone-500">Día</span>
+                <input type="date" required min={hoyISO} value={fecha} onChange={e => { setFecha(e.target.value); setError(''); }} className="w-full border rounded-lg p-1.5 text-xs font-semibold" />
+              </label>
+              <label className="block">
+                <span className="text-[10px] font-black uppercase text-stone-500">Hora</span>
+                <input type="time" required value={hora} onChange={e => { setHora(e.target.value); setError(''); }} className="w-full border rounded-lg p-1.5 text-xs font-semibold" />
+              </label>
+            </div>
 
-        <label className="block">
-          <span className="text-[10px] font-black uppercase text-stone-500">
-            {tipo === 'HUECO' ? '¿A cuántas personas buscas?' : '¿Cuántos jugadores te faltan?'}
-          </span>
-          <div className="grid grid-cols-3 gap-1.5 mt-1">
-            {[1, 2, 3].map(n => (
-              <button key={n} type="button" onClick={() => setPlazas(n)} className={`py-1.5 rounded-lg text-xs font-black border transition ${plazas === n ? 'bg-[#2c4a66] text-white border-[#2c4a66]' : 'bg-white text-stone-600 border-stone-200'}`}>{n}</button>
-            ))}
-          </div>
-        </label>
+            <label className="block">
+              <span className="text-[10px] font-black uppercase text-stone-500">¿Cuántos jugadores buscas?</span>
+              <div className="grid grid-cols-3 gap-1.5 mt-1">
+                {[1, 2, 3].map(n => (
+                  <button key={n} type="button" onClick={() => setPlazas(n)} className={`py-1.5 rounded-lg text-xs font-black border transition ${plazas === n ? 'bg-[#2c4a66] text-white border-[#2c4a66]' : 'bg-white text-stone-600 border-stone-200'}`}>{n}</button>
+                ))}
+              </div>
+            </label>
 
-        <label className="block">
-          <span className="text-[10px] font-black uppercase text-stone-500">Sitio <span className="normal-case font-bold text-stone-400">(opcional)</span></span>
-          <input
-            type="text"
-            maxLength={120}
-            value={lugar}
-            onChange={e => setLugar(e.target.value)}
-            placeholder="Club, pista…"
-            className="w-full border rounded-lg p-1.5 text-xs font-semibold"
-            autoComplete="off"
-          />
-        </label>
+            <label className="block">
+              <span className="text-[10px] font-black uppercase text-stone-500">Sitio <span className="normal-case font-bold text-stone-400">(opcional)</span></span>
+              <input
+                type="text"
+                maxLength={120}
+                value={lugar}
+                onChange={e => setLugar(e.target.value)}
+                placeholder="Club, pista…"
+                className="w-full border rounded-lg p-1.5 text-xs font-semibold"
+                autoComplete="off"
+              />
+            </label>
 
-        <label className="flex items-center gap-2 text-xs font-bold text-stone-700">
-          <input type="checkbox" checked={pista} onChange={e => setPista(e.target.checked)} className="w-4 h-4" />
-          Ya tengo la pista reservada
-        </label>
+            <label className="flex items-center gap-2 text-xs font-bold text-stone-700">
+              <input type="checkbox" checked={pista} onChange={e => setPista(e.target.checked)} className="w-4 h-4" />
+              Ya tengo la pista reservada
+            </label>
+          </>
+        )}
 
         {!dirigida && (() => {
           const candidatos = (players || [])
@@ -2473,10 +2546,12 @@ function NuevaConvocatoriaModal({ isOpen, onClose, onSubmit, tipoInicial = 'FALT
           );
         })()}
 
-        <label className="block">
-          <span className="text-[10px] font-black uppercase text-stone-500">Enlace de la reserva (opcional)</span>
-          <input type="url" value={link} onChange={e => { setLink(e.target.value); setError(''); }} placeholder="https://…" className="w-full border rounded-lg p-1.5 text-xs font-semibold" />
-        </label>
+        {!deUnPartido && (
+          <label className="block">
+            <span className="text-[10px] font-black uppercase text-stone-500">Enlace de la reserva (opcional)</span>
+            <input type="url" value={link} onChange={e => { setLink(e.target.value); setError(''); }} placeholder="https://…" className="w-full border rounded-lg p-1.5 text-xs font-semibold" />
+          </label>
+        )}
 
         <label className="block">
           <span className="text-[10px] font-black uppercase text-stone-500">Nota (opcional)</span>
@@ -2651,7 +2726,7 @@ function DisponiblesPanel({ currentUser, players, matches, disponibilidades, onG
   );
 }
 
-function PachangaScreen({ currentUser, players, matches, convocatorias, disponibilidades, resaltarId, trabajando, onBack, onNueva, onResponder, onAsignar, onCancelar, onConvertir, onAbrirPartido, onGuardarDisp, onEliminarDisp, onContactar }) {
+function PachangaScreen({ currentUser, players, matches, convocatorias, disponibilidades, resaltarId, trabajando, onBack, onNueva, onResponder, onAsignar, onCancelar, onConvertir, onAnadirAPartido, onAbrirPartido, onGuardarDisp, onEliminarDisp, onContactar }) {
   const [vista, setVista] = useState('propuestas');
   const visibles = useMemo(() => {
     const ahora = Date.now();
@@ -2702,16 +2777,13 @@ function PachangaScreen({ currentUser, players, matches, convocatorias, disponib
         <p className="text-[11px] text-stone-600 font-medium">
           Propón un partido y avisamos a quien no tenga nada ese día. Quien pueda te lo dice (te llegan solo los avisos de quienes pueden) y tú decides quién entra.
         </p>
-        <div className="grid grid-cols-2 gap-2">
-          <button onClick={() => onNueva('FALTAN')} className="bg-[#2c4a66] text-white font-bold text-xs rounded-xl py-2.5 shadow-xs">🆘 Me faltan jugadores</button>
-          <button onClick={() => onNueva('HUECO')} className="bg-[#eef2f6] text-[#2c4a66] border border-[#c3d3e0] font-bold text-xs rounded-xl py-2.5">🕒 Tengo un hueco libre</button>
-        </div>
+        <button onClick={() => onNueva()} className="w-full bg-[#2c4a66] text-white font-bold text-xs rounded-xl py-2.5 shadow-xs">🙌 Proponer un partido</button>
       </div>
 
       {visibles.length === 0 ? (
         <div className="bg-[#faf3e7] border border-[#efd9a9] rounded-2xl p-4 text-center">
           <span className="text-xs font-bold text-[#6b4d1c] block">No hay propuestas abiertas ahora mismo</span>
-          <span className="text-[11px] text-[#6b4d1c]">Si te falta gente o tienes un hueco, proponlo arriba.</span>
+          <span className="text-[11px] text-[#6b4d1c]">Si te falta gente para un partido, proponlo arriba.</span>
         </div>
       ) : visibles.map(c => {
         const esMia = c.creadorId === currentUser.id;
@@ -2725,7 +2797,8 @@ function PachangaScreen({ currentUser, players, matches, convocatorias, disponib
         const completa = asignados.length >= c.plazas;
         const ocupado = Boolean(trabajando && trabajando[c.id]);
         const convertida = c.estado === 'CONVERTIDA';
-        const badge = c.tipo === 'HUECO' ? '🕒 Hueco libre' : c.tipo === 'DIRIGIDA' ? '💌 Invitación' : '🆘 Faltan jugadores';
+        const deUnPartido = Boolean(c.partidoId) && !convertida;
+        const badge = c.tipo === 'DIRIGIDA' ? '💌 Invitación' : deUnPartido ? '🔁 Plaza en un partido' : '🙌 Busca jugadores';
         const resaltada = resaltarId === c.id;
         return (
           <div
@@ -2748,7 +2821,13 @@ function PachangaScreen({ currentUser, players, matches, convocatorias, disponib
             </div>
 
             {c.nota && <p className="text-[11px] text-stone-600 bg-stone-50 rounded-lg p-2">“{c.nota}”</p>}
+            {deUnPartido && esMia && (c.retirados || []).length > 0 && (
+              <span className="text-[10px] text-stone-400 block">Se ha caído: {(c.retirados || []).map(id => ((players.find(p => p.id === id) || {}).name || id).split(' ')[0]).join(', ')}</span>
+            )}
             <div className="flex flex-wrap gap-x-3 gap-y-1">
+              {deUnPartido && (
+                <button type="button" onClick={() => onAbrirPartido(c.partidoId)} className="text-[11px] font-bold text-[#2c4a66] underline">🎾 Ver el partido</button>
+              )}
               {c.link && (
                 <a href={c.link} target="_blank" rel="noopener noreferrer" className="text-[11px] font-bold text-[#2c4a66] underline truncate">🔗 Ver reserva</a>
               )}
@@ -2771,7 +2850,7 @@ function PachangaScreen({ currentUser, players, matches, convocatorias, disponib
             </div>
 
             {convertida ? (
-              <button onClick={() => onAbrirPartido(c.partidoId)} className="w-full py-2 bg-[#2f5d50] text-white font-bold text-xs rounded-xl">✅ Partido creado · Ver partido</button>
+              <button onClick={() => onAbrirPartido(c.partidoId)} className="w-full py-2 bg-[#2f5d50] text-white font-bold text-xs rounded-xl">✅ Partido listo · Ver partido</button>
             ) : esMia ? (
               <div className="space-y-2">
                 <div className="bg-stone-50 rounded-xl p-2.5 space-y-1.5">
@@ -2802,11 +2881,11 @@ function PachangaScreen({ currentUser, players, matches, convocatorias, disponib
                 </div>
                 <div className="grid grid-cols-2 gap-2">
                   <button onClick={() => onCancelar(c)} disabled={ocupado} className="py-2 bg-white border border-[#ead3bf] text-[#6b3f29] font-bold text-xs rounded-xl disabled:opacity-50">Cancelar propuesta</button>
-                  <button onClick={() => onConvertir(c)} disabled={ocupado || asignados.length === 0} className="py-2 bg-[#2c4a66] text-white font-bold text-xs rounded-xl disabled:opacity-40">
-                    {ocupado ? 'Creando…' : (completa ? '🎾 Crear partido' : 'Crear con los confirmados')}
+                  <button onClick={() => (deUnPartido ? onAnadirAPartido(c) : onConvertir(c))} disabled={ocupado || asignados.length === 0} className="py-2 bg-[#2c4a66] text-white font-bold text-xs rounded-xl disabled:opacity-40">
+                    {ocupado ? (deUnPartido ? 'Añadiendo…' : 'Creando…') : deUnPartido ? '➕ Añadir al partido' : (completa ? '🎾 Crear partido' : 'Crear con los confirmados')}
                   </button>
                 </div>
-                {asignados.length === 0 && <span className="text-[10px] text-stone-400 block">Confirma al menos a una persona para poder crear el partido.</span>}
+                {asignados.length === 0 && <span className="text-[10px] text-stone-400 block">{deUnPartido ? 'Confirma al menos a una persona para poder añadirla al partido.' : 'Confirma al menos a una persona para poder crear el partido.'}</span>}
               </div>
             ) : (
               <div className="space-y-1.5">
@@ -5971,7 +6050,7 @@ function AppPrincipal() {
   // Datos con los que se abre el modal cuando se propone un partido a gente concreta (desde Disponibles).
   const [contactoPre, setContactoPre] = useState(null);
   const [showConvModal, setShowConvModal] = useState(false);
-  const [convTipoInicial, setConvTipoInicial] = useState('FALTAN');
+  const [partidoOferta, setPartidoOferta] = useState(null); // partido desde el que se ofrece plaza
   const [convResaltada, setConvResaltada] = useState(null);
   const [convTrabajando, setConvTrabajando] = useState({});
 
@@ -6539,16 +6618,33 @@ function AppPrincipal() {
 
   const marcarConvTrabajando = (id, valor) => setConvTrabajando(prev => ({ ...prev, [id]: valor }));
 
-  const abrirNuevaConvocatoria = (tipo) => {
+  const abrirNuevaConvocatoria = () => {
     setContactoPre(null);
-    setConvTipoInicial(tipo === 'HUECO' ? 'HUECO' : 'FALTAN');
+    setPartidoOferta(null);
+    setShowConvModal(true);
+  };
+
+  // Desde un partido ya creado: "ha fallado alguien, ofrezco su plaza".
+  const abrirOfertaPlaza = (m) => {
+    const d = parseMatchDateObject(m.date, m.fechaISO);
+    if (!d) { alert('No he podido leer la fecha de este partido.'); return; }
+    const dos = (n) => String(n).padStart(2, '0');
+    setContactoPre(null);
+    setPartidoOferta({
+      id: m.id,
+      dia: `${d.getFullYear()}-${dos(d.getMonth() + 1)}-${dos(d.getDate())}`,
+      hora: `${dos(d.getHours())}:${dos(d.getMinutes())}`,
+      lugar: m.location || '',
+      url: m.url || '',
+      jugadores: (m.players || []).map(p => ({ id: p.id, name: p.name }))
+    });
     setShowConvModal(true);
   };
 
   // Desde "Disponibles": propuesta dirigida a las personas marcadas, con día y hora ya rellenos.
   const abrirContactoDisponibles = ({ dia, hora, jugadores }) => {
     setContactoPre({ dia, hora, jugadores });
-    setConvTipoInicial('FALTAN');
+    setPartidoOferta(null);
     setShowConvModal(true);
   };
 
@@ -6677,6 +6773,68 @@ function AppPrincipal() {
       await fetchData(true);
       setActiveTab('partidos');
       setSelectedMatchId(idPartido);
+    } finally {
+      marcarConvTrabajando(c.id, false);
+    }
+  };
+
+  // Propuesta que ofrece plaza en un partido YA creado: quien organiza añade a los confirmados al partido,
+  // cada uno en el hueco de quien se cayó (así conservan el equipo), y la propuesta se cierra.
+  const handleAnadirAPartido = async (c) => {
+    if (convTrabajando[c.id]) return;
+    const partido = matches.find(m => m.id === c.partidoId);
+    if (!partido) { alert('No encuentro ese partido: puede que lo hayan borrado.'); return; }
+    const actuales = partido.players || [];
+    const confirmados = (c.respuestas || [])
+      .filter(r => r.respuesta === 'SI' && r.asignado)
+      .map(r => ({ id: r.idJugador, name: (players.find(p => p.id === r.idJugador) || {}).name || r.nombre }));
+    const yaDentro = (n) => actuales.some(p => p.id === n.id || normalizeName(p.name) === normalizeName(n.name));
+    const porAnadir = confirmados.filter(n => !yaDentro(n));
+
+    // Cuatro huecos fijos: 0-1 pareja 1, 2-3 pareja 2.
+    const huecos = [null, null, null, null];
+    const sobrantes = [];
+    [1, 2].forEach(t => {
+      actuales.filter(p => Number(p.team || 1) === t).forEach((p, i) => {
+        if (i < 2) huecos[(t - 1) * 2 + i] = p; else sobrantes.push(p);
+      });
+    });
+    sobrantes.forEach(p => { const k = huecos.indexOf(null); if (k >= 0) huecos[k] = p; });
+    const retirados = c.retirados || [];
+    const liberados = [];
+    const salen = [];
+    huecos.forEach((p, i) => { if (p && retirados.includes(p.id)) { salen.push(p.name); huecos[i] = null; liberados.push(i); } });
+    const libres = [...liberados, ...huecos.map((p, i) => (p === null && !liberados.includes(i) ? i : -1)).filter(i => i >= 0)];
+    const entran = porAnadir.slice(0, libres.length);
+    const sinSitio = porAnadir.slice(libres.length);
+    if (entran.length === 0) {
+      alert(porAnadir.length === 0
+        ? 'Quienes has confirmado ya están en el partido.'
+        : 'No queda ningún hueco libre en el partido. Si alguien se ha caído, quítalo antes desde «Cambiar Suplentes».');
+      return;
+    }
+    const lista = entran.map(n => n.name.split(' ')[0]).join(', ');
+    const aviso = `Se añadirá a ${lista} al partido${salen.length ? ` (en el hueco de ${salen.map(n => n.split(' ')[0]).join(', ')})` : ''} y la propuesta se cerrará.`
+      + (sinSitio.length ? `\n\nSin sitio para: ${sinSitio.map(n => n.name.split(' ')[0]).join(', ')}.` : '');
+    if (!window.confirm(`${aviso}\n\n¿Continuar?`)) return;
+
+    const nombres = huecos.map(p => (p ? p.name : ''));
+    entran.forEach((n, i) => { nombres[libres[i]] = n.name; });
+    marcarConvTrabajando(c.id, true);
+    try {
+      const res = await postConvocatoria({ action: 'MODIFICAR_JUGADORES_MANUAL', idPartido: partido.id, jugadores: nombres }, 60000);
+      if (!res.ok) {
+        if (res.timeout) setTimeout(() => fetchData(true), 4000);
+        alert(res.timeout
+          ? 'El servidor tarda más de lo normal. Puede que ya se haya añadido: mira el partido antes de repetirlo.'
+          : (res.error || 'No se ha podido añadir al partido.'));
+        return;
+      }
+      const cerrar = await postConvocatoria({ action: 'CONVERTIR_CONVOCATORIA', idConvocatoria: c.id, idJugador: currentUser.id, idPartido: partido.id }, 30000);
+      if (!cerrar.ok) alert('Se ha añadido al partido, pero no he podido cerrar la propuesta: ' + (cerrar.error || 'ciérrala desde Pachanga.'));
+      await fetchData(true);
+      setActiveTab('partidos');
+      setSelectedMatchId(partido.id);
     } finally {
       marcarConvTrabajando(c.id, false);
     }
@@ -8240,6 +8398,7 @@ function AppPrincipal() {
             onAsignar={handleAsignarConvocatoria}
             onCancelar={handleCancelarConvocatoria}
             onConvertir={handleConvertirConvocatoria}
+            onAnadirAPartido={handleAnadirAPartido}
             onAbrirPartido={(id) => { setActiveTab('partidos'); setSelectedMatchId(id); }}
           />
         ) : activeTab === 'inicio' && isThursdayMember ? (
@@ -8395,6 +8554,29 @@ function AppPrincipal() {
                   ✏️ Cambiar Suplentes
                 </button>
               </div>
+
+              {(() => {
+                // Ofrecer plaza: solo en partidos que aún no han empezado, y a quien juega el partido (o al administrador).
+                if (computeMatchStatus(currentMatch) !== 'PROGRAMADO') return null;
+                const juegaAqui = (currentMatch.players || []).some(p => p.id === currentUser.id || normalizeName(p.name) === normalizeName(currentUser.name));
+                if (!juegaAqui && currentUser.id !== ADMIN_PLAYER_ID) return null;
+                const abierta = (convocatorias || []).find(c => c.partidoId === currentMatch.id && (c.estado === 'ABIERTA' || c.estado === 'COMPLETA'));
+                return abierta ? (
+                  <button
+                    onClick={() => { setConvResaltada(abierta.id); setActiveTab('pachanga'); }}
+                    className="w-full mt-2 py-2 px-2 bg-[#faf3e7] text-[#6b4d1c] text-[11px] font-bold rounded-xl border border-[#efd9a9] transition"
+                  >
+                    🙌 Ya hay una propuesta abierta para este partido · Ver
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => abrirOfertaPlaza(currentMatch)}
+                    className="w-full mt-2 py-2 px-2 bg-[#faf3e7] hover:bg-[#f5ead2] text-[#6b4d1c] text-[11px] font-bold rounded-xl border border-[#efd9a9] transition"
+                  >
+                    🆘 Ha fallado alguien · ofrecer su plaza
+                  </button>
+                );
+              })()}
 
               {/* CONVOCATORIA Y PAREJAS */}
               <div className="mt-5 space-y-4">
@@ -8722,13 +8904,25 @@ function AppPrincipal() {
                   )}
                 </div>
 
+                {!hayBusquedaPartidos && filterTime === 'semana' && filteredMatches.length > 0 && filteredMatches.every(m => ['FINALIZADO', 'SIN RESULTADO', 'CANCELADO'].includes(computeMatchStatus(m))) && (() => {
+                  const jugados = filteredMatches.filter(m => computeMatchStatus(m) !== 'CANCELADO').length;
+                  return jugados > 0 ? (
+                    <div className="bg-[#eef4f0] border border-[#c7ddc9] rounded-2xl p-3">
+                      <span className="text-[11px] font-black text-[#2f5d50] block">✅ {jugados} {jugados === 1 ? 'partido jugado' : 'partidos jugados'} esta semana</span>
+                      <span className="text-[11px] font-semibold text-[#2f5d50] block">Sin más partidos planificados para el resto de la semana.</span>
+                    </div>
+                  ) : null;
+                })()}
+
                 {filteredMatches.length === 0 ? (
                   <div className="bg-white rounded-2xl p-8 text-center border border-stone-200">
                     <p className="text-2xl mb-1">{hayBusquedaPartidos ? '🔍' : '🎾'}</p>
                     <p className="text-sm font-bold text-stone-700">
                       {hayBusquedaPartidos
                         ? 'Ningún partido coincide con esa búsqueda'
-                        : `No hay partidos de ${currentUser.group} en esta vista`}
+                        : filterTime === 'semana'
+                          ? 'Todavía no hay ningún partido subido para esta semana'
+                          : `No hay partidos de ${currentUser.group} en esta vista`}
                     </p>
                   </div>
                 ) : (
@@ -9687,7 +9881,7 @@ function AppPrincipal() {
         isOpen={showConvModal}
         onClose={() => setShowConvModal(false)}
         onSubmit={handleCrearConvocatoria}
-        tipoInicial={convTipoInicial}
+        partido={partidoOferta}
         players={players}
         currentUser={currentUser}
         destinatarios={contactoPre ? contactoPre.jugadores : []}
