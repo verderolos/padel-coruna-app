@@ -1206,6 +1206,59 @@ function calculateTournamentSuggestedLevel(user, tournaments) {
   };
 }
 
+// ============================================================================
+// NOVEDADES: ventana que se muestra UNA vez por versión de novedades, la primera vez que alguien
+// entra (ya identificado) tras una actualización. Para anunciar algo nuevo basta con cambiar
+// VERSION_NOVEDADES y la lista NOVEDADES; quien ya la vio no la vuelve a ver.
+// ============================================================================
+const VERSION_NOVEDADES = '2026-10-pachanga-v2';
+const CLAVE_NOVEDADES_VISTAS = 'padel_novedades_vistas';
+const NOVEDADES = [
+  { icono: '🙌', titulo: 'Proponer un partido', texto: 'Un único botón para cuando falta gente: indicas día, hora y cuántos buscas, avisamos a quien esté libre y quien pueda te responde "Puedo jugar". Tú decides quién entra.' },
+  { icono: '🆘', titulo: 'Se cae alguien de un partido', texto: 'Desde el partido, "Ha fallado alguien · ofrecer su plaza" lanza una propuesta solo para esa plaza y quien elijas entra directo en el partido con "Añadir al partido".' },
+  { icono: '🕒', titulo: 'Disponibles y vetos', texto: 'Marca cuándo estás libre y propón partido solo a quien esté disponible. Al proponer puedes vetar a quien no quieras que la vea.' },
+  { icono: '🔔', titulo: 'Más avisos', texto: 'Si alguien confirmado se baja de un partido, el organizador recibe un aviso. Y cuando la app está guardando algo, lo verás indicado arriba.' },
+  { icono: '🎾', titulo: 'Inicio más claro', texto: 'Si ya se han jugado los partidos de la semana, Inicio lo dice y muestra quién jugó contra quién y el resultado.' }
+];
+
+function leerNovedadesVistas() {
+  try { return localStorage.getItem(CLAVE_NOVEDADES_VISTAS); } catch { return null; }
+}
+function marcarNovedadesVistas() {
+  try { localStorage.setItem(CLAVE_NOVEDADES_VISTAS, VERSION_NOVEDADES); } catch { /* sin almacenamiento: se volverá a mostrar */ }
+}
+
+function NovedadesModal({ isOpen, onClose, onVerGuia }) {
+  if (!isOpen) return null;
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label="Novedades">
+      <div className="bg-white rounded-3xl max-w-md w-full max-h-[90vh] overflow-y-auto shadow-2xl p-5 text-left space-y-3">
+        <div className="text-center">
+          <div className="text-3xl">🆕</div>
+          <h3 className="text-lg font-black text-stone-900">¡Hay novedades en CTC Padel!</h3>
+          <p className="text-[11px] text-stone-500 mt-0.5">La app se ha actualizado a una versión nueva. Esto es lo que ha cambiado:</p>
+        </div>
+        <ul className="space-y-2">
+          {NOVEDADES.map(n => (
+            <li key={n.titulo} className="flex gap-2.5 bg-stone-50 border border-stone-200 rounded-2xl p-2.5">
+              <span className="text-xl leading-none mt-0.5">{n.icono}</span>
+              <span className="min-w-0">
+                <span className="block text-xs font-black text-stone-800">{n.titulo}</span>
+                <span className="block text-[11px] text-stone-600">{n.texto}</span>
+              </span>
+            </li>
+          ))}
+        </ul>
+        <p className="text-[10px] text-stone-400 text-center">Tienes todo explicado en la guía (el icono ℹ️). Cuando salga otra versión, la app se recargará sola y te lo avisará.</p>
+        <div className="grid grid-cols-2 gap-2">
+          <button onClick={onVerGuia} className="py-2.5 bg-stone-100 text-stone-700 font-bold text-xs rounded-xl">📖 Ver la guía</button>
+          <button onClick={onClose} className="py-2.5 bg-[#2c4a66] text-white font-bold text-xs rounded-xl">Entendido</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function CriteriosModal({ isOpen, onClose }) {
   if (!isOpen) return null;
   return (
@@ -1223,12 +1276,43 @@ function CriteriosModal({ isOpen, onClose }) {
           <ul className="text-xs text-stone-600 space-y-1.5 list-disc list-inside">
             <li><strong>🏠 Inicio:</strong> lo primero que ves al entrar — el próximo partido de la semana, si falta gente por confirmar cena y tus torneos activos, con accesos directos al resto de secciones.</li>
             <li><strong>🎾 Partidos:</strong> pulsa "Añadir Partido (Pegar desde Playtomic)" y pega el texto que Playtomic genera al compartir el partido (con los jugadores marcados con ✅). Si solo pegas el enlace, sin ese texto, la app te pedirá la fecha/hora y al menos 2 jugadores a mano antes de crearlo. Si ese partido ya está en la app (mismo enlace de Playtomic) no se crea otro: te lo avisa y te lleva al existente. Para encontrar un partido usa el buscador: por jugador, estado o fecha exacta.</li>
+            <li><strong>🙌 Pachanga:</strong> proponer partidos cuando falta gente, ver quién está disponible y ofrecer plazas — mira la sección "Pachanga" más abajo. Cuando guardas un cambio y la app tarda, verás un aviso "Guardando…" arriba: espera a que desaparezca.</li>
             <li><strong>🍻 Cena &amp; Club:</strong> confirma si te quedas a cenar. En los torneos puedes ver, por nombre, quién cena, quién está pendiente de confirmar y quién se raja.</li>
             <li><strong>🏆 Rankings:</strong> toca el perfil de cualquier jugador para ver sus estadísticas: partidos jugados, % de victorias, cenas, rajadas, historial de puntos y desglose del bote.</li>
             <li><strong>💶 Bote:</strong> lo que cada uno debe aportar, según las reglas de abajo.</li>
             <li><strong className="inline-flex items-center gap-1"><PadelRacketsIcon /> Torneos:</strong> 4 formatos distintos para organizar — ver detalle más abajo.</li>
             <li><strong>🔔 Avisos:</strong> desde el icono de la campana configuras qué avisos quieres recibir — el recordatorio de los lunes (si para esa semana no hay partido subido) y los avisos de apertura de reserva en Playtomic, por día y hora (puedes tener varios).</li>
             <li><strong>🔔 Notificaciones en el móvil:</strong> en iPhone solo funcionan si añades la app a la pantalla de inicio desde Safari (compartir → "Añadir a pantalla de inicio") y la abres desde ahí; en Android/ordenador puedes activarlas directamente desde "Avisos".</li>
+          </ul>
+        </section>
+
+        <section className="bg-[#eef4f0] border border-[#c7ddc9] rounded-2xl p-4 space-y-2">
+          <h4 className="font-extrabold text-[#2f5d50] text-xs uppercase tracking-wide">🔁 Suplentes y cambio de parejas</h4>
+          <ul className="text-xs text-[#2f5d50] space-y-1.5 list-disc list-inside">
+            <li><strong>Cambiar suplentes:</strong> dentro de un partido, pulsa "✏️ Cambiar Suplentes". Verás los 4 nombres de la pista: sustituye el de quien no puede jugar por el de quien entra y guarda. Si el nombre coincide con un jugador de la app queda enlazado a su perfil; si no, aparecerá un aviso "⚠️ Vincular" junto a ese nombre para asociarlo a su perfil (así le cuentan puntos y cena).</li>
+            <li><strong>Cambiar de pareja:</strong> en "Convocatoria y Parejas", cada jugador tiene un botón "P1 ⇄" o "P2 ⇄". Púlsalo para elegir con quién intercambiarlo, o para moverlo a un hueco libre de la otra pareja. El cambio se guarda al momento y se ve en todos los móviles.</li>
+            <li><strong>Ojo:</strong> solo se pueden cambiar suplentes y parejas mientras el partido no esté finalizado; con el resultado ya cerrado las parejas quedan bloqueadas (🔒).</li>
+            <li><strong>Recargar Playtomic:</strong> si el partido ha cambiado en Playtomic, "🔄 Recargar Playtomic" vuelve a leer el texto compartido y actualiza jugadores y datos.</li>
+          </ul>
+        </section>
+
+        <section className="bg-[#faf3e7] border border-[#efd9a9] rounded-2xl p-4 space-y-2">
+          <h4 className="font-extrabold text-[#6b4d1c] text-xs uppercase tracking-wide">🙌 Pachanga: proponer partidos</h4>
+          <ul className="text-xs text-[#6b4d1c] space-y-1.5 list-disc list-inside">
+            <li><strong>Proponer un partido:</strong> desde Inicio o desde Pachanga, pulsa "🙌 Proponer un partido". Indica día, hora, cuántos jugadores buscas (1 a 3), el sitio (opcional), si ya tienes la pista reservada y, si quieres, el enlace de la reserva y una nota.</li>
+            <li><strong>A quién le llega:</strong> avisamos a los del grupo que no tengan ya partido ese día. Quien pueda pulsa "🙋 Puedo jugar" (o "No puedo"); tú recibes los avisos solo de quienes pueden.</li>
+            <li><strong>Tú decides quién entra:</strong> decir "puedo" no resta plaza. En tu propuesta ves "Quién puede" y pulsas "Confirmar" a quien quieras (puedes quitar la confirmación). Después, "🎾 Crear partido" (o "Crear con los confirmados" si aún faltan) lo convierte en partido. Si ya estás confirmado/a y te echas atrás, se avisa al organizador.</li>
+            <li><strong>Vetar a alguien:</strong> en la propuesta, "🚫 Vetar a alguien" oculta la propuesta a quien marques: no la ve, no recibe avisos y no sabe que lo has vetado.</li>
+            <li><strong>🕒 Disponibles:</strong> en la pestaña "Disponibles" de Pachanga marca cuándo estás libre (día y franja). Quien busque gente ve quién está disponible cada día, marca a quien quiera y pulsa "💌 Proponer partido a…": la propuesta solo les llega a ellos.</li>
+          </ul>
+        </section>
+
+        <section className="bg-[#f6ede6] border border-[#ead3bf] rounded-2xl p-4 space-y-2">
+          <h4 className="font-extrabold text-[#6b3f29] text-xs uppercase tracking-wide">🆘 Se cae un jugador de un partido ya montado</h4>
+          <ul className="text-xs text-[#6b3f29] space-y-1.5 list-disc list-inside">
+            <li><strong>Ofrecer su plaza:</strong> en el detalle del partido (si aún no ha empezado) pulsa "🆘 Ha fallado alguien · ofrecer su plaza". Marca quién ha fallado (no hace falta si ya había un hueco libre) y se lanza una propuesta de las plazas que faltan, con el mismo día, hora y sitio del partido.</li>
+            <li><strong>Después:</strong> quien pueda te lo dice con "Puedo jugar"; tú confirmas a quien quieras y pulsas "➕ Añadir al partido": entra directamente en ese partido, sin crear otro. Mientras la propuesta esté abierta, el partido muestra "Ya hay una propuesta abierta · Ver".</li>
+            <li><strong>Quién puede ofrecerla:</strong> cualquiera de los que juegan ese partido (o el administrador). Si no queda ningún hueco libre al añadir, la app te lo dice: quita antes al jugador desde "Cambiar Suplentes".</li>
           </ul>
         </section>
 
@@ -2145,10 +2229,31 @@ function HomeScreen({ currentUser, matches, activeTournaments, allDinnerGuests, 
                   onClick={() => onOpenMatch(match.id)}
                   className="w-full text-left bg-stone-50 hover:bg-stone-100 transition rounded-xl p-2.5 flex items-center justify-between gap-2"
                 >
-                  <span className="min-w-0">
-                    <span className="font-bold text-stone-800 text-[11px] block truncate">{fechaCompleta(match.date, match.fechaISO)}</span>
-                    <span className="text-[10px] text-stone-500">{estado === 'FINALIZADO' ? `Finalizado${match.score ? ` · ${match.score}` : ''}` : 'Jugado · sin resultado anotado'}</span>
-                  </span>
+                  {(() => {
+                    // Resumen simple: quién jugó con quién y cómo quedó. Los ganadores van en negrita.
+                    const nombre = (p) => String(p.name || '').trim().split(' ')[0];
+                    const jug = match.players || [];
+                    const eq1 = jug.filter(p => Number(p.team || 1) === 1);
+                    const eq2 = jug.filter(p => Number(p.team || 1) === 2);
+                    const unir = (arr) => arr.map(nombre).join(' y ');
+                    const gana1 = estado === 'FINALIZADO' && eq1.length > 0 && eq1.some(p => String(p.won).toUpperCase() === 'SI');
+                    const gana2 = estado === 'FINALIZADO' && eq2.length > 0 && eq2.some(p => String(p.won).toUpperCase() === 'SI');
+                    return (
+                      <span className="min-w-0">
+                        <span className="font-bold text-stone-800 text-[11px] block truncate">{fechaCompleta(match.date, match.fechaISO)}</span>
+                        {eq1.length > 0 && eq2.length > 0 ? (
+                          <span className="text-[11px] text-stone-600 block">
+                            <span className={gana1 ? 'font-black text-[#2f5d50]' : ''}>{gana1 ? '🏆 ' : ''}{unir(eq1)}</span>
+                            {' vs '}
+                            <span className={gana2 ? 'font-black text-[#2f5d50]' : ''}>{gana2 ? '🏆 ' : ''}{unir(eq2)}</span>
+                          </span>
+                        ) : jug.length > 0 ? (
+                          <span className="text-[11px] text-stone-600 block">{jug.map(nombre).join(', ')}</span>
+                        ) : null}
+                        <span className="text-[10px] text-stone-500 block">{estado === 'FINALIZADO' ? (match.score ? `Resultado: ${match.score}` : 'Finalizado') : 'Jugado · sin resultado anotado'}</span>
+                      </span>
+                    );
+                  })()}
                   <span className="text-stone-400 text-xs shrink-0">→</span>
                 </button>
               ))}
@@ -3497,7 +3602,7 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, allDinn
       else break;
     }
 
-    // Partidos y victorias por mes (últimos 6 meses), combinando Liga regular + Torneos
+    // Partidos y victorias por mes (últimos 6 meses), combinando Liga regular + Amistosos + Torneos
     // (a petición explícita: "más que en puntos lo enfocaría a victorias y partidos por mes" +
     // "Liga + torneos"). Cada "cubo" de mes cuenta partidos jugados y ganados.
     const MESES_CORTOS = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
@@ -3517,6 +3622,16 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, allDinn
     // (formato "15 oct", parseado por parseMatchDateObject).
     statsCalculated.playedList.forEach(m => {
       if (m.partner === 'Solo Cena') return; // las cenas sueltas no cuentan como partido
+      const d = parseMatchDateObject(m.date, m.fechaISO);
+      if (!d) return;
+      const bucket = monthMap[monthKeyOf(d.getFullYear(), d.getMonth())];
+      if (!bucket) return;
+      bucket.played++;
+      if (m.won) bucket.won++;
+    });
+
+    // Amistosos: también cuentan en el gráfico (partidos y victorias, no puntos de liga).
+    statsCalculated.friendliesList.forEach(m => {
       const d = parseMatchDateObject(m.date, m.fechaISO);
       if (!d) return;
       const bucket = monthMap[monthKeyOf(d.getFullYear(), d.getMonth())];
@@ -4227,7 +4342,7 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, allDinn
 
           <div className="bg-white rounded-2xl p-3 border border-stone-200">
             <span className="text-[10px] font-black text-stone-600 uppercase tracking-wide block mb-1">
-              📊 Partidos y victorias (últimos 6 meses) · Liga + Torneos
+              📊 Partidos y victorias (últimos 6 meses) · Liga + Amistosos + Torneos
             </span>
             <MiniBarChart data={streakAndTrend.monthlyTrend} />
           </div>
@@ -5877,7 +5992,7 @@ function ActualizadorVersion() {
           </p>
         ) : (
           <p className="text-sm text-stone-600 mt-2">
-            Para evitar que trabajes con una versión antigua, la app se actualizará automáticamente en {segundos} s.
+            Para evitar que trabajes con una versión antigua, la app se recargará automáticamente en {segundos} s. Al volver te contaremos qué hay de nuevo.
           </p>
         )}
         <button
@@ -5934,6 +6049,8 @@ function AppPrincipal() {
   const [selectedDinnerDate, setSelectedDinnerDate] = useState('');
   const [showDinnerHistory, setShowDinnerHistory] = useState(false);
   const [showRulesModal, setShowRulesModal] = useState(false);
+  // Novedades: pendientes si esta versión de novedades aún no la ha visto este navegador.
+  const [novedadesPendientes, setNovedadesPendientes] = useState(() => leerNovedadesVistas() !== VERSION_NOVEDADES);
   const [inspectedUser, setInspectedUser] = useState(null);
 
   const [currentUser, setCurrentUser] = useState(() => {
@@ -6109,6 +6226,7 @@ function AppPrincipal() {
       return false;
     }
     // Ventanas / modales, el último abierto primero
+    if (novedadesPendientes) { marcarNovedadesVistas(); setNovedadesPendientes(false); return true; }
     if (swapModalData) { setSwapModalData(null); return true; }
     if (linkingSlot) { setLinkingSlot(null); return true; }
     if (showScoreModal) { setShowScoreModal(false); return true; }
@@ -10027,6 +10145,13 @@ function AppPrincipal() {
       <CriteriosModal
         isOpen={showRulesModal}
         onClose={() => setShowRulesModal(false)}
+      />
+
+      {/* MODAL: NOVEDADES (una vez por versión, solo con sesión iniciada) */}
+      <NovedadesModal
+        isOpen={novedadesPendientes}
+        onClose={() => { marcarNovedadesVistas(); setNovedadesPendientes(false); }}
+        onVerGuia={() => { marcarNovedadesVistas(); setNovedadesPendientes(false); setShowRulesModal(true); }}
       />
     </div>
   );
