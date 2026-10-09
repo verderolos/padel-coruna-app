@@ -28,6 +28,238 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
   };
 })();
 
+// ============================================================================
+// INDICADOR GLOBAL DE ACTIVIDAD
+// Toda petición POST de la app a Apps Script pasa por aquí (mismo punto que el de arriba), así
+// cualquier acción —presente o futura— enseña lo que está pasando sin tocar cada pantalla:
+//  · barra de progreso arriba + aviso "Guardando…" mientras el servidor trabaja;
+//  · "Sigue guardando…" si tarda más de lo normal, y un aviso si parece que no responde;
+//  · "✓ Guardado" al terminar;
+//  · si falla (sin conexión, o el servidor responde ok:false), aviso rojo y recarga automática de
+//    los datos del servidor, para que la pantalla no se quede mostrando un cambio que no se guardó.
+// Las acciones que ya enseñan su propio error (formularios, modales…) no duplican el aviso rojo.
+// ============================================================================
+const ETIQUETAS_ACCION = {
+  ACTUALIZAR_NIVEL_JUGADOR: ['Guardando el nivel', 'el nivel'],
+  REGISTRAR_JUGADOR: ['Creando tu cuenta', 'el alta'],
+  APROBAR_JUGADOR: ['Aprobando el alta', 'la aprobación del alta'],
+  RECHAZAR_JUGADOR: ['Rechazando el alta', 'el rechazo del alta'],
+  PROMOVER_JUGADOR_GRUPO: ['Cambiando de grupo', 'el cambio de grupo'],
+  ACTUALIZAR_DATOS_PERFIL: ['Guardando tu perfil', 'tu perfil'],
+  SUBIR_FOTO: ['Subiendo la foto', 'la foto'],
+  ELIMINAR_PARTIDO: ['Eliminando el partido', 'la eliminación del partido'],
+  CREAR_PARTIDO_PLAYTOMIC: ['Creando el partido', 'el partido'],
+  ACTUALIZAR_PLAYTOMIC_PARTIDO: ['Actualizando el partido', 'la actualización del partido'],
+  MODIFICAR_JUGADORES_MANUAL: ['Guardando los jugadores', 'el cambio de jugadores'],
+  VINCULAR_JUGADOR: ['Vinculando al jugador', 'la vinculación del jugador'],
+  APUNTARSE_SOLO_CENA: ['Guardando tu cena', 'tu cena'],
+  ACTUALIZAR_CENA: ['Guardando la cena', 'la cena'],
+  CAMBIAR_PAREJA_JUGADOR: ['Guardando el cambio de pareja', 'el cambio de pareja'],
+  GUARDAR_RESULTADO: ['Guardando el resultado', 'el resultado'],
+  GUARDAR_TORNEO: ['Guardando el torneo', 'el torneo'],
+  ELIMINAR_TORNEO: ['Eliminando el torneo', 'la eliminación del torneo'],
+  ACTUALIZAR_CENA_TORNEO: ['Guardando la cena del torneo', 'la cena del torneo'],
+  SOLICITAR_UNION_CLUB: ['Enviando la solicitud', 'la solicitud'],
+  VALIDAR_SOLICITUD_CLUB: ['Guardando la validación', 'la validación'],
+  ACTUALIZAR_EQUIPO_JUGADOR: ['Guardando el equipo', 'el equipo'],
+  ACTUALIZAR_EQUIPOS_MASIVO: ['Guardando los equipos', 'los equipos'],
+  VALIDAR_CAPITAN: ['Guardando tu visto bueno', 'tu visto bueno'],
+  APROBAR_EQUIPOS: ['Aprobando los equipos', 'la aprobación de los equipos'],
+  GUARDAR_PREFERENCIA_LUNES: ['Guardando tus avisos', 'tus avisos'],
+  GUARDAR_PREFERENCIA_CONVOCATORIAS: ['Guardando tus avisos', 'tus avisos'],
+  GUARDAR_ALERTA_RESERVA: ['Guardando el aviso de reserva', 'el aviso de reserva'],
+  ELIMINAR_ALERTA_RESERVA: ['Quitando el aviso de reserva', 'el borrado del aviso'],
+  GUARDAR_TICKET_CENA: ['Guardando el ticket', 'el ticket'],
+  OCR_TICKET_CENA: ['Leyendo el ticket', 'la lectura del ticket'],
+  CREAR_CONVOCATORIA: ['Enviando la propuesta', 'la propuesta'],
+  RESPONDER_CONVOCATORIA: ['Enviando tu respuesta', 'tu respuesta'],
+  ASIGNAR_CONVOCATORIA: ['Asignando la plaza', 'la plaza'],
+  CANCELAR_CONVOCATORIA: ['Cancelando la propuesta', 'la cancelación'],
+  CONVERTIR_CONVOCATORIA: ['Enlazando el partido', 'el enlace con el partido'],
+  GUARDAR_DISPONIBILIDAD: ['Publicando tu disponibilidad', 'tu disponibilidad'],
+  ELIMINAR_DISPONIBILIDAD: ['Retirando tu disponibilidad', 'la retirada de tu disponibilidad']
+};
+// Acciones de fondo que no merecen ningún aviso.
+const ACCIONES_SILENCIOSAS = {
+  VERIFICAR_PIN: 1, OBTENER_SUSCRIPCIONES_PUSH: 1, GUARDAR_SUSCRIPCION_PUSH: 1, MARCAR_VISTO_TORNEO: 1
+};
+// Acciones cuyo código ya enseña su propio error (y deshace el cambio): aquí solo se muestra el progreso.
+const ACCIONES_CON_AVISO_PROPIO = {
+  REGISTRAR_JUGADOR: 1, CREAR_PIN_JUGADOR: 1, OCR_TICKET_CENA: 1, GUARDAR_TICKET_CENA: 1,
+  CREAR_PARTIDO_PLAYTOMIC: 1, ACTUALIZAR_PLAYTOMIC_PARTIDO: 1, MODIFICAR_JUGADORES_MANUAL: 1,
+  CREAR_CONVOCATORIA: 1, RESPONDER_CONVOCATORIA: 1,
+  ASIGNAR_CONVOCATORIA: 1, CANCELAR_CONVOCATORIA: 1, CONVERTIR_CONVOCATORIA: 1,
+  GUARDAR_DISPONIBILIDAD: 1
+};
+// Torneos: si falla el guardado NO se recarga solo (la recarga machacaría lo que el usuario acaba de
+// montar en pantalla); se avisa y se deja la pantalla como está para poder repetirlo.
+const ACCIONES_SIN_RESINCRONIZAR = {
+  GUARDAR_TORNEO: 1, ELIMINAR_TORNEO: 1, ACTUALIZAR_CENA_TORNEO: 1, SOLICITAR_UNION_CLUB: 1,
+  VALIDAR_SOLICITUD_CLUB: 1, ACTUALIZAR_EQUIPO_JUGADOR: 1, ACTUALIZAR_EQUIPOS_MASIVO: 1,
+  VALIDAR_CAPITAN: 1, APROBAR_EQUIPOS: 1
+};
+const UMBRAL_MOSTRAR_MS = 300;      // por debajo, la acción es tan rápida que un aviso solo parpadearía
+const UMBRAL_LENTO_MS = 6000;       // "tarda más de lo normal"
+const UMBRAL_SIN_RESPUESTA_MS = 30000;
+
+const actividadRed = (() => {
+  let ops = [];
+  let mensaje = null;
+  let contador = 0;
+  let inicios = 0;
+  let temporizadorMensaje = null;
+  const oyentes = new Set();
+  const avisar = () => oyentes.forEach(f => { try { f(); } catch { /* un oyente roto no afecta al resto */ } });
+  const poner = (m, ms) => {
+    mensaje = m;
+    if (temporizadorMensaje) clearTimeout(temporizadorMensaje);
+    temporizadorMensaje = ms ? setTimeout(() => { mensaje = null; avisar(); }, ms) : null;
+    avisar();
+  };
+  return {
+    suscribir(f) { oyentes.add(f); return () => oyentes.delete(f); },
+    leer: () => ({ ops, mensaje }),
+    // Para saber si una recarga de datos pudo quedarse "vieja": había cambios en curso al pedirla,
+    // se lanzó alguno mientras volvía, o siguen en curso al recibirla.
+    marca: () => inicios,
+    hayCambiosEnCurso: () => ops.some(o => !o.silenciosa),
+    huboInicioDesde: (m) => inicios !== m,
+    iniciar(accion) {
+      const [gerundio, sustantivo] = ETIQUETAS_ACCION[accion] || ['Guardando el cambio', 'el cambio'];
+      const op = {
+        id: ++contador, accion, gerundio, sustantivo, inicio: Date.now(),
+        silenciosa: Boolean(ACCIONES_SILENCIOSAS[accion]), propia: Boolean(ACCIONES_CON_AVISO_PROPIO[accion])
+      };
+      ops = [...ops, op];
+      inicios++;
+      avisar();
+      return op;
+    },
+    terminar(op, ok, detalle) {
+      if (!ops.some(o => o.id === op.id)) return;
+      ops = ops.filter(o => o.id !== op.id);
+      if (op.silenciosa) { avisar(); return; }
+      const duro = Date.now() - op.inicio;
+      if (!ok) {
+        if (op.propia) { avisar(); return; }
+        if (ACCIONES_SIN_RESINCRONIZAR[op.accion]) {
+          poner({
+            tipo: 'error',
+            texto: `No se ha podido guardar ${op.sustantivo} en el servidor${detalle ? ` (${String(detalle).slice(0, 90)})` : ''}. En tu pantalla se queda como lo has dejado: revisa la conexión y repite el cambio, o es posible que no aparezca a los demás.`
+          }, 12000);
+        } else {
+          poner({
+            tipo: 'error',
+            texto: `No se ha podido guardar ${op.sustantivo}${detalle ? ` (${String(detalle).slice(0, 90)})` : ''}. He vuelto a cargar los datos del servidor para que veas cómo han quedado.`
+          }, 9000);
+          try { window.dispatchEvent(new Event('ctc:resincronizar')); } catch { /* sin window */ }
+        }
+        return;
+      }
+      if (duro >= UMBRAL_MOSTRAR_MS && !ops.some(o => !o.silenciosa)) poner({ tipo: 'ok', texto: '✓ Guardado' }, 1600);
+      else avisar();
+    },
+    descartar() { poner(null, 0); }
+  };
+})();
+
+(function instalarSeguimientoDeActividad() {
+  if (typeof window === 'undefined' || window.__ctcActividadInstalada) return;
+  window.__ctcActividadInstalada = true;
+  const fetchPrevio = window.fetch.bind(window);
+  window.fetch = (input, init) => {
+    let accion = '';
+    try {
+      if (init && String(init.method || '').toUpperCase() === 'POST' && typeof init.body === 'string' && init.body.charAt(0) === '{') {
+        const cuerpo = JSON.parse(init.body);
+        if (cuerpo && typeof cuerpo.action === 'string') accion = cuerpo.action;
+      }
+    } catch { /* sin seguimiento */ }
+    if (!accion) return fetchPrevio(input, init);
+    const op = actividadRed.iniciar(accion);
+    const promesa = fetchPrevio(input, init);
+    promesa.then(async (resp) => {
+      let ok = resp.ok;
+      let detalle = ok ? '' : `error ${resp.status}`;
+      try {
+        const json = await resp.clone().json();
+        if (json && json.ok === false) { ok = false; detalle = json.error || detalle; }
+      } catch { /* respuesta que no es JSON: nos fiamos del código HTTP */ }
+      actividadRed.terminar(op, ok, detalle);
+    }, (err) => {
+      actividadRed.terminar(op, false, err && err.name === 'AbortError' ? 'se canceló por tardar demasiado' : 'sin conexión');
+    });
+    return promesa;
+  };
+})();
+
+function IndicadorActividad() {
+  const [estado, setEstado] = useState(() => actividadRed.leer());
+  const [, setTick] = useState(0);
+  useEffect(() => actividadRed.suscribir(() => setEstado(actividadRed.leer())), []);
+
+  const pendientes = estado.ops.filter(o => !o.silenciosa);
+  const hayPendientes = pendientes.length > 0;
+
+  // Refresco periódico solo mientras hay algo en curso (para el "tarda más de lo normal").
+  useEffect(() => {
+    if (!hayPendientes) return undefined;
+    const iv = setInterval(() => setTick(t => t + 1), 500);
+    return () => clearInterval(iv);
+  }, [hayPendientes]);
+
+  // Si se intenta cerrar la pestaña con algo todavía guardándose, el navegador avisa.
+  useEffect(() => {
+    if (!hayPendientes) return undefined;
+    const aviso = (e) => { e.preventDefault(); e.returnValue = ''; };
+    window.addEventListener('beforeunload', aviso);
+    return () => window.removeEventListener('beforeunload', aviso);
+  }, [hayPendientes]);
+
+  const ahora = Date.now();
+  const visibles = pendientes.filter(o => ahora - o.inicio >= UMBRAL_MOSTRAR_MS);
+  const masAntigua = visibles.reduce((max, o) => Math.max(max, ahora - o.inicio), 0);
+  const lento = masAntigua >= UMBRAL_LENTO_MS;
+  const sinRespuesta = masAntigua >= UMBRAL_SIN_RESPUESTA_MS;
+
+  let texto = '';
+  if (visibles.length === 1) texto = `${visibles[0].gerundio}…`;
+  else if (visibles.length > 1) {
+    // Varias peticiones de lo mismo (p.ej. un intercambio de pareja son dos) se cuentan como una sola cosa.
+    const mismaAccion = visibles.every(o => o.accion === visibles[0].accion);
+    texto = mismaAccion ? `${visibles[0].gerundio}…` : `Guardando ${visibles.length} cambios…`;
+  }
+  if (sinRespuesta) texto = 'El servidor no responde. Puede que el cambio no se haya guardado: no cierres la app todavía.';
+  else if (lento) texto = `${texto} Está tardando más de lo normal, sigue en marcha.`;
+
+  const mensaje = !visibles.length ? estado.mensaje : null;
+  if (!visibles.length && !mensaje) return null;
+
+  return (
+    <>
+      <style>{'@keyframes ctc-barra-actividad{0%{transform:translateX(-100%)}100%{transform:translateX(260%)}}'}</style>
+      {visibles.length > 0 && (
+        <div className="fixed top-0 left-0 right-0 h-1 z-[90] overflow-hidden bg-[#efd9a9]/40" aria-hidden="true">
+          <div className="h-full w-2/5 bg-[#2c4a66]" style={{ animation: 'ctc-barra-actividad 1.1s ease-in-out infinite' }} />
+        </div>
+      )}
+      <div className="fixed bottom-4 left-0 right-0 z-[90] flex justify-center px-4 pointer-events-none" role="status" aria-live="polite">
+        {visibles.length > 0 ? (
+          <div className={`pointer-events-auto max-w-sm w-full rounded-2xl shadow-lg border px-3.5 py-2.5 flex items-center gap-2.5 text-[12px] font-bold ${sinRespuesta ? 'bg-[#f6ede6] border-[#ead3bf] text-[#6b3f29]' : lento ? 'bg-[#faf3e7] border-[#efd9a9] text-[#6b4d1c]' : 'bg-white border-stone-200 text-stone-700'}`}>
+            <span className="inline-block w-4 h-4 rounded-full border-2 border-stone-300 border-t-[#2c4a66] animate-spin shrink-0" />
+            <span className="min-w-0">{texto}</span>
+          </div>
+        ) : mensaje && (
+          <div className={`pointer-events-auto max-w-sm w-full rounded-2xl shadow-lg border px-3.5 py-2.5 flex items-start gap-2 text-[12px] font-bold ${mensaje.tipo === 'error' ? 'bg-[#f6ede6] border-[#ead3bf] text-[#6b3f29]' : 'bg-[#eef4f0] border-[#c7ddc9] text-[#2f5d50]'}`}>
+            <span className="min-w-0 flex-1">{mensaje.tipo === 'error' ? '⚠️ ' : ''}{mensaje.texto}</span>
+            {mensaje.tipo === 'error' && <button onClick={() => actividadRed.descartar()} className="shrink-0 font-black" aria-label="Cerrar aviso">✕</button>}
+          </div>
+        )}
+      </div>
+    </>
+  );
+}
+
 // URL REAL DE TU BACKEND
 const DEFAULT_API_URL = 'https://script.google.com/macros/s/AKfycbxkd-BmLpYxmLtev5wcxwsyda94bG1mFW9gtDpEAgsmhV1HCfDwn2-syPDEvBUPwiiiGw/exec';
 
@@ -538,14 +770,23 @@ function calcularRachasSemanales(currentUser, matches, tournaments, allDinnerGue
   const eventosPartido = []; // { fecha: Date, ganado: boolean } — liga, amistosos y torneos
   const eventosCena = [];    // { fecha: Date } — solo cenas confirmadas ("SI") en el día de liga del grupo
 
+  // CRITERIO DE LAS CENAS EN ESTA RACHA (distinto al de los PUNTOS, a propósito): los puntos y el
+  // bote de una cena solo se computan a las 09:00 del día siguiente (esCenaComputable), pero la
+  // racha "semanas sin cena" es informativa y no puede decirte que no has ido a una cena que
+  // acabas de tener. Por eso una cena confirmada ("SI") cuenta para la racha en cuanto ha
+  // empezado el evento (fecha <= ahora), sin esperar al corte de las 09:00. Una cena futura
+  // todavía no cuenta (si no, taparía la racha antes de que ocurra).
   (matches || []).forEach(m => {
-    if (m.status !== 'FINALIZADO') return;
+    if (String(m.status || '').toUpperCase() === 'CANCELADO') return;
     const mySlot = (m.players || []).find(p => p.id === currentUser.id || normalizeName(p.name) === normUserName);
     if (!mySlot) return;
     const fecha = parseMatchDateObject(m.date, m.fechaISO);
     if (!fecha) return;
-    eventosPartido.push({ fecha, ganado: mySlot.won === 'SI' });
-    if (mySlot.dinner === 'SI' && esCenaComputable(m.date, m.fechaISO) && fecha.getDay() === diaCenaEsperado) {
+    if (m.status === 'FINALIZADO') {
+      eventosPartido.push({ fecha, ganado: mySlot.won === 'SI' });
+    }
+    // La cena no depende de que ya se haya anotado el resultado del partido.
+    if (String(mySlot.dinner || '').toUpperCase() === 'SI' && fecha <= ahora && fecha.getDay() === diaCenaEsperado) {
       eventosCena.push({ fecha });
     }
   });
@@ -553,9 +794,9 @@ function calcularRachasSemanales(currentUser, matches, tournaments, allDinnerGue
   (allDinnerGuests || []).forEach(g => {
     if (g.id === currentUser.id || normalizeName(g.name) === normUserName) {
       const cleanDate = extractCleanDate(g.target || g.cleanTarget);
-      if (cleanDate === 'sin fecha' || !esCenaComputable(cleanDate)) return;
+      if (cleanDate === 'sin fecha') return;
       const fecha = parseMatchDateObject(cleanDate);
-      if (fecha && fecha.getDay() === diaCenaEsperado) eventosCena.push({ fecha });
+      if (fecha && fecha <= ahora && fecha.getDay() === diaCenaEsperado) eventosCena.push({ fecha });
     }
   });
 
@@ -1014,6 +1255,7 @@ function CriteriosModal({ isOpen, onClose }) {
           <ul className="text-xs text-[#2f5d50] space-y-1 list-disc list-inside">
             <li><strong>Quedarse a la cena:</strong> +5 puntos (computables tras las 09:00 AM del día siguiente).</li>
             <li><strong>Jugar el partido:</strong> +1 punto (por compromiso y asistencia).</li>
+            <li><strong>Tomarte una (sin quedarte a cenar):</strong> 0 puntos y sin bote. No resta ni suma, no cuenta para la racha de cenas ni para el reparto del ticket.</li>
             <li><strong>Rajarse de la cena habiendo jugado:</strong> -1 punto de penalización.</li>
           </ul>
         </section>
@@ -1027,7 +1269,7 @@ function CriteriosModal({ isOpen, onClose }) {
           <h4 className="font-extrabold text-[#6b4d1c] text-xs uppercase tracking-wide">💶 4. El Bote</h4>
           <ul className="text-xs text-[#6b4d1c] space-y-1 list-disc list-inside">
             <li><strong>Derrota en pista:</strong> +1 € de bote.</li>
-            <li><strong>Rajarse de la cena:</strong> +1 € de bote.</li>
+            <li><strong>Rajarse de la cena:</strong> +1 € de bote (tomarte una no genera bote).</li>
             <li><strong>Victoria:</strong> 0 € (el ganador no paga bote).</li>
           </ul>
         </section>
@@ -1322,6 +1564,8 @@ function PushPreferencesCard({ currentUser, apiUrl, alertPreferences, reservatio
 
   const miPref = (alertPreferences || []).find(p => p.idJugador === currentUser.id);
   const lunesActivo = miPref ? String(miPref.avisoLunesPartido).toUpperCase() === 'SI' : false;
+  // Avisos de propuestas de partido: activados por defecto (solo se apagan si se pone NO).
+  const convActivo = miPref ? String(miPref.avisoConvocatorias || 'SI').toUpperCase() !== 'NO' : true;
   const misReservas = (reservationAlerts || []).filter(r => r.idJugador === currentUser.id);
 
   // horaNueva se guarda siempre como "HH:mm" (igual que antes); aquí solo la partimos para
@@ -1352,8 +1596,8 @@ function PushPreferencesCard({ currentUser, apiUrl, alertPreferences, reservatio
       });
       json = await res.json().catch(() => ({ ok: true }));
     } catch (e) {
+      // El aviso rojo ("No se ha podido guardar tus avisos…") lo enseña el indicador global de actividad.
       console.error('Error guardando preferencia de avisos:', e);
-      alert('No se ha podido guardar el cambio. Revisa tu conexión e inténtalo de nuevo.');
       json = null;
     } finally {
       setBusy(false);
@@ -1378,6 +1622,21 @@ function PushPreferencesCard({ currentUser, apiUrl, alertPreferences, reservatio
     if (!json || json.ok === false) {
       // Si de verdad falló, deshacemos el cambio optimista.
       onUpdateAlertPreferences(prev => (prev || []).map(p => p.idJugador === currentUser.id ? { ...p, avisoLunesPartido: lunesActivo ? 'SI' : 'NO' } : p));
+    }
+  };
+
+  const handleToggleConvocatorias = async () => {
+    const nuevoValor = convActivo ? 'NO' : 'SI';
+    onUpdateAlertPreferences(prev => {
+      const lista = prev || [];
+      if (lista.some(p => p.idJugador === currentUser.id)) {
+        return lista.map(p => p.idJugador === currentUser.id ? { ...p, avisoConvocatorias: nuevoValor } : p);
+      }
+      return [...lista, { idJugador: currentUser.id, avisoLunesPartido: 'NO', avisoConvocatorias: nuevoValor }];
+    });
+    const json = await postAccion({ action: 'GUARDAR_PREFERENCIA_CONVOCATORIAS', idJugador: currentUser.id, activo: nuevoValor });
+    if (!json || json.ok === false) {
+      onUpdateAlertPreferences(prev => (prev || []).map(p => p.idJugador === currentUser.id ? { ...p, avisoConvocatorias: convActivo ? 'SI' : 'NO' } : p));
     }
   };
 
@@ -1427,6 +1686,20 @@ function PushPreferencesCard({ currentUser, apiUrl, alertPreferences, reservatio
           className={`shrink-0 w-11 h-6 rounded-full transition relative disabled:opacity-50 ${lunesActivo ? 'bg-[#a9c4ad]' : 'bg-stone-300'}`}
         >
           <span className="absolute top-0.5 w-5 h-5 bg-white rounded-full shadow-sm transition" style={{ left: lunesActivo ? '22px' : '2px' }} />
+        </button>
+      </div>
+
+      <div className="flex items-center justify-between gap-2 bg-stone-50 rounded-xl p-3">
+        <div className="min-w-0">
+          <span className="font-bold text-stone-800 text-xs block">🙌 Propuestas de partido</span>
+          <span className="text-[11px] text-stone-500 block mt-0.5">Cuando alguien propone un partido y ese día no tienes ninguno. Si es una invitación para ti, te llega siempre.</span>
+        </div>
+        <button
+          onClick={handleToggleConvocatorias}
+          disabled={busy}
+          className={`shrink-0 w-11 h-6 rounded-full transition relative disabled:opacity-50 ${convActivo ? 'bg-[#a9c4ad]' : 'bg-stone-300'}`}
+        >
+          <span className="absolute top-0.5 w-5 h-5 bg-white rounded-full shadow-sm transition" style={{ left: convActivo ? '22px' : '2px' }} />
         </button>
       </div>
 
@@ -1487,7 +1760,8 @@ function comprimirFotoTicket(file) {
       const img = new Image();
       img.onload = () => {
         const canvas = document.createElement('canvas');
-        const maxSize = 1600;
+        // Un ticket es largo y estrecho: con un tope bajo la letra queda diminuta y el OCR no la lee.
+        const maxSize = 2600;
         let width = img.width;
         let height = img.height;
         if (width > height) { if (width > maxSize) { height *= maxSize / width; width = maxSize; } }
@@ -1495,7 +1769,7 @@ function comprimirFotoTicket(file) {
         canvas.width = width; canvas.height = height;
         const ctx = canvas.getContext('2d');
         ctx.drawImage(img, 0, 0, width, height);
-        resolve(canvas.toDataURL('image/jpeg', 0.85));
+        resolve(canvas.toDataURL('image/jpeg', 0.9));
       };
       img.onerror = reject;
       img.src = readerEvent.target.result;
@@ -1520,6 +1794,8 @@ function TicketCenaCard({ grupo, fechaClave, fechaLabel, numPersonasActuales, cu
   const [itemsRevision, setItemsRevision] = useState([]);
   const [fotoUrlPendiente, setFotoUrlPendiente] = useState('');
   const [avisoSinOcr, setAvisoSinOcr] = useState(false);
+  // Por qué no se ha leído el ticket (error del servidor) y el texto bruto que sí reconoció Google, si lo hubo.
+  const [detalleOcr, setDetalleOcr] = useState({ motivo: '', texto: '' });
   const fileInputRef = useRef(null);
 
   const totales = (() => {
@@ -1548,9 +1824,11 @@ function TicketCenaCard({ grupo, fechaClave, fechaLabel, numPersonasActuales, cu
       setFotoUrlPendiente(data.fotoUrl || '');
       setItemsRevision((data.items && data.items.length > 0) ? data.items : [{ desc: '', precio: '', esAlcohol: false }]);
       setAvisoSinOcr(!data.items || data.items.length === 0);
+      setDetalleOcr({ motivo: data.errorOcr || '', texto: data.textoDetectado || '' });
       setModo('revisando');
     } catch (err) {
       console.error(err);
+      setDetalleOcr({ motivo: err && err.message ? String(err.message) : '', texto: '' });
       setErrorMsg('No se ha podido leer el ticket. Puedes añadir las líneas a mano, o inténtalo de nuevo.');
       setItemsRevision([{ desc: '', precio: '', esAlcohol: false }]);
       setFotoUrlPendiente('');
@@ -1567,6 +1845,7 @@ function TicketCenaCard({ grupo, fechaClave, fechaLabel, numPersonasActuales, cu
       : [{ desc: '', precio: '', esAlcohol: false }]);
     setFotoUrlPendiente(ticketExistente?.fotoUrl || '');
     setAvisoSinOcr(false);
+    setDetalleOcr({ motivo: '', texto: '' });
     setErrorMsg('');
     setModo('revisando');
   };
@@ -1626,9 +1905,20 @@ function TicketCenaCard({ grupo, fechaClave, fechaLabel, numPersonasActuales, cu
         </div>
 
         {avisoSinOcr && (
-          <p className="text-[10px] text-[#6b4d1c] bg-[#faf3e7] border border-[#efd9a9] rounded-xl p-2">
-            No se ha podido leer el ticket automáticamente. Añade las líneas a mano.
-          </p>
+          <div className="text-[10px] text-[#6b4d1c] bg-[#faf3e7] border border-[#efd9a9] rounded-xl p-2 space-y-1">
+            <p>
+              {detalleOcr.texto && !detalleOcr.motivo
+                ? 'Se ha leído texto del ticket, pero no he sabido separar las líneas con su precio. Añádelas a mano.'
+                : 'No se ha podido leer el ticket automáticamente. Añade las líneas a mano.'}
+            </p>
+            {detalleOcr.motivo && <p className="font-bold">Motivo: {detalleOcr.motivo}</p>}
+            {detalleOcr.texto && (
+              <details>
+                <summary className="cursor-pointer font-bold">Ver el texto que ha leído</summary>
+                <pre className="whitespace-pre-wrap break-words mt-1 text-[10px] font-mono text-stone-600 max-h-40 overflow-y-auto">{detalleOcr.texto}</pre>
+              </details>
+            )}
+          </div>
         )}
         {errorMsg && <p className="text-[10px] text-[#6b3f29] bg-[#f6ede6] border border-[#ead3bf] rounded-xl p-2">{errorMsg}</p>}
 
@@ -1766,7 +2056,7 @@ function TicketCenaCard({ grupo, fechaClave, fechaLabel, numPersonasActuales, cu
 // directo en la lista de Partidos). Da un vistazo rápido a lo importante de la semana (si ya
 // hay partido subido, cuánta gente ha confirmado cena o se está haciendo la remolona), a los
 // torneos activos, y accesos directos al resto de secciones.
-function HomeScreen({ currentUser, matches, activeTournaments, allDinnerGuests, pendingAlerts, onNavigate, onOpenMatch }) {
+function HomeScreen({ currentUser, matches, activeTournaments, allDinnerGuests, pendingAlerts, convocatoriasAbiertas = 0, onNavigate, onOpenMatch, onProponer }) {
   // NUEVO: "Estadísticas individuales" del Home — semanas sin jugar / sin ganar-perder / sin
   // cena, calculadas sobre Liga + Amistosos + Torneos (alcance "Todo", a petición de Marcos).
   const rachas = useMemo(
@@ -1782,14 +2072,20 @@ function HomeScreen({ currentUser, matches, activeTournaments, allDinnerGuests, 
 
     const partidosSemana = (matches || [])
       .filter(m => isMatchOfficial(m) && m.status !== 'CANCELADO')
-      .map(m => ({ m, fecha: parseMatchDateObject(m.date, m.fechaISO) }))
-      .filter(x => x.fecha && x.fecha >= ahora && x.fecha <= finSemana)
+      .map(m => ({ m, fecha: parseMatchDateObject(m.date, m.fechaISO), estado: computeMatchStatus(m) }))
+      // Antes solo entraban los partidos que todavía no habían empezado (fecha >= ahora), así que
+      // un partido en juego desaparecía del Home justo al empezar. Ahora entran los programados
+      // de los próximos 7 días Y los que están en juego en este momento.
+      .filter(x => x.fecha && (
+        x.estado === 'EN JUEGO' ||
+        (x.estado === 'PROGRAMADO' && x.fecha >= ahora && x.fecha <= finSemana)
+      ))
       .sort((a, b) => a.fecha - b.fecha)
       .map(x => {
         const jugadores = x.m.players || [];
         const cenaSi = jugadores.filter(p => String(p.dinner || '').toUpperCase() === 'SI').length;
         const cenaPendiente = jugadores.filter(p => String(p.dinner || '').toUpperCase() === 'PENDIENTE').length;
-        return { match: x.m, cenaSi, cenaPendiente, totalJugadores: jugadores.length };
+        return { match: x.m, estado: x.estado, cenaSi, cenaPendiente, totalJugadores: jugadores.length };
       });
 
     const myNameNorm = normalizeName(currentUser?.name || '');
@@ -1828,14 +2124,21 @@ function HomeScreen({ currentUser, matches, activeTournaments, allDinnerGuests, 
             <button onClick={() => onNavigate('partidos')} className="text-[10px] font-black text-[#6b4d1c] underline">Subir partido</button>
           </div>
         ) : (
-          resumen.partidosSemana.map(({ match, cenaSi, cenaPendiente, totalJugadores }) => (
+          resumen.partidosSemana.map(({ match, estado, cenaSi, cenaPendiente, totalJugadores }) => (
             <button
               key={match.id}
               onClick={() => onOpenMatch(match.id)}
               className="w-full text-left bg-stone-50 hover:bg-stone-100 transition rounded-xl p-2.5 flex items-center justify-between gap-2"
             >
               <div className="min-w-0">
-                <span className="font-bold text-stone-800 text-[11px] block truncate">{fechaCompleta(match.date, match.fechaISO)}</span>
+                <span className="font-bold text-stone-800 text-[11px] block truncate">
+                  {estado === 'EN JUEGO' && (
+                    <span className="inline-flex items-center gap-1 mr-1.5 px-1.5 py-0.5 rounded-full bg-[#fbeee6] text-[#6b3f29] text-[9px] font-black align-middle">
+                      <span className="w-1.5 h-1.5 rounded-full bg-[#b5532a] animate-pulse" /> EN JUEGO
+                    </span>
+                  )}
+                  {fechaCompleta(match.date, match.fechaISO)}
+                </span>
                 <span className="text-[10px] text-stone-500">
                   {totalJugadores}/4 apuntados
                   {cenaPendiente > 0
@@ -1911,6 +2214,22 @@ function HomeScreen({ currentUser, matches, activeTournaments, allDinnerGuests, 
         </div>
       )}
 
+      <div className="bg-white rounded-2xl p-3.5 border border-stone-200 shadow-xs space-y-2.5">
+        <div className="flex items-center justify-between">
+          <span className="font-black text-stone-900 text-xs">🙌 Pachanga</span>
+          <button onClick={() => onNavigate('pachanga')} className="text-[10px] font-bold text-[#2c4a66] hover:underline">Ver propuestas →</button>
+        </div>
+        <span className="text-[11px] text-stone-600 font-medium block">
+          {convocatoriasAbiertas > 0
+            ? `Hay ${convocatoriasAbiertas} ${convocatoriasAbiertas === 1 ? 'propuesta de partido abierta' : 'propuestas de partido abiertas'}.`
+            : '¿Te falta gente o tienes un hueco libre? Propón un partido y avisamos al resto.'}
+        </span>
+        <div className="grid grid-cols-2 gap-2">
+          <button onClick={() => onProponer('FALTAN')} className="bg-[#2c4a66] text-white font-bold text-[11px] rounded-xl py-2">🆘 Me faltan jugadores</button>
+          <button onClick={() => onProponer('HUECO')} className="bg-[#eef2f6] text-[#2c4a66] border border-[#c3d3e0] font-bold text-[11px] rounded-xl py-2">🕒 Tengo un hueco</button>
+        </div>
+      </div>
+
       {pendingAlerts.length > 0 && (
         <button
           onClick={() => onNavigate('avisos')}
@@ -1939,6 +2258,589 @@ function HomeScreen({ currentUser, matches, activeTournaments, allDinnerGuests, 
           <span className="text-[11px] font-bold text-stone-700">Torneos</span>
         </button>
       </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// PACHANGA · CONVOCATORIAS DE PARTIDO
+// Alguien propone un partido ("me faltan jugadores" / "tengo este hueco libre") y el resto responde
+// Sí o No. Solo los "Sí" avisan a quien organiza; las propuestas nuevas avisan a quien no tiene
+// partido ese día (todo eso lo hace el backend). El partido real se crea desde aquí con el mismo
+// proceso de siempre, así que sigue valiendo la regla general: jueves (Chicos) / martes (Chicas)
+// cuentan para la liga y cualquier otro día es amistoso.
+// ============================================================================
+function fechaDeConvocatoria(c) {
+  const m = String((c && c.fechaISO) || '').match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);
+  return m ? new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]) : null;
+}
+
+// "Jueves, 15 oct 2026 · 21:00"
+function etiquetaConvocatoria(c) {
+  const iso = String((c && c.fechaISO) || '');
+  const hora = (iso.match(/[ T](\d{2}:\d{2})/) || [])[1] || '';
+  return `${etiquetaFechaDia(iso.slice(0, 10))}${hora ? ` · ${hora}` : ''}`;
+}
+
+// Quién puede ver una propuesta: quien la organiza, a quien va dirigida o, si es abierta, su grupo.
+function convocatoriaVisiblePara(c, user) {
+  if (!c || !user) return false;
+  if (c.creadorId === user.id) return true;
+  if ((c.destinatarios || []).length) return c.destinatarios.includes(user.id);
+  return String(c.grupo || '').toLowerCase() === String(user.group || '').toLowerCase();
+}
+
+function respuestaDe(c, userId) {
+  return ((c && c.respuestas) || []).find(r => r.idJugador === userId) || null;
+}
+
+// ¿Tiene ya este jugador un partido (no cancelado) en ese día "AAAA-MM-DD"?
+function tienePartidoEseDia(matches, user, claveDia) {
+  const miNombre = normalizeName(user.name || '');
+  return (matches || []).some(m => {
+    if (m.status === 'CANCELADO') return false;
+    if (extractCleanDate(m.date, m.fechaISO) !== claveDia) return false;
+    return (m.players || []).some(p => p.id === user.id || normalizeName(p.name) === miNombre);
+  });
+}
+
+// Texto con el mismo formato que el alta manual de un partido (📅 / 📍 / enlace / ✅ jugadores).
+function textoPartidoDesdeConvocatoria(c, players) {
+  const dObj = fechaDeConvocatoria(c);
+  const diasTxt = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+  const mesesTxt = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+  const hhmm = `${String(dObj.getHours()).padStart(2, '0')}:${String(dObj.getMinutes()).padStart(2, '0')}`;
+  const d = `${diasTxt[dObj.getDay()]}, ${String(dObj.getDate()).padStart(2, '0')} ${mesesTxt[dObj.getMonth()]} ${dObj.getFullYear()}, ${hhmm}`;
+  const nombreDe = (id, respaldo) => ((players || []).find(p => p.id === id) || {}).name || respaldo || '';
+  const nombres = [nombreDe(c.creadorId, c.creadorNombre)]
+    .concat((c.respuestas || []).filter(r => r.respuesta === 'SI' && r.asignado).map(r => nombreDe(r.idJugador, r.nombre)))
+    .filter(Boolean)
+    .slice(0, 4);
+  const lineas = [`📅 ${d}`, `📍 ${c.lugar || 'Real Club de Tenis de La Coruña'}`];
+  if (/^https?:\/\//i.test(c.link || '')) lineas.push(c.link);
+  nombres.forEach(n => lineas.push(`✅ ${n}`));
+  return lineas.join('\n');
+}
+
+function NuevaConvocatoriaModal({ isOpen, onClose, onSubmit, tipoInicial = 'FALTAN', destinatarios = [], fechaInicial = '', horaInicial = '', players = [], currentUser = null }) {
+  const dirigida = destinatarios.length > 0;
+  const [tipo, setTipo] = useState('FALTAN');
+  const [fecha, setFecha] = useState('');
+  const [hora, setHora] = useState('21:00');
+  const [plazas, setPlazas] = useState(1);
+  const [lugar, setLugar] = useState('');
+  const [vetados, setVetados] = useState([]);
+  const [pista, setPista] = useState(false);
+  const [link, setLink] = useState('');
+  const [nota, setNota] = useState('');
+  const [error, setError] = useState('');
+  const [enviando, setEnviando] = useState(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      const t = dirigida ? 'DIRIGIDA' : (tipoInicial === 'HUECO' ? 'HUECO' : 'FALTAN');
+      setTipo(t);
+      setPlazas(t === 'HUECO' ? 3 : (dirigida ? Math.min(3, Math.max(1, destinatarios.length)) : 1));
+      setFecha(fechaInicial || ''); setHora(horaInicial || '21:00'); setLugar('');
+      setVetados([]);
+      setPista(false); setLink(''); setNota(''); setError(''); setEnviando(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, tipoInicial]);
+
+  if (!isOpen) return null;
+
+  const hoyISO = (() => {
+    const n = new Date();
+    return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}-${String(n.getDate()).padStart(2, '0')}`;
+  })();
+
+  const cambiarTipo = (t) => {
+    setTipo(t);
+    setPlazas(t === 'HUECO' ? 3 : 1);
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (enviando) return;
+    if (!fecha || !hora) { setError('Indica el día y la hora.'); return; }
+    const cuando = new Date(`${fecha}T${hora}`);
+    if (isNaN(cuando.getTime()) || cuando.getTime() <= Date.now()) { setError('Esa fecha y hora ya han pasado.'); return; }
+    if (link.trim() && !/^https?:\/\//i.test(link.trim())) { setError('El enlace debe empezar por http:// o https://'); return; }
+    setError('');
+    setEnviando(true);
+    let res;
+    try {
+      res = await onSubmit({
+        tipo, fechaISO: `${fecha} ${hora}`, plazas, lugar: lugar.trim(), pistaReservada: pista,
+        link: link.trim(), nota: nota.trim(), destinatarios: destinatarios.map(d => d.id), vetados: dirigida ? [] : vetados
+      });
+    } finally {
+      setEnviando(false);
+    }
+    if (res && res.ok === false) setError(res.error || 'No se ha podido crear la propuesta.');
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <form onSubmit={handleSubmit} className="bg-white rounded-3xl max-w-sm w-full p-5 shadow-2xl space-y-3 max-h-[92vh] overflow-y-auto">
+        <h3 className="text-base font-black text-stone-900">
+          {dirigida ? '💌 Proponer partido' : '🙌 Nueva propuesta de partido'}
+        </h3>
+
+        {dirigida ? (
+          <div className="bg-[#eef2f6] border border-[#c3d3e0] rounded-xl p-2.5 text-[11px] font-bold text-[#2c4a66]">
+            Para: {destinatarios.map(d => d.name).join(', ')}. Solo les llegará a ellos.
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-1.5 bg-stone-100 p-1 rounded-xl text-[11px] font-black">
+            <button type="button" onClick={() => cambiarTipo('FALTAN')} className={`py-2 rounded-lg transition ${tipo === 'FALTAN' ? 'bg-white shadow-xs text-stone-900' : 'text-stone-500'}`}>🆘 Me faltan jugadores</button>
+            <button type="button" onClick={() => cambiarTipo('HUECO')} className={`py-2 rounded-lg transition ${tipo === 'HUECO' ? 'bg-white shadow-xs text-stone-900' : 'text-stone-500'}`}>🕒 Tengo un hueco libre</button>
+          </div>
+        )}
+
+        <div className="grid grid-cols-2 gap-1.5">
+          <label className="block">
+            <span className="text-[10px] font-black uppercase text-stone-500">Día</span>
+            <input type="date" required min={hoyISO} value={fecha} onChange={e => { setFecha(e.target.value); setError(''); }} className="w-full border rounded-lg p-1.5 text-xs font-semibold" />
+          </label>
+          <label className="block">
+            <span className="text-[10px] font-black uppercase text-stone-500">Hora</span>
+            <input type="time" required value={hora} onChange={e => { setHora(e.target.value); setError(''); }} className="w-full border rounded-lg p-1.5 text-xs font-semibold" />
+          </label>
+        </div>
+
+        <label className="block">
+          <span className="text-[10px] font-black uppercase text-stone-500">
+            {tipo === 'HUECO' ? '¿A cuántas personas buscas?' : '¿Cuántos jugadores te faltan?'}
+          </span>
+          <div className="grid grid-cols-3 gap-1.5 mt-1">
+            {[1, 2, 3].map(n => (
+              <button key={n} type="button" onClick={() => setPlazas(n)} className={`py-1.5 rounded-lg text-xs font-black border transition ${plazas === n ? 'bg-[#2c4a66] text-white border-[#2c4a66]' : 'bg-white text-stone-600 border-stone-200'}`}>{n}</button>
+            ))}
+          </div>
+        </label>
+
+        <label className="block">
+          <span className="text-[10px] font-black uppercase text-stone-500">Sitio <span className="normal-case font-bold text-stone-400">(opcional)</span></span>
+          <input
+            type="text"
+            maxLength={120}
+            value={lugar}
+            onChange={e => setLugar(e.target.value)}
+            placeholder="Club, pista…"
+            className="w-full border rounded-lg p-1.5 text-xs font-semibold"
+            autoComplete="off"
+          />
+        </label>
+
+        <label className="flex items-center gap-2 text-xs font-bold text-stone-700">
+          <input type="checkbox" checked={pista} onChange={e => setPista(e.target.checked)} className="w-4 h-4" />
+          Ya tengo la pista reservada
+        </label>
+
+        {!dirigida && (() => {
+          const candidatos = (players || [])
+            .filter(p => currentUser && p.id !== currentUser.id &&
+              String(p.group || '').toLowerCase() === String(currentUser.group || '').toLowerCase() &&
+              (p.estadoAprobacion || 'APROBADO') === 'APROBADO')
+            .sort((a, b) => String(a.name).localeCompare(String(b.name)));
+          if (!candidatos.length) return null;
+          return (
+            <details className="bg-stone-50 rounded-xl p-2.5">
+              <summary className="text-[11px] font-black text-stone-700 cursor-pointer">
+                🚫 Vetar a alguien{vetados.length > 0 ? ` (${vetados.length})` : ''}
+              </summary>
+              <p className="text-[10px] text-stone-500 mt-1.5 mb-2">
+                Quien marques no verá esta propuesta ni recibirá avisos de ella, y no se entera de que lo has vetado.
+              </p>
+              <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto">
+                {candidatos.map(p => {
+                  const marcado = vetados.includes(p.id);
+                  return (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => setVetados(prev => prev.includes(p.id) ? prev.filter(x => x !== p.id) : [...prev, p.id])}
+                      className={`px-2.5 py-1 rounded-full text-[11px] font-bold border transition ${marcado ? 'bg-[#6b3f29] text-white border-[#6b3f29]' : 'bg-white text-stone-600 border-stone-200'}`}
+                    >
+                      {marcado ? '🚫 ' : ''}{p.name}
+                    </button>
+                  );
+                })}
+              </div>
+            </details>
+          );
+        })()}
+
+        <label className="block">
+          <span className="text-[10px] font-black uppercase text-stone-500">Enlace de la reserva (opcional)</span>
+          <input type="url" value={link} onChange={e => { setLink(e.target.value); setError(''); }} placeholder="https://…" className="w-full border rounded-lg p-1.5 text-xs font-semibold" />
+        </label>
+
+        <label className="block">
+          <span className="text-[10px] font-black uppercase text-stone-500">Nota (opcional)</span>
+          <input type="text" maxLength={300} value={nota} onChange={e => setNota(e.target.value)} placeholder="Nivel, ambiente, lo que quieras contar…" className="w-full border rounded-lg p-1.5 text-xs font-semibold" />
+        </label>
+
+        {error && (
+          <div className="bg-[#f6ede6] border border-[#ead3bf] text-[#6b3f29] text-[11px] font-bold rounded-xl p-2">⚠️ {error}</div>
+        )}
+
+        <div className="flex gap-2">
+          <button type="button" onClick={onClose} disabled={enviando} className="flex-1 py-2 bg-stone-100 font-bold text-xs rounded-xl disabled:opacity-50">Cancelar</button>
+          <button type="submit" disabled={enviando} className="flex-1 py-2 bg-[#2c4a66] text-white font-bold text-xs rounded-xl shadow-xs disabled:opacity-50">{enviando ? 'Enviando…' : 'Proponer'}</button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+// Panel "Disponibles": quien tiene un hueco lo publica; quien necesita gente ve quién está libre y
+// les propone un partido (propuesta dirigida: solo les llega a ellos).
+function DisponiblesPanel({ currentUser, players, matches, disponibilidades, onGuardar, onEliminar, onContactar }) {
+  const hoyISO = (() => {
+    const n = new Date();
+    return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}-${String(n.getDate()).padStart(2, '0')}`;
+  })();
+  const [dia, setDia] = useState('');
+  const [desde, setDesde] = useState('19:00');
+  const [hasta, setHasta] = useState('22:00');
+  const [nota, setNota] = useState('');
+  const [error, setError] = useState('');
+  const [enviando, setEnviando] = useState(false);
+  const [seleccion, setSeleccion] = useState({ dia: '', ids: [] });
+
+  const mias = useMemo(
+    () => (disponibilidades || []).filter(d => d.idJugador === currentUser.id).sort((a, b) => (a.dia + a.desde).localeCompare(b.dia + b.desde)),
+    [disponibilidades, currentUser]
+  );
+
+  // Las de los demás del mismo grupo, agrupadas por día.
+  const porDia = useMemo(() => {
+    const mapa = {};
+    (disponibilidades || []).forEach(d => {
+      if (d.idJugador === currentUser.id) return;
+      if (String(d.grupo || '').toLowerCase() !== String(currentUser.group || '').toLowerCase()) return;
+      (mapa[d.dia] = mapa[d.dia] || []).push(d);
+    });
+    return Object.keys(mapa).sort().map(k => ({ dia: k, lista: mapa[k].sort((a, b) => a.desde.localeCompare(b.desde)) }));
+  }, [disponibilidades, currentUser]);
+
+  const fotoDe = (id) => (players.find(p => p.id === id) || {}).photo || '';
+
+  const handleGuardar = async (e) => {
+    e.preventDefault();
+    if (enviando) return;
+    if (!dia) { setError('Elige el día.'); return; }
+    if (hasta <= desde) { setError('La hora final debe ser posterior a la inicial.'); return; }
+    const fin = new Date(`${dia}T${hasta}`);
+    if (isNaN(fin.getTime()) || fin.getTime() <= Date.now()) { setError('Esa franja ya ha pasado.'); return; }
+    setError('');
+    setEnviando(true);
+    let res;
+    try {
+      res = await onGuardar({ dia, desde, hasta, nota: nota.trim() });
+    } finally {
+      setEnviando(false);
+    }
+    if (res && res.ok === false) setError(res.error || 'No se ha podido guardar.');
+    else { setNota(''); }
+  };
+
+  const alternar = (d) => {
+    setSeleccion(prev => {
+      if (prev.dia !== d.dia) return { dia: d.dia, ids: [d.idJugador] };
+      return prev.ids.includes(d.idJugador)
+        ? { dia: prev.dia, ids: prev.ids.filter(x => x !== d.idJugador) }
+        : { dia: prev.dia, ids: [...prev.ids, d.idJugador] };
+    });
+  };
+
+  const contactar = (grupoDia) => {
+    const elegidas = grupoDia.lista.filter(d => seleccion.ids.includes(d.idJugador));
+    if (!elegidas.length) return;
+    // Hora propuesta: la más tardía de las "desde" para que todos estén ya libres.
+    const hora = elegidas.map(d => d.desde).sort().slice(-1)[0];
+    const vistos = new Set();
+    const jugadores = elegidas.filter(d => !vistos.has(d.idJugador) && vistos.add(d.idJugador)).map(d => ({ id: d.idJugador, name: d.nombre }));
+    onContactar({ dia: grupoDia.dia, hora, jugadores });
+    setSeleccion({ dia: '', ids: [] });
+  };
+
+  return (
+    <div className="space-y-3">
+      <form onSubmit={handleGuardar} className="bg-white rounded-2xl p-3.5 border border-stone-200 shadow-xs space-y-2.5">
+        <span className="font-black text-stone-900 text-xs block">🕒 Marca cuándo estás libre</span>
+        <div className="grid grid-cols-3 gap-1.5">
+          <label className="block col-span-3 sm:col-span-1">
+            <span className="text-[10px] font-black uppercase text-stone-500">Día</span>
+            <input type="date" min={hoyISO} value={dia} onChange={e => { setDia(e.target.value); setError(''); }} className="w-full border rounded-lg p-1.5 text-xs font-semibold" />
+          </label>
+          <label className="block">
+            <span className="text-[10px] font-black uppercase text-stone-500">Desde</span>
+            <input type="time" value={desde} onChange={e => { setDesde(e.target.value); setError(''); }} className="w-full border rounded-lg p-1.5 text-xs font-semibold" />
+          </label>
+          <label className="block">
+            <span className="text-[10px] font-black uppercase text-stone-500">Hasta</span>
+            <input type="time" value={hasta} onChange={e => { setHasta(e.target.value); setError(''); }} className="w-full border rounded-lg p-1.5 text-xs font-semibold" />
+          </label>
+        </div>
+        <input type="text" maxLength={200} value={nota} onChange={e => setNota(e.target.value)} placeholder="Nota (opcional): sitios, nivel…" className="w-full border rounded-lg p-1.5 text-xs font-semibold" />
+        {error && <div className="bg-[#f6ede6] border border-[#ead3bf] text-[#6b3f29] text-[11px] font-bold rounded-xl p-2">⚠️ {error}</div>}
+        <button type="submit" disabled={enviando} className="w-full py-2 bg-[#2c4a66] text-white font-bold text-xs rounded-xl shadow-xs disabled:opacity-50">{enviando ? 'Guardando…' : 'Publicar mi disponibilidad'}</button>
+
+        {mias.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 pt-1">
+            {mias.map(d => (
+              <span key={d.id} className="inline-flex items-center gap-1 bg-[#eef4f0] text-[#2f5d50] text-[11px] font-bold px-2.5 py-1 rounded-full">
+                {etiquetaFechaDia(d.dia).replace(/ 20\d{2}$/, '')} · {d.desde}–{d.hasta}
+                <button type="button" onClick={() => onEliminar(d)} className="font-black" aria-label="Retirar disponibilidad">✕</button>
+              </span>
+            ))}
+          </div>
+        )}
+      </form>
+
+      <div className="bg-white rounded-2xl p-3.5 border border-stone-200 shadow-xs space-y-3">
+        <div>
+          <span className="font-black text-stone-900 text-xs block">🙋 Quién está disponible</span>
+          <span className="text-[11px] text-stone-500 block">Marca a quien quieras y propónle un partido: solo les llegará a ellos.</span>
+        </div>
+
+        {porDia.length === 0 ? (
+          <div className="bg-[#faf3e7] border border-[#efd9a9] rounded-xl p-3 text-center text-[11px] font-bold text-[#6b4d1c]">
+            Nadie ha publicado todavía una franja libre.
+          </div>
+        ) : porDia.map(g => {
+          const elegidosAqui = seleccion.dia === g.dia ? g.lista.filter(d => seleccion.ids.includes(d.idJugador)) : [];
+          return (
+            <div key={g.dia} className="space-y-1.5">
+              <span className="text-[11px] font-black text-[#2c4a66] block">{etiquetaFechaDia(g.dia)}</span>
+              {g.lista.map(d => {
+                const marcado = seleccion.dia === g.dia && seleccion.ids.includes(d.idJugador);
+                const ocupado = tienePartidoEseDia(matches, { id: d.idJugador, name: d.nombre }, d.dia);
+                return (
+                  <button
+                    key={d.id}
+                    type="button"
+                    onClick={() => alternar(d)}
+                    className={`w-full text-left rounded-xl p-2.5 flex items-center gap-2.5 border transition ${marcado ? 'bg-[#eef2f6] border-[#9fb4c7]' : 'bg-stone-50 border-transparent hover:bg-stone-100'}`}
+                  >
+                    <span className={`w-5 h-5 rounded-md border-2 flex items-center justify-center text-[11px] font-black shrink-0 ${marcado ? 'bg-[#2c4a66] border-[#2c4a66] text-white' : 'border-stone-300 text-transparent'}`}>✓</span>
+                    <UserAvatar name={d.nombre} photo={fotoDe(d.idJugador)} size="xs" />
+                    <span className="min-w-0 flex-1">
+                      <span className="font-bold text-stone-800 text-[12px] block truncate">{d.nombre}</span>
+                      <span className="text-[10px] text-stone-500 block truncate">
+                        {d.desde}–{d.hasta}{d.nota ? ` · ${d.nota}` : ''}{ocupado ? ' · ya tiene partido ese día' : ''}
+                      </span>
+                    </span>
+                  </button>
+                );
+              })}
+              {elegidosAqui.length > 0 && (
+                <button type="button" onClick={() => contactar(g)} className="w-full py-2 bg-[#2c4a66] text-white font-bold text-xs rounded-xl shadow-xs">
+                  💌 Proponer partido a {elegidosAqui.map(d => d.nombre.split(' ')[0]).join(', ')}
+                </button>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function PachangaScreen({ currentUser, players, matches, convocatorias, disponibilidades, resaltarId, trabajando, onBack, onNueva, onResponder, onAsignar, onCancelar, onConvertir, onAbrirPartido, onGuardarDisp, onEliminarDisp, onContactar }) {
+  const [vista, setVista] = useState('propuestas');
+  const visibles = useMemo(() => {
+    const ahora = Date.now();
+    return (convocatorias || [])
+      .filter(c => c.estado !== 'CANCELADA' && convocatoriaVisiblePara(c, currentUser))
+      .map(c => ({ c, fecha: fechaDeConvocatoria(c) }))
+      .filter(x => x.fecha && x.fecha.getTime() >= ahora)
+      .sort((a, b) => a.fecha - b.fecha)
+      .map(x => x.c);
+  }, [convocatorias, currentUser]);
+
+  useEffect(() => {
+    if (!resaltarId) return;
+    const el = document.getElementById(`conv-${resaltarId}`);
+    if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [resaltarId, visibles.length]);
+
+  const fotoDe = (id) => (players.find(p => p.id === id) || {}).photo || '';
+
+  return (
+    <div className="space-y-3">
+      <CabeceraPantalla onBack={onBack} titulo="🙌 Pachanga" tituloAtras="Volver al inicio" />
+
+      <div className="flex bg-white p-1 rounded-2xl border border-stone-200 shadow-xs text-[11px] font-bold">
+        {[{ key: 'propuestas', label: '🎾 Propuestas' }, { key: 'disponibles', label: '🕒 Disponibles' }].map(t => (
+          <button
+            key={t.key}
+            onClick={() => setVista(t.key)}
+            className={`flex-1 py-1.5 rounded-xl transition ${vista === t.key ? 'bg-[#2c4a66] text-white shadow-xs' : 'text-stone-600 hover:text-stone-900'}`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {vista === 'disponibles' ? (
+        <DisponiblesPanel
+          currentUser={currentUser}
+          players={players}
+          matches={matches}
+          disponibilidades={disponibilidades}
+          onGuardar={onGuardarDisp}
+          onEliminar={onEliminarDisp}
+          onContactar={onContactar}
+        />
+      ) : (<>
+      <div className="bg-white rounded-2xl p-3.5 border border-stone-200 shadow-xs space-y-2.5">
+        <p className="text-[11px] text-stone-600 font-medium">
+          Propón un partido y avisamos a quien no tenga nada ese día. Quien pueda te lo dice (te llegan solo los avisos de quienes pueden) y tú decides quién entra.
+        </p>
+        <div className="grid grid-cols-2 gap-2">
+          <button onClick={() => onNueva('FALTAN')} className="bg-[#2c4a66] text-white font-bold text-xs rounded-xl py-2.5 shadow-xs">🆘 Me faltan jugadores</button>
+          <button onClick={() => onNueva('HUECO')} className="bg-[#eef2f6] text-[#2c4a66] border border-[#c3d3e0] font-bold text-xs rounded-xl py-2.5">🕒 Tengo un hueco libre</button>
+        </div>
+      </div>
+
+      {visibles.length === 0 ? (
+        <div className="bg-[#faf3e7] border border-[#efd9a9] rounded-2xl p-4 text-center">
+          <span className="text-xs font-bold text-[#6b4d1c] block">No hay propuestas abiertas ahora mismo</span>
+          <span className="text-[11px] text-[#6b4d1c]">Si te falta gente o tienes un hueco, proponlo arriba.</span>
+        </div>
+      ) : visibles.map(c => {
+        const esMia = c.creadorId === currentUser.id;
+        const todas = c.respuestas || [];
+        const asignados = todas.filter(r => r.asignado);
+        const quienesPueden = todas.filter(r => r.respuesta === 'SI').sort((a, b) => Number(b.asignado) - Number(a.asignado));
+        const nos = todas.filter(r => r.respuesta === 'NO');
+        const mia = respuestaDe(c, currentUser.id);
+        const miAsignado = Boolean(mia && mia.asignado);
+        const totalDisp = typeof c.totalDisponibles === 'number' ? c.totalDisponibles : todas.filter(r => r.respuesta === 'SI').length;
+        const completa = asignados.length >= c.plazas;
+        const ocupado = Boolean(trabajando && trabajando[c.id]);
+        const convertida = c.estado === 'CONVERTIDA';
+        const badge = c.tipo === 'HUECO' ? '🕒 Hueco libre' : c.tipo === 'DIRIGIDA' ? '💌 Invitación' : '🆘 Faltan jugadores';
+        const resaltada = resaltarId === c.id;
+        return (
+          <div
+            key={c.id}
+            id={`conv-${c.id}`}
+            className={`bg-white rounded-2xl p-3.5 border shadow-xs space-y-2.5 ${resaltada ? 'border-[#d9b97c] ring-2 ring-[#efd9a9]' : 'border-stone-200'}`}
+          >
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <span className="text-[10px] font-black uppercase bg-[#eef2f6] text-[#2c4a66] px-2 py-0.5 rounded-full">{badge}</span>
+                <span className="font-black text-stone-900 text-sm block mt-1.5">{etiquetaConvocatoria(c)}</span>
+                {(c.lugar || c.pistaReservada) && (
+                  <span className="text-[11px] text-stone-600 font-semibold block">{c.lugar ? `📍 ${c.lugar}` : ''}{c.lugar && c.pistaReservada ? ' · ' : ''}{c.pistaReservada ? '🔒 pista reservada' : ''}</span>
+                )}
+              </div>
+              <div className="shrink-0 text-right">
+                <span className="text-[10px] font-bold text-stone-500 block">{esMia ? 'Organizas tú' : 'Organiza'}</span>
+                {!esMia && <span className="text-[11px] font-black text-stone-800 block">{c.creadorNombre}</span>}
+              </div>
+            </div>
+
+            {c.nota && <p className="text-[11px] text-stone-600 bg-stone-50 rounded-lg p-2">“{c.nota}”</p>}
+            <div className="flex flex-wrap gap-x-3 gap-y-1">
+              {c.link && (
+                <a href={c.link} target="_blank" rel="noopener noreferrer" className="text-[11px] font-bold text-[#2c4a66] underline truncate">🔗 Ver reserva</a>
+              )}
+            </div>
+
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {Array.from({ length: c.plazas }).map((_, i) => {
+                const r = asignados[i];
+                return r ? (
+                  <span key={i} className="inline-flex items-center gap-1 bg-[#eef4f0] border border-[#c7ddc9] rounded-full pr-2">
+                    <UserAvatar name={r.nombre} photo={fotoDe(r.idJugador)} size="xs" />
+                    <span className="text-[10px] font-bold text-[#2f5d50]">{(r.nombre || '').split(' ')[0]}</span>
+                  </span>
+                ) : (
+                  <span key={i} className="w-7 h-7 rounded-full border-2 border-dashed border-stone-300 text-stone-300 text-[10px] font-black flex items-center justify-center">?</span>
+                );
+              })}
+              <span className="text-[10px] font-black text-stone-500 ml-1">{asignados.length}/{c.plazas} confirmados</span>
+              {totalDisp > 0 && <span className="text-[10px] font-bold text-stone-400">· {totalDisp} {totalDisp === 1 ? 'puede' : 'pueden'}</span>}
+            </div>
+
+            {convertida ? (
+              <button onClick={() => onAbrirPartido(c.partidoId)} className="w-full py-2 bg-[#2f5d50] text-white font-bold text-xs rounded-xl">✅ Partido creado · Ver partido</button>
+            ) : esMia ? (
+              <div className="space-y-2">
+                <div className="bg-stone-50 rounded-xl p-2.5 space-y-1.5">
+                  <span className="text-[10px] font-black uppercase text-stone-500 block">Quién puede ({quienesPueden.length}) · tú decides quién entra</span>
+                  {quienesPueden.length === 0 ? (
+                    <span className="text-[11px] text-stone-400 block">Todavía nadie ha dicho que puede.</span>
+                  ) : quienesPueden.map(r => (
+                    <div key={r.idJugador} className="flex items-center justify-between gap-2">
+                      <span className="inline-flex items-center gap-1.5 min-w-0">
+                        <UserAvatar name={r.nombre} photo={fotoDe(r.idJugador)} size="xs" />
+                        <span className="text-[12px] font-bold text-stone-800 truncate">{r.nombre}</span>
+                      </span>
+                      <button
+                        onClick={() => onAsignar(c, r.idJugador, !r.asignado)}
+                        disabled={ocupado || (!r.asignado && completa)}
+                        className={`shrink-0 px-3 py-1 rounded-lg text-[11px] font-black disabled:opacity-40 ${r.asignado ? 'bg-[#2f5d50] text-white' : 'bg-white border border-[#c7ddc9] text-[#2f5d50]'}`}
+                      >
+                        {r.asignado ? '✓ Confirmado · Quitar' : 'Confirmar'}
+                      </button>
+                    </div>
+                  ))}
+                  {nos.length > 0 && (
+                    <span className="text-[10px] text-stone-400 block pt-0.5">No pueden: {nos.map(r => (r.nombre || '').split(' ')[0]).join(', ')}</span>
+                  )}
+                  {(c.vetados || []).length > 0 && (
+                    <span className="text-[10px] text-stone-400 block">🚫 Vetados (no la ven): {(c.vetados || []).map(id => ((players.find(p => p.id === id) || {}).name || id).split(' ')[0]).join(', ')}</span>
+                  )}
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <button onClick={() => onCancelar(c)} disabled={ocupado} className="py-2 bg-white border border-[#ead3bf] text-[#6b3f29] font-bold text-xs rounded-xl disabled:opacity-50">Cancelar propuesta</button>
+                  <button onClick={() => onConvertir(c)} disabled={ocupado || asignados.length === 0} className="py-2 bg-[#2c4a66] text-white font-bold text-xs rounded-xl disabled:opacity-40">
+                    {ocupado ? 'Creando…' : (completa ? '🎾 Crear partido' : 'Crear con los confirmados')}
+                  </button>
+                </div>
+                {asignados.length === 0 && <span className="text-[10px] text-stone-400 block">Confirma al menos a una persona para poder crear el partido.</span>}
+              </div>
+            ) : (
+              <div className="space-y-1.5">
+                {miAsignado ? (
+                  <div className="bg-[#eef4f0] border border-[#c7ddc9] text-[#2f5d50] rounded-xl p-2 text-[11px] font-black text-center">✅ {c.creadorNombre.split(' ')[0]} te ha confirmado</div>
+                ) : mia && mia.respuesta === 'SI' ? (
+                  <div className="bg-[#faf3e7] border border-[#efd9a9] text-[#6b4d1c] rounded-xl p-2 text-[11px] font-bold text-center">
+                    Has dicho que puedes · {c.creadorNombre.split(' ')[0]} decidirá quién entra
+                  </div>
+                ) : completa && (
+                  <div className="text-[10px] text-stone-400 text-center">Las plazas ya están asignadas, pero puedes quedar en reserva.</div>
+                )}
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    onClick={() => onResponder(c, 'SI')}
+                    disabled={ocupado}
+                    className={`py-2 font-bold text-xs rounded-xl transition disabled:opacity-40 ${mia && mia.respuesta === 'SI' ? 'bg-[#2f5d50] text-white' : 'bg-white border border-[#c7ddc9] text-[#2f5d50]'}`}
+                  >
+                    {mia && mia.respuesta === 'SI' ? '🙋 Puedo ✓' : '🙋 Puedo jugar'}
+                  </button>
+                  <button
+                    onClick={() => onResponder(c, 'NO')}
+                    disabled={ocupado}
+                    className={`py-2 font-bold text-xs rounded-xl transition disabled:opacity-40 ${mia && mia.respuesta === 'NO' ? 'bg-stone-700 text-white' : 'bg-white border border-stone-200 text-stone-600'}`}
+                  >
+                    {mia && mia.respuesta === 'NO' ? 'No puedo ✓' : 'No puedo'}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })}
+      </>)}
     </div>
   );
 }
@@ -2407,6 +3309,9 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, allDinn
         } else {
           breakdownPts.push('Rajada (aún no computa)');
         }
+      } else if (mySlot.dinner === 'UNA') {
+        // "Me tomo una": ni suma ni resta puntos, ni genera bote, y no es una rajada.
+        breakdownPts.push('Te tomas una (0)');
       } else if (mySlot.dinner === 'PENDIENTE') {
         breakdownPts.push('Cena Pendiente (0)');
       }
@@ -3204,7 +4109,7 @@ function UserProfileModal({ isOpen, onClose, user, matches, tournaments, allDinn
                           {item.partner === 'Solo Cena' ? 'Sin partido jugado' : <>Pareja con <strong>{item.partner}</strong> vs <span>{item.rivals}</span></>}
                         </p>
                         <p className="text-[9px] text-stone-400">
-                          {item.partner !== 'Solo Cena' && `Marcador: ${item.score} · `} Cena: {item.dinner === 'SI' ? '🍻 Sí' : item.dinner === 'NO' ? '🏃‍♂️ No' : '🟡 Pendiente'}
+                          {item.partner !== 'Solo Cena' && `Marcador: ${item.score} · `} Cena: {item.dinner === 'SI' ? '🍻 Sí' : item.dinner === 'UNA' ? '🍺 Una' : item.dinner === 'NO' ? '🏃‍♂️ No' : '🟡 Pendiente'}
                         </p>
                       </>
                     ) : (
@@ -4914,6 +5819,7 @@ export default function App() {
       <ActualizadorVersion />
       <GestorAtras />
       <AppPrincipal />
+      <IndicadorActividad />
     </>
   );
 }
@@ -4974,6 +5880,10 @@ function AppPrincipal() {
 
   const [showEditPlayersModal, setShowEditPlayersModal] = useState(false);
   const [editPlayerSlots, setEditPlayerSlots] = useState(['', '', '', '']);
+  // Estado de los dos formularios "pesados" de un partido (recargar Playtomic / cambiar suplentes):
+  // 'guardando' = esperando al servidor, 'actualizando' = guardado, trayendo los datos nuevos.
+  const [modalTrabajando, setModalTrabajando] = useState('');
+  const [modalError, setModalError] = useState('');
 
   const [showScoreModal, setShowScoreModal] = useState(false);
   const [linkingSlot, setLinkingSlot] = useState(null);
@@ -5041,10 +5951,40 @@ function AppPrincipal() {
     }
   });
 
+  // PACHANGA: propuestas de partido (convocatorias) y su interfaz.
+  const [convocatorias, setConvocatorias] = useState(() => {
+    try {
+      const cached = localStorage.getItem('padel_cached_convocatorias');
+      return cached ? JSON.parse(cached) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [disponibilidades, setDisponibilidades] = useState(() => {
+    try {
+      const cached = localStorage.getItem('padel_cached_disponibilidades');
+      return cached ? JSON.parse(cached) : [];
+    } catch {
+      return [];
+    }
+  });
+  // Datos con los que se abre el modal cuando se propone un partido a gente concreta (desde Disponibles).
+  const [contactoPre, setContactoPre] = useState(null);
+  const [showConvModal, setShowConvModal] = useState(false);
+  const [convTipoInicial, setConvTipoInicial] = useState('FALTAN');
+  const [convResaltada, setConvResaltada] = useState(null);
+  const [convTrabajando, setConvTrabajando] = useState({});
+
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const torneoParam = params.get('torneo');
     const playerParam = params.get('p');
+    const convocatoriaParam = params.get('convocatoria');
+    if (convocatoriaParam) {
+      // Enlace de un aviso de "nueva propuesta de partido": abre Pachanga resaltando esa propuesta.
+      setConvResaltada(convocatoriaParam);
+      setActiveTab('pachanga');
+    }
 
     if (torneoParam) {
       setInviteTournamentId(torneoParam);
@@ -5093,8 +6033,9 @@ function AppPrincipal() {
     if (swapModalData) { setSwapModalData(null); return true; }
     if (linkingSlot) { setLinkingSlot(null); return true; }
     if (showScoreModal) { setShowScoreModal(false); return true; }
-    if (showEditPlayersModal) { setShowEditPlayersModal(false); return true; }
-    if (showReloadPlaytomicModal) { setShowReloadPlaytomicModal(false); return true; }
+    if (showEditPlayersModal) { if (!modalTrabajando) setShowEditPlayersModal(false); return true; }
+    if (showReloadPlaytomicModal) { if (!modalTrabajando) setShowReloadPlaytomicModal(false); return true; }
+    if (showConvModal) { setShowConvModal(false); return true; }
     if (showAddModal) { setShowAddModal(false); return true; }
     if (reportingTournamentMatch) { setReportingTournamentMatch(null); return true; }
     if (showTournamentWizard) { setShowTournamentWizard(false); return true; }
@@ -5159,12 +6100,24 @@ function AppPrincipal() {
     }
   }, [currentUser, isThursdayMember, accesoBloqueadoPorAprobacion]);
 
-  const fetchData = async (silent = false) => {
+  // "reintento" cuenta las veces seguidas que se ha descartado la respuesta por llegar "vieja".
+  const fetchData = async (silent = false, reintento = 0) => {
+    // Si mientras esperamos estos datos se guarda algo (o ya había algo guardándose), la respuesta
+    // puede no incluir ese cambio y, al pintarla, haría "desaparecer" lo que el usuario acaba de ver.
+    // En ese caso se descarta y se vuelve a pedir un instante después (como máximo 2 veces).
+    const marcaActividad = actividadRed.marca();
+    const habiaCambiosEnCurso = actividadRed.hayCambiosEnCurso();
     try {
       if (!silent) setSyncing(true);
-      const urlConBypass = `${apiUrl}${apiUrl.includes('?') ? '&' : '?'}nocache=${Date.now()}`;
+      // "jugador" permite al servidor filtrar las propuestas para quien pregunta (vetos, invitaciones).
+      const urlConBypass = `${apiUrl}${apiUrl.includes('?') ? '&' : '?'}nocache=${Date.now()}${currentUser ? `&jugador=${encodeURIComponent(currentUser.id)}` : ''}`;
       const res = await fetch(urlConBypass, { method: 'GET', redirect: 'follow' });
       const json = await res.json();
+      const puedeEstarVieja = habiaCambiosEnCurso || actividadRed.huboInicioDesde(marcaActividad) || actividadRed.hayCambiosEnCurso();
+      if (json.ok && puedeEstarVieja && reintento < 2) {
+        setTimeout(() => fetchData(true, reintento + 1), 1500);
+        return;
+      }
       if (json.ok) {
         if (json.jugadores) {
           setPlayers(json.jugadores);
@@ -5214,6 +6167,14 @@ function AppPrincipal() {
           setReservationAlerts(json.alertasReserva);
           localStorage.setItem('padel_cached_reservation_alerts', JSON.stringify(json.alertasReserva));
         }
+        if (Array.isArray(json.disponibilidades)) {
+          setDisponibilidades(json.disponibilidades);
+          localStorage.setItem('padel_cached_disponibilidades', JSON.stringify(json.disponibilidades));
+        }
+        if (Array.isArray(json.convocatorias)) {
+          setConvocatorias(json.convocatorias);
+          localStorage.setItem('padel_cached_convocatorias', JSON.stringify(json.convocatorias));
+        }
         setIdsDuplicados(Array.isArray(json.idsDuplicados) ? json.idsDuplicados : []);
         if (json.ticketsCena) {
           setDinnerTickets(json.ticketsCena);
@@ -5256,6 +6217,24 @@ function AppPrincipal() {
   useEffect(() => {
     fetchData(true);
   }, [apiUrl]);
+
+  // Al iniciar sesión (o cambiar de usuario) se vuelven a pedir los datos: el servidor filtra las
+  // propuestas de Pachanga según quién pregunta (vetos e invitaciones).
+  const idUsuarioActual = currentUser ? currentUser.id : '';
+  useEffect(() => {
+    if (idUsuarioActual) fetchData(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [idUsuarioActual]);
+
+  // Cuando una acción falla (ver el indicador de actividad de arriba), la pantalla vuelve a cargar los
+  // datos del servidor para no quedarse mostrando un cambio que no se guardó.
+  const fetchDataRef = useRef(fetchData);
+  fetchDataRef.current = fetchData;
+  useEffect(() => {
+    const alResincronizar = () => { fetchDataRef.current(true); };
+    window.addEventListener('ctc:resincronizar', alResincronizar);
+    return () => window.removeEventListener('ctc:resincronizar', alResincronizar);
+  }, []);
 
   const handleUserClick = (user) => setTargetPinUser(user);
 
@@ -5534,45 +6513,251 @@ function AppPrincipal() {
     setSelectedMatchId(id);
   };
 
-  const handleReloadPlaytomic = async (e) => {
-    e.preventDefault();
-    if (!reloadPlaytomicText.trim() || !selectedMatchId) return;
-
-    setSyncing(true);
+  // ---------------------------------------------------------------------------
+  // PACHANGA (convocatorias de partido)
+  // ---------------------------------------------------------------------------
+  const postConvocatoria = async (payload, timeoutMs = 45000) => {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      await fetch(apiUrl, {
+      const res = await fetch(apiUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({ action: 'ACTUALIZAR_PLAYTOMIC_PARTIDO', idPartido: selectedMatchId, textoCrudo: reloadPlaytomicText })
+        body: JSON.stringify(payload),
+        signal: controller.signal
       });
-      setShowReloadPlaytomicModal(false);
-      setReloadPlaytomicText('');
-      fetchData();
-    } catch (e) {
-      console.error(e);
+      return await res.json();
+    } catch (err) {
+      if (err && err.name === 'AbortError') {
+        return { ok: false, timeout: true, error: 'El servidor está tardando más de lo normal. Mira la lista dentro de unos segundos antes de repetirlo.' };
+      }
+      return { ok: false, error: 'No se ha podido conectar con el servidor. Revisa tu conexión e inténtalo de nuevo.' };
     } finally {
-      setSyncing(false);
+      clearTimeout(timeoutId);
     }
   };
 
+  const marcarConvTrabajando = (id, valor) => setConvTrabajando(prev => ({ ...prev, [id]: valor }));
+
+  const abrirNuevaConvocatoria = (tipo) => {
+    setContactoPre(null);
+    setConvTipoInicial(tipo === 'HUECO' ? 'HUECO' : 'FALTAN');
+    setShowConvModal(true);
+  };
+
+  // Desde "Disponibles": propuesta dirigida a las personas marcadas, con día y hora ya rellenos.
+  const abrirContactoDisponibles = ({ dia, hora, jugadores }) => {
+    setContactoPre({ dia, hora, jugadores });
+    setConvTipoInicial('FALTAN');
+    setShowConvModal(true);
+  };
+
+  const handleGuardarDisponibilidad = async (data) => {
+    const res = await postConvocatoria({ action: 'GUARDAR_DISPONIBILIDAD', idJugador: currentUser.id, ...data }, 30000);
+    if (res.ok) {
+      fetchData(true);
+      if (res.duplicado) return { ok: false, error: 'Ya tenías publicada esa misma franja.' };
+      return { ok: true };
+    }
+    return { ok: false, error: res.error || 'No se ha podido guardar tu disponibilidad.' };
+  };
+
+  const handleEliminarDisponibilidad = async (d) => {
+    setDisponibilidades(prev => (prev || []).filter(x => x.id !== d.id));
+    // Si falla, el indicador global enseña el aviso y recarga los datos (la franja vuelve a la lista).
+    await postConvocatoria({ action: 'ELIMINAR_DISPONIBILIDAD', idDisponibilidad: d.id, idJugador: currentUser.id }, 30000);
+    fetchData(true);
+  };
+
+  const handleCrearConvocatoria = async (data) => {
+    const res = await postConvocatoria({ action: 'CREAR_CONVOCATORIA', idJugador: currentUser.id, grupo: myGroup, ...data });
+    if (res.ok && res.duplicado) return { ok: false, error: 'Ya tienes una propuesta igual para ese día y esa hora.' };
+    if (res.ok) {
+      setShowConvModal(false);
+      setConvResaltada(res.id || null);
+      setActiveTab('pachanga');
+      fetchData(true);
+      return { ok: true };
+    }
+    return { ok: false, error: res.error || 'No se ha podido crear la propuesta.' };
+  };
+
+  const handleResponderConvocatoria = async (c, respuesta) => {
+    if (convTrabajando[c.id]) return;
+    // Si quien organiza ya te había confirmado, bajarte libera tu plaza y se le avisa: se pide confirmación.
+    const respuestaPrevia = (c.respuestas || []).find(r => r.idJugador === currentUser.id);
+    if (respuesta === 'NO' && respuestaPrevia && respuestaPrevia.asignado) {
+      if (!window.confirm(`${c.creadorNombre} ya te había confirmado para este partido. Si dices que no puedes, se libera tu plaza y se le avisará. ¿Seguro?`)) return;
+    }
+    const antes = convocatorias;
+    marcarConvTrabajando(c.id, true);
+    // Cambio al instante en pantalla; el servidor tiene la última palabra. Decir "puedo" NO ocupa
+    // plaza: las plazas las asigna quien organiza. Decir "no puedo" retira una confirmación previa.
+    setConvocatorias(prev => (prev || []).map(x => {
+      if (x.id !== c.id) return x;
+      const previa = (x.respuestas || []).find(r => r.idJugador === currentUser.id);
+      const nueva = { idJugador: currentUser.id, nombre: currentUser.name, respuesta, fecha: '', asignado: respuesta === 'SI' && Boolean(previa && previa.asignado) };
+      const respuestas = [...(x.respuestas || []).filter(r => r.idJugador !== currentUser.id), nueva];
+      const base = typeof x.totalDisponibles === 'number' ? x.totalDisponibles - (previa && previa.respuesta === 'SI' ? 1 : 0) : 0;
+      return {
+        ...x,
+        respuestas,
+        totalDisponibles: base + (respuesta === 'SI' ? 1 : 0),
+        estado: respuestas.filter(r => r.asignado).length >= x.plazas ? 'COMPLETA' : 'ABIERTA'
+      };
+    }));
+    const res = await postConvocatoria({ action: 'RESPONDER_CONVOCATORIA', idConvocatoria: c.id, idJugador: currentUser.id, respuesta }, 30000);
+    marcarConvTrabajando(c.id, false);
+    if (!res.ok) {
+      setConvocatorias(antes);
+      alert(res.error || 'No se ha podido guardar tu respuesta.');
+    }
+    fetchData(true);
+  };
+
+  // Quien organiza confirma (o quita) a alguien de entre quienes han dicho que pueden.
+  const handleAsignarConvocatoria = async (c, idElegido, asignar) => {
+    if (convTrabajando[c.id]) return;
+    const antes = convocatorias;
+    marcarConvTrabajando(c.id, true);
+    setConvocatorias(prev => (prev || []).map(x => {
+      if (x.id !== c.id) return x;
+      const respuestas = (x.respuestas || []).map(r => r.idJugador === idElegido ? { ...r, asignado: asignar } : r);
+      return { ...x, respuestas, estado: respuestas.filter(r => r.asignado).length >= x.plazas ? 'COMPLETA' : 'ABIERTA' };
+    }));
+    const res = await postConvocatoria({ action: 'ASIGNAR_CONVOCATORIA', idConvocatoria: c.id, idJugador: currentUser.id, idElegido, asignar }, 30000);
+    marcarConvTrabajando(c.id, false);
+    if (!res.ok) {
+      setConvocatorias(antes);
+      alert(res.error || 'No se ha podido asignar la plaza.');
+    }
+    fetchData(true);
+  };
+
+  const handleCancelarConvocatoria = async (c) => {
+    if (convTrabajando[c.id]) return;
+    if (!window.confirm('¿Cancelar esta propuesta? Se avisará a quienes ya se habían apuntado.')) return;
+    marcarConvTrabajando(c.id, true);
+    const res = await postConvocatoria({ action: 'CANCELAR_CONVOCATORIA', idConvocatoria: c.id, idJugador: currentUser.id }, 30000);
+    marcarConvTrabajando(c.id, false);
+    if (res.ok) {
+      setConvocatorias(prev => (prev || []).filter(x => x.id !== c.id));
+    } else {
+      alert(res.error || 'No se ha podido cancelar la propuesta.');
+    }
+    fetchData(true);
+  };
+
+  // Crea el partido real con los apuntados (mismo proceso que "Añadir partido") y enlaza la propuesta.
+  // Oficial o amistoso lo decide la regla general de siempre (jueves Chicos / martes Chicas = liga).
+  const handleConvertirConvocatoria = async (c) => {
+    if (convTrabajando[c.id]) return;
+    const apuntados = (c.respuestas || []).filter(r => r.respuesta === 'SI' && r.asignado).length;
+    if (apuntados === 0) return;
+    const total = apuntados + 1;
+    if (!window.confirm(`Se creará el partido con ${total} ${total === 1 ? 'jugador' : 'jugadores'} (tú y quienes has confirmado). ¿Continuar?`)) return;
+    marcarConvTrabajando(c.id, true);
+    try {
+      const crear = await postConvocatoria({ action: 'CREAR_PARTIDO_PLAYTOMIC', textoCrudo: textoPartidoDesdeConvocatoria(c, players), grupo: c.grupo });
+      let idPartido = null;
+      if (crear.ok && crear.duplicado) idPartido = crear.idExistente || null;
+      else if (crear.ok) idPartido = crear.id || null;
+      if (!idPartido) {
+        if (crear.timeout) setTimeout(() => fetchData(true), 4000);
+        alert(crear.timeout
+          ? 'El servidor tarda más de lo normal. Puede que el partido sí se haya creado: mira la lista de Partidos antes de repetirlo.'
+          : (crear.error || 'No se ha podido crear el partido.'));
+        return;
+      }
+      const enlazar = await postConvocatoria({ action: 'CONVERTIR_CONVOCATORIA', idConvocatoria: c.id, idJugador: currentUser.id, idPartido }, 30000);
+      if (!enlazar.ok) {
+        alert('El partido se ha creado, pero no he podido marcar la propuesta como convertida: ' + (enlazar.error || 'inténtalo de nuevo desde Pachanga.'));
+      }
+      if (crear.duplicado) alert('Ese partido ya estaba en la app, así que te llevo a él en vez de crear otro.');
+      await fetchData(true);
+      setActiveTab('partidos');
+      setSelectedMatchId(idPartido);
+    } finally {
+      marcarConvTrabajando(c.id, false);
+    }
+  };
+
+  // Recargar un partido desde el texto de Playtomic. El formulario se queda abierto y bloqueado mientras
+  // el servidor trabaja (con "Guardando…"), y solo se cierra cuando ya se ven los datos nuevos. Si
+  // falla, se queda abierto con el motivo y el texto pegado intacto para poder reintentarlo.
+  const handleReloadPlaytomic = async (e) => {
+    e.preventDefault();
+    if (!reloadPlaytomicText.trim() || !selectedMatchId || modalTrabajando) return;
+
+    setModalError('');
+    setModalTrabajando('guardando');
+    const res = await postConvocatoria({ action: 'ACTUALIZAR_PLAYTOMIC_PARTIDO', idPartido: selectedMatchId, textoCrudo: reloadPlaytomicText }, 60000);
+    if (!res.ok) {
+      setModalTrabajando('');
+      if (res.timeout) {
+        setTimeout(() => fetchData(true), 4000);
+        setModalError('El servidor está tardando más de lo normal. Puede que sí se haya actualizado: cierra esto y mira el partido antes de repetirlo.');
+      } else {
+        setModalError(res.error || 'No se ha podido actualizar el partido.');
+      }
+      return;
+    }
+    setModalTrabajando('actualizando');
+    await fetchData(true);
+    setModalTrabajando('');
+    setShowReloadPlaytomicModal(false);
+    setReloadPlaytomicText('');
+  };
+
+  // Cambiar a los 4 jugadores de un partido. El cambio se ve al instante detrás del formulario; el
+  // formulario se queda bloqueado ("Guardando…") hasta que el servidor confirma. Si falla, se deshace
+  // el cambio en pantalla y el formulario sigue abierto con el motivo.
   const handleSaveManualPlayers = async (e) => {
     e.preventDefault();
-    if (!selectedMatchId) return;
+    if (!selectedMatchId || modalTrabajando) return;
 
-    setSyncing(true);
-    try {
-      await fetch(apiUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({ action: 'MODIFICAR_JUGADORES_MANUAL', idPartido: selectedMatchId, jugadores: editPlayerSlots })
-      });
-      setShowEditPlayersModal(false);
-      fetchData();
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setSyncing(false);
+    const antes = matches;
+    const nombres = editPlayerSlots.map(n => String(n || '').trim());
+    setModalError('');
+    setModalTrabajando('guardando');
+    setMatches(prev => prev.map(m => {
+      if (m.id !== selectedMatchId) return m;
+      const actuales = m.players || [];
+      return {
+        ...m,
+        players: nombres.map((nombre, idx) => {
+          if (!nombre) return null; // el servidor también ignora los huecos vacíos
+          const team = idx < 2 ? 1 : 2;
+          const clave = normalizeName(nombre);
+          const yaEstaba = actuales.find(p => normalizeName(p.name) === clave);
+          if (yaEstaba) return { ...yaEstaba, team };
+          const oficial = players.find(u => normalizeName(u.name) === clave);
+          return {
+            id: oficial ? oficial.id : nombre,
+            name: oficial ? oficial.name : nombre,
+            photo: oficial ? (oficial.photo || '') : '',
+            phone: oficial ? (oficial.phone || '') : '',
+            dinner: 'PENDIENTE', won: 'PENDIENTE', team
+          };
+        }).filter(Boolean)
+      };
+    }));
+
+    const res = await postConvocatoria({ action: 'MODIFICAR_JUGADORES_MANUAL', idPartido: selectedMatchId, jugadores: editPlayerSlots }, 60000);
+    setModalTrabajando('');
+    if (!res.ok) {
+      if (res.timeout) {
+        // No sabemos si llegó a guardarse: no se deshace a ciegas, se pide el estado real.
+        setTimeout(() => fetchData(true), 4000);
+        setModalError('El servidor está tardando más de lo normal. Puede que sí se haya guardado: cierra esto y comprueba los jugadores antes de repetirlo.');
+      } else {
+        setMatches(antes);
+        setModalError(res.error || 'No se han podido guardar los jugadores. No se ha cambiado nada.');
+      }
+      return;
     }
+    setShowEditPlayersModal(false);
+    fetchData(true);
   };
 
   const handleConfirmLinkSlot = async (matchId, officialId, rawSlotName, officialName) => {
@@ -5703,25 +6888,27 @@ function AppPrincipal() {
       });
     } catch (e) {
       // 4. ROLLBACK: Si falla (no hay internet o tarda más de 12s), restauramos el backup
-      console.error('Fallo de red al actualizar cena. Revirtiendo...', e);
+      // El aviso ("No se ha podido guardar la cena…") lo enseña el indicador global de actividad.
+      console.error('Fallo al actualizar la cena. Revirtiendo...', e);
       setMatches(previousMatches);
-      
-      if (e.name === 'AbortError') {
-        alert('⏳ La conexión va muy lenta. No se ha podido confirmar tu asistencia a la cena. Revisa tu cobertura e inténtalo de nuevo.');
-      } else {
-        alert('❌ Error de conexión: No se ha podido guardar en el servidor. Inténtalo de nuevo.');
-      }
     } finally {
       setLoadingDinnerId(null);
     }
   };
 
-  // NUEVA LÓGICA: Ejecutar el cambio/intercambio en el estado y llamar al Backend
+  // NUEVA LÓGICA: Ejecutar el cambio/intercambio en el estado y llamar al Backend.
+  // El cambio se ve al instante; las peticiones se esperan (antes salían "al aire" y, si fallaban, la
+  // pantalla se quedaba mostrando un cambio que no existía). Si alguna falla se deshace en pantalla y
+  // el indicador global enseña el aviso.
   const handleConfirmSwap = async (matchId, sourcePlayerId, targetPlayerId) => {
     const match = matches.find(m => m.id === matchId);
     const sourcePlayer = match.players.find(p => p.id === sourcePlayerId);
     const sourceTeam = Number(sourcePlayer.team || 1);
     const targetTeam = sourceTeam === 1 ? 2 : 1;
+    const antes = matches;
+
+    // Cierra el modal de Swap
+    setSwapModalData(null);
 
     if (!targetPlayerId) {
       // Movimiento directo a hueco libre
@@ -5732,21 +6919,8 @@ function AppPrincipal() {
           players: m.players.map(p => p.id === sourcePlayerId ? { ...p, team: targetTeam } : p)
         };
       }));
-
-      try {
-        fetch(apiUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-          body: JSON.stringify({
-            action: 'CAMBIAR_PAREJA_JUGADOR',
-            idPartido: matchId,
-            idJugador: sourcePlayerId,
-            team: targetTeam
-          })
-        });
-      } catch (e) {
-        console.warn('Error moviendo jugador:', e);
-      }
+      const res = await postConvocatoria({ action: 'CAMBIAR_PAREJA_JUGADOR', idPartido: matchId, idJugador: sourcePlayerId, team: targetTeam }, 30000);
+      if (!res.ok) setMatches(antes);
     } else {
       // Intercambio ("Swap") de posiciones entre dos jugadores
       setMatches(prev => prev.map(m => {
@@ -5760,37 +6934,17 @@ function AppPrincipal() {
           })
         };
       }));
-
-      try {
-        // Solicitud 1: Mover P1 al equipo 2
-        fetch(apiUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-          body: JSON.stringify({
-            action: 'CAMBIAR_PAREJA_JUGADOR',
-            idPartido: matchId,
-            idJugador: sourcePlayerId,
-            team: targetTeam
-          })
-        });
-        // Solicitud 2: Mover P2 al equipo 1
-        fetch(apiUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-          body: JSON.stringify({
-            action: 'CAMBIAR_PAREJA_JUGADOR',
-            idPartido: matchId,
-            idJugador: targetPlayerId,
-            team: sourceTeam
-          })
-        });
-      } catch (e) {
-        console.warn('Error intercambiando jugadores:', e);
+      // Las dos peticiones salen a la vez (mover a P1 al otro equipo y a P2 al suyo) y se espera a ambas.
+      const resultados = await Promise.all([
+        postConvocatoria({ action: 'CAMBIAR_PAREJA_JUGADOR', idPartido: matchId, idJugador: sourcePlayerId, team: targetTeam }, 30000),
+        postConvocatoria({ action: 'CAMBIAR_PAREJA_JUGADOR', idPartido: matchId, idJugador: targetPlayerId, team: sourceTeam }, 30000)
+      ]);
+      // Si solo una de las dos se guardó, el estado real del servidor es mixto: se muestra tal cual está.
+      if (resultados.some(r => !r.ok)) {
+        setMatches(antes);
+        fetchData(true);
       }
     }
-    
-    // Cierra el modal de Swap
-    setSwapModalData(null);
   };
 
  const handleSaveRegularMatchScore = async (winningTeamNum, composedScoreText) => {
@@ -5837,18 +6991,14 @@ function AppPrincipal() {
       });
     } catch (e) {
       // 4. ROLLBACK: Si falla, restauramos la interfaz y avisamos al usuario
-      console.error('Fallo de red al guardar resultado. Revirtiendo...', e);
+      // El aviso ("No se ha podido guardar el resultado…") lo enseña el indicador global de actividad.
+      console.error('Fallo al guardar el resultado. Revirtiendo...', e);
       setMatches(previousMatches);
-      
-      if (e.name === 'AbortError') {
-        alert('⏳ La conexión va muy lenta. El resultado NO se ha guardado. Inténtalo de nuevo cuando tengas mejor cobertura.');
-      } else {
-        alert('❌ Error de conexión: No se ha podido guardar el resultado en el servidor.');
-      }
     }
   };
 
   const handleResetMatchScore = async (matchId) => {
+    const previousMatches = [...matches];
     setMatches(prev => prev.map(m => {
       if (m.id !== matchId) return m;
       return {
@@ -5859,22 +7009,19 @@ function AppPrincipal() {
       };
     }));
 
+    // Se espera al servidor; si falla se deshace el cambio (el aviso lo enseña el indicador global).
     try {
-      fetch(apiUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({
-          action: 'GUARDAR_RESULTADO',
-          idPartido: matchId,
-          marcador: '',
-          ganadorIds: [],
-          ganadorNombres: [],
-          reiniciar: true
-        })
+      await fetchWithTimeout({
+        action: 'GUARDAR_RESULTADO',
+        idPartido: matchId,
+        marcador: '',
+        ganadorIds: [],
+        ganadorNombres: [],
+        reiniciar: true
       });
     } catch (e) {
-      console.error(e);
-      fetchData();
+      console.error('Fallo al reiniciar el partido. Revirtiendo...', e);
+      setMatches(previousMatches);
     }
   };
 
@@ -6487,6 +7634,44 @@ function AppPrincipal() {
       }
     });
 
+    // 5. Pachanga: propuestas de partido
+    const ahoraConv = Date.now();
+    (convocatorias || []).forEach(c => {
+      const fechaC = fechaDeConvocatoria(c);
+      if (!fechaC || fechaC.getTime() < ahoraConv || !convocatoriaVisiblePara(c, currentUser)) return;
+      const abrir = () => { setConvResaltada(c.id); setActiveTab('pachanga'); };
+      if (c.creadorId === currentUser.id) {
+        const sinDecidir = (c.respuestas || []).filter(r => r.respuesta === 'SI' && !r.asignado).length;
+        if (c.estado === 'COMPLETA') {
+          alerts.push({
+            id: `conv-completa-${c.id}`,
+            icon: '✅',
+            title: 'Tus plazas están asignadas',
+            description: `${etiquetaConvocatoria(c)} · Ya puedes crear el partido`,
+            action: abrir
+          });
+        } else if (sinDecidir > 0) {
+          alerts.push({
+            id: `conv-candidatos-${c.id}`,
+            icon: '🙋',
+            title: `${sinDecidir} ${sinDecidir === 1 ? 'persona puede' : 'personas pueden'} jugar tu propuesta`,
+            description: `${etiquetaConvocatoria(c)} · Decide quién entra`,
+            action: abrir
+          });
+        }
+        return;
+      }
+      if (c.estado !== 'ABIERTA' || respuestaDe(c, currentUser.id)) return;
+      if (tienePartidoEseDia(matches, currentUser, String(c.fechaISO).slice(0, 10))) return;
+      alerts.push({
+        id: `conv-${c.id}`,
+        icon: '🙌',
+        title: c.tipo === 'DIRIGIDA' ? `${c.creadorNombre} te propone un partido` : 'Nueva propuesta de partido',
+        description: `${c.creadorNombre} · ${etiquetaConvocatoria(c)} · ¿Te apuntas?`,
+        action: abrir
+      });
+    });
+
     // 4b. DESACTIVADA A PETICIÓN DEL USUARIO: la alerta de "falta el resultado de un
     // partido de torneo" resultaba demasiado intrusiva (se dispara por cada partido de cada
     // ronda, en torneos de varias rondas puede ser muchas veces seguidas). El aviso
@@ -6494,7 +7679,17 @@ function AppPrincipal() {
     // ahí es un único partido a la semana.
 
     return alerts;
-  }, [matches, activeTournaments, currentUser]);
+  }, [matches, activeTournaments, currentUser, convocatorias]);
+
+  // Propuestas de partido vivas que veo yo (para el contador del Inicio).
+  const convocatoriasAbiertas = useMemo(() => {
+    if (!currentUser) return 0;
+    const ahora = Date.now();
+    return (convocatorias || []).filter(c => {
+      const f = fechaDeConvocatoria(c);
+      return f && f.getTime() >= ahora && c.estado !== 'CANCELADA' && c.estado !== 'CONVERTIDA' && convocatoriaVisiblePara(c, currentUser);
+    }).length;
+  }, [convocatorias, currentUser]);
 
   const groupMatches = useMemo(() => {
     return matches.filter(m => {
@@ -6563,8 +7758,9 @@ function AppPrincipal() {
   }, [groupMatches, activeDinnerKey]);
 
   // Aquí faltaba la apertura del useMemo y la inicialización de los Map
-  const { dinnerYes, dinnerNo, dinnerPending, dinnerGuests } = useMemo(() => {
+  const { dinnerYes, dinnerUna, dinnerNo, dinnerPending, dinnerGuests } = useMemo(() => {
     const yesMap = new Map();
+    const unaMap = new Map(); // "me tomo una": ni cena ni rajada
     const noMap = new Map();
     const pendingMap = new Map();
     const guestMap = new Map();
@@ -6589,12 +7785,19 @@ function AppPrincipal() {
           yesMap.set(groupKey, playerObj);
           pendingMap.delete(groupKey);
           noMap.delete(groupKey);
+          unaMap.delete(groupKey);
+        } else if (p.dinner === 'UNA') {
+          unaMap.set(groupKey, playerObj);
+          pendingMap.delete(groupKey);
+          noMap.delete(groupKey);
+          yesMap.delete(groupKey);
         } else if (p.dinner === 'NO') {
           noMap.set(groupKey, playerObj);
           pendingMap.delete(groupKey);
           yesMap.delete(groupKey);
+          unaMap.delete(groupKey);
         } else {
-          if (!yesMap.has(groupKey) && !noMap.has(groupKey)) {
+          if (!yesMap.has(groupKey) && !noMap.has(groupKey) && !unaMap.has(groupKey)) {
             pendingMap.set(groupKey, playerObj);
           }
         }
@@ -6626,6 +7829,7 @@ function AppPrincipal() {
 
     return {
       dinnerYes: Array.from(yesMap.values()),
+      dinnerUna: Array.from(unaMap.values()),
       dinnerNo: Array.from(noMap.values()),
       dinnerPending: Array.from(pendingMap.values()),
       dinnerGuests: Array.from(guestMap.values())
@@ -7018,6 +8222,26 @@ function AppPrincipal() {
             onUpdateAlertPreferences={setAlertPreferences}
             onUpdateReservationAlerts={setReservationAlerts}
           />
+        ) : activeTab === 'pachanga' && isThursdayMember ? (
+          <PachangaScreen
+            currentUser={currentUser}
+            players={players}
+            matches={matches}
+            convocatorias={convocatorias}
+            disponibilidades={disponibilidades}
+            onGuardarDisp={handleGuardarDisponibilidad}
+            onEliminarDisp={handleEliminarDisponibilidad}
+            onContactar={abrirContactoDisponibles}
+            resaltarId={convResaltada}
+            trabajando={convTrabajando}
+            onBack={() => setActiveTab('inicio')}
+            onNueva={abrirNuevaConvocatoria}
+            onResponder={handleResponderConvocatoria}
+            onAsignar={handleAsignarConvocatoria}
+            onCancelar={handleCancelarConvocatoria}
+            onConvertir={handleConvertirConvocatoria}
+            onAbrirPartido={(id) => { setActiveTab('partidos'); setSelectedMatchId(id); }}
+          />
         ) : activeTab === 'inicio' && isThursdayMember ? (
           <HomeScreen
             currentUser={currentUser}
@@ -7025,8 +8249,10 @@ function AppPrincipal() {
             activeTournaments={activeTournaments}
             allDinnerGuests={allDinnerGuests}
             pendingAlerts={pendingAlerts}
+            convocatoriasAbiertas={convocatoriasAbiertas}
             onNavigate={(tab) => setActiveTab(tab)}
             onOpenMatch={(id) => { setActiveTab('partidos'); setSelectedMatchId(id); }}
+            onProponer={abrirNuevaConvocatoria}
           />
         ) : selectedMatchId && currentMatch && isThursdayMember ? (
           /* DETALLE DEL PARTIDO REGULAR */
@@ -7152,7 +8378,7 @@ function AppPrincipal() {
 
               <div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-stone-100">
                 <button
-                  onClick={() => setShowReloadPlaytomicModal(true)}
+                  onClick={() => { setModalError(''); setShowReloadPlaytomicModal(true); }}
                   className="py-2 px-2 bg-[#eef2f6] hover:bg-[#eef2f6] text-[#2c4a66] text-[11px] font-bold rounded-xl border border-[#c3d3e0] transition flex items-center justify-center gap-1"
                 >
                   🔄 Recargar Playtomic
@@ -7161,6 +8387,7 @@ function AppPrincipal() {
                   onClick={() => {
                     const currentNames = (currentMatch.players || []).map(p => p.name);
                     setEditPlayerSlots([currentNames[0] || '', currentNames[1] || '', currentNames[2] || '', currentNames[3] || '']);
+                    setModalError('');
                     setShowEditPlayersModal(true);
                   }}
                   className="py-2 px-2 bg-stone-100 hover:bg-stone-200 text-stone-700 text-[11px] font-bold rounded-xl border border-stone-200 transition flex items-center justify-center gap-1"
@@ -7269,7 +8496,7 @@ function AppPrincipal() {
                                     )}
                                   </div>
                                   <span className="text-[10px] text-stone-400">
-                                    {p.dinner === 'SI' ? '🍻 Cena confirmada' : p.dinner === 'NO' ? '🏃‍♂️ Se raja' : '🟡 Cena pendiente'}
+                                    {p.dinner === 'SI' ? '🍻 Cena confirmada' : p.dinner === 'UNA' ? '🍺 Se toma una' : p.dinner === 'NO' ? '🏃‍♂️ Se raja' : '🟡 Cena pendiente'}
                                   </span>
                                 </div>
                               </div>
@@ -7283,6 +8510,15 @@ function AppPrincipal() {
                                   } ${isProcessing ? 'opacity-50 cursor-wait' : ''}`}
                                 >
                                   Cena 🍻
+                                </button>
+                                <button
+                                  disabled={isProcessing}
+                                  onClick={() => handleUpdateDinner(currentMatch.id, p.id, p.name, p.dinner === 'UNA' ? 'PENDIENTE' : 'UNA')}
+                                  className={`px-2.5 py-1 rounded-xl text-[10px] font-bold transition ${
+                                    p.dinner === 'UNA' ? 'bg-[#4a3350] text-white shadow-xs' : 'bg-stone-100 text-stone-600'
+                                  } ${isProcessing ? 'opacity-50 cursor-wait' : ''}`}
+                                >
+                                  Una 🍺
                                 </button>
                                 <button
                                   disabled={isProcessing}
@@ -7325,22 +8561,33 @@ function AppPrincipal() {
                     <p className="text-xs font-black text-stone-800 uppercase tracking-wide mb-2.5">
                       ¿Te quedas al 3º tiempo?
                     </p>
-                    <div className="flex gap-2.5">
+                    <div className="flex gap-2">
                       <button
                         disabled={isProcessing}
                         onClick={() => handleUpdateDinner(currentMatch.id, mySlot.id, mySlot.name, 'SI')}
-                        className={`flex-1 py-2.5 rounded-xl font-extrabold text-xs transition border ${
+                        className={`flex-1 py-2.5 rounded-xl font-extrabold text-[11px] leading-tight transition border ${
                           mySlot.dinner === 'SI'
                             ? 'bg-[#2f5d50] text-white border-[#2f5d50] shadow-md'
                             : 'bg-white text-stone-700 border-stone-200 hover:bg-[#eef4f0]'
                         } ${isProcessing ? 'opacity-60 cursor-wait' : ''}`}
                       >
-                        ✓ ¡SÍ, CLARO! 🍻
+                        ✓ ME QUEDO A CENAR 🍻
+                      </button>
+                      <button
+                        disabled={isProcessing}
+                        onClick={() => handleUpdateDinner(currentMatch.id, mySlot.id, mySlot.name, 'UNA')}
+                        className={`flex-1 py-2.5 rounded-xl font-extrabold text-[11px] leading-tight transition border ${
+                          mySlot.dinner === 'UNA'
+                            ? 'bg-[#4a3350] text-white border-[#4a3350] shadow-md'
+                            : 'bg-white text-stone-700 border-stone-200 hover:bg-[#f2eef2]'
+                        } ${isProcessing ? 'opacity-60 cursor-wait' : ''}`}
+                      >
+                        ME TOMO UNA 🍺
                       </button>
                       <button
                         disabled={isProcessing}
                         onClick={() => handleUpdateDinner(currentMatch.id, mySlot.id, mySlot.name, 'NO')}
-                        className={`flex-1 py-2.5 rounded-xl font-extrabold text-xs transition border ${
+                        className={`flex-1 py-2.5 rounded-xl font-extrabold text-[11px] leading-tight transition border ${
                           mySlot.dinner === 'NO'
                             ? 'bg-[#6b3f29] text-white border-[#6b3f29] shadow-md'
                             : 'bg-white text-stone-700 border-stone-200 hover:bg-[#f6ede6]'
@@ -7645,18 +8892,22 @@ function AppPrincipal() {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-3 gap-2 text-center">
-                    <div className="bg-[#eef4f0] border border-[#c7ddc9] rounded-2xl p-2.5">
+                  <div className="grid grid-cols-4 gap-1.5 text-center">
+                    <div className="bg-[#eef4f0] border border-[#c7ddc9] rounded-2xl p-2">
                       <span className="text-base font-black text-[#2f5d50] block">{dinnerYes.length + dinnerGuests.length}</span>
-                      <span className="text-[10px] font-bold text-[#2f5d50] uppercase">Cenan SÍ</span>
+                      <span className="text-[9px] font-bold text-[#2f5d50] uppercase">Cenan</span>
                     </div>
-                    <div className="bg-[#f6ede6] border border-[#ead3bf] rounded-2xl p-2.5">
+                    <div className="bg-[#f2eef2] border border-[#ddc9de] rounded-2xl p-2">
+                      <span className="text-base font-black text-[#4a3350] block">{dinnerUna.length}</span>
+                      <span className="text-[9px] font-bold text-[#4a3350] uppercase">Una 🍺</span>
+                    </div>
+                    <div className="bg-[#f6ede6] border border-[#ead3bf] rounded-2xl p-2">
                       <span className="text-base font-black text-[#6b3f29] block">{dinnerNo.length}</span>
-                      <span className="text-[10px] font-bold text-[#6b3f29] uppercase">Se Rajan</span>
+                      <span className="text-[9px] font-bold text-[#6b3f29] uppercase">Rajan</span>
                     </div>
-                    <div className="bg-[#faf3e7] border border-[#efd9a9] rounded-2xl p-2.5">
+                    <div className="bg-[#faf3e7] border border-[#efd9a9] rounded-2xl p-2">
                       <span className="text-base font-black text-[#6b4d1c] block">{dinnerPending.length}</span>
-                      <span className="text-[10px] font-bold text-[#6b4d1c] uppercase">Pendientes</span>
+                      <span className="text-[9px] font-bold text-[#6b4d1c] uppercase">Pendientes</span>
                     </div>
                   </div>
 
@@ -7681,6 +8932,29 @@ function AppPrincipal() {
                         ))}
                       </div>
                     </div>
+
+                    {dinnerUna.length > 0 && (
+                      <div className="pt-2 border-t border-stone-100">
+                        <span className="font-extrabold text-[#4a3350] block mb-2">
+                          🍺 Se toman una ({dinnerUna.length}) · no cenan, sin bote ni penalización:
+                        </span>
+                        <div className="flex flex-wrap gap-2">
+                          {dinnerUna.map((item, i) => (
+                            <div
+                              key={i}
+                              onClick={() => {
+                                const found = players.find(u => normalizeName(u.name) === normalizeName(item.name));
+                                setInspectedUser(found || item);
+                              }}
+                              className="flex items-center gap-1.5 bg-[#f2eef2] border border-[#ddc9de] text-[#4a3350] px-2.5 py-1 rounded-xl font-bold text-xs cursor-pointer transition"
+                            >
+                              <UserAvatar name={item.name} photo={item.photo} size="sm" />
+                              <span>{item.name}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
 
                     {dinnerNo.length > 0 && (
                       <div className="pt-2 border-t border-stone-100">
@@ -8408,6 +9682,19 @@ function AppPrincipal() {
         syncing={syncing} 
       />
 
+      {/* MODAL: NUEVA PROPUESTA DE PARTIDO (PACHANGA) */}
+      <NuevaConvocatoriaModal
+        isOpen={showConvModal}
+        onClose={() => setShowConvModal(false)}
+        onSubmit={handleCrearConvocatoria}
+        tipoInicial={convTipoInicial}
+        players={players}
+        currentUser={currentUser}
+        destinatarios={contactoPre ? contactoPre.jugadores : []}
+        fechaInicial={contactoPre ? contactoPre.dia : ''}
+        horaInicial={contactoPre ? contactoPre.hora : ''}
+      />
+
       {/* MODAL: RECARGAR PLAYTOMIC */}
       {showReloadPlaytomicModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
@@ -8419,12 +9706,17 @@ function AppPrincipal() {
                 required
                 value={reloadPlaytomicText}
                 onChange={e => setReloadPlaytomicText(e.target.value)}
+                disabled={Boolean(modalTrabajando)}
                 placeholder="Pega el mensaje copiado de Playtomic..."
-                className="w-full border rounded-xl p-2.5 text-xs font-semibold"
+                className="w-full border rounded-xl p-2.5 text-xs font-semibold disabled:opacity-60"
               />
+              {modalError && <p role="alert" className="text-[11px] font-bold text-[#6b3f29] bg-[#f6ede6] border border-[#ead3bf] rounded-xl p-2.5">⚠️ {modalError}</p>}
               <div className="flex gap-2">
-                <button type="button" onClick={() => setShowReloadPlaytomicModal(false)} className="flex-1 py-2 bg-stone-100 font-bold text-xs rounded-xl">Cancelar</button>
-                <button type="submit" disabled={syncing} className="flex-1 py-2 bg-[#2c4a66] text-white font-bold text-xs rounded-xl">Actualizar</button>
+                <button type="button" disabled={Boolean(modalTrabajando)} onClick={() => setShowReloadPlaytomicModal(false)} className="flex-1 py-2 bg-stone-100 font-bold text-xs rounded-xl disabled:opacity-50">{modalError ? 'Cerrar' : 'Cancelar'}</button>
+                <button type="submit" disabled={Boolean(modalTrabajando)} className="flex-1 py-2 bg-[#2c4a66] text-white font-bold text-xs rounded-xl disabled:opacity-70 flex items-center justify-center gap-2">
+                  {modalTrabajando && <span className="inline-block w-3.5 h-3.5 rounded-full border-2 border-white/40 border-t-white animate-spin" />}
+                  {modalTrabajando === 'guardando' ? 'Guardando…' : modalTrabajando === 'actualizando' ? 'Actualizando…' : modalError ? 'Reintentar' : 'Actualizar'}
+                </button>
               </div>
             </form>
           </div>
@@ -8443,17 +9735,22 @@ function AppPrincipal() {
                   type="text"
                   required
                   value={editPlayerSlots[idx]}
+                  disabled={Boolean(modalTrabajando)}
                   onChange={e => {
                     const updated = [...editPlayerSlots];
                     updated[idx] = e.target.value;
                     setEditPlayerSlots(updated);
                   }}
-                  className="w-full border rounded-xl p-2 text-xs font-semibold"
+                  className="w-full border rounded-xl p-2 text-xs font-semibold disabled:opacity-60"
                 />
               ))}
+              {modalError && <p role="alert" className="text-[11px] font-bold text-[#6b3f29] bg-[#f6ede6] border border-[#ead3bf] rounded-xl p-2.5">⚠️ {modalError}</p>}
               <div className="flex gap-2 pt-2">
-                <button type="button" onClick={() => setShowEditPlayersModal(false)} className="flex-1 py-2 bg-stone-100 font-bold text-xs rounded-xl">Cancelar</button>
-                <button type="submit" disabled={syncing} className="flex-1 py-2 bg-[#2c4a66] text-white font-bold text-xs rounded-xl">Guardar</button>
+                <button type="button" disabled={Boolean(modalTrabajando)} onClick={() => setShowEditPlayersModal(false)} className="flex-1 py-2 bg-stone-100 font-bold text-xs rounded-xl disabled:opacity-50">{modalError ? 'Cerrar' : 'Cancelar'}</button>
+                <button type="submit" disabled={Boolean(modalTrabajando)} className="flex-1 py-2 bg-[#2c4a66] text-white font-bold text-xs rounded-xl disabled:opacity-70 flex items-center justify-center gap-2">
+                  {modalTrabajando && <span className="inline-block w-3.5 h-3.5 rounded-full border-2 border-white/40 border-t-white animate-spin" />}
+                  {modalTrabajando ? 'Guardando…' : modalError ? 'Reintentar' : 'Guardar'}
+                </button>
               </div>
             </form>
           </div>
