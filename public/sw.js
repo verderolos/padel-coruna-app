@@ -57,7 +57,14 @@ self.addEventListener('notificationclick', (event) => {
         const clientList = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
         for (const client of clientList) {
           if (client.url.includes(self.location.origin) && 'focus' in client) {
-            return client.focus();
+            // Si el aviso trae un destino concreto (p.ej. "/?convocatoria=C-001"), llevamos a esa
+            // pestaña ya abierta hasta él; con un aviso genérico ("/") solo se enfoca, como antes.
+            const traeDestino = targetUrl.indexOf('?') !== -1;
+            const enfocada = await client.focus();
+            if (traeDestino && enfocada && 'navigate' in enfocada) {
+              try { return await enfocada.navigate(targetUrl); } catch (e) { return enfocada; }
+            }
+            return enfocada;
           }
         }
         if (self.clients.openWindow) {
