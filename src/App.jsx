@@ -1870,6 +1870,96 @@ function comprimirFotoTicket(file) {
 // (total ÷ comensales confirmados esa noche) y la categoría es solo Alcohol / Sin alcohol —
 // ambas decisiones confirmadas explícitamente por Marcos. El OCR es un best-effort: SIEMPRE se
 // enseña para revisar/corregir antes de guardar, nunca se guarda directo.
+// Acumulado de gasto por cena (de los tickets guardados del grupo): total, por persona y reparto
+// comida / bebida / alcohol con las unidades de alcohol. Los tickets anteriores al desglose
+// aparecen con "—" en esas columnas y no cuentan para sus medias.
+function GastoCenasCard({ tickets, grupo }) {
+  const [abierto, setAbierto] = useState(false);
+  const lista = (tickets || [])
+    .filter(t => t && t.grupo === grupo && Number(t.totalTicket) > 0)
+    .sort((a, b) => String(b.fechaClave).localeCompare(String(a.fechaClave)));
+  if (lista.length === 0) return null;
+  const eur = (n) => (Number(n) || 0).toFixed(2);
+  const conDesglose = lista.filter(t => typeof t.totalComida === 'number');
+  const sum = (arr, f) => arr.reduce((acc, t) => acc + (Number(f(t)) || 0), 0);
+  const totalGastado = sum(lista, t => t.totalTicket);
+  const personasTotales = sum(lista, t => t.numPersonas);
+  const conUds = lista.filter(t => typeof t.unidadesAlcohol === 'number');
+  const udsTotales = sum(conUds, t => t.unidadesAlcohol);
+  const personasConUds = sum(conUds, t => t.numPersonas);
+  const dia = (k) => { const m = String(k).match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? `${m[3]}/${m[2]}` : k; };
+  return (
+    <div className="bg-white rounded-3xl p-4 border border-stone-200 shadow-xs space-y-3">
+      <button onClick={() => setAbierto(a => !a)} className="w-full flex items-center justify-between" aria-expanded={abierto}>
+        <h3 className="text-sm font-black text-stone-900">📈 Gasto por cena</h3>
+        <span className="text-[11px] font-bold text-[#2c4a66]">{abierto ? 'Ocultar' : `Ver (${lista.length})`}</span>
+      </button>
+      {abierto && (
+        <>
+          <div className="overflow-x-auto">
+            <table className="w-full text-[10px] text-right">
+              <thead>
+                <tr className="text-stone-400 font-bold uppercase text-[8.5px]">
+                  <th className="text-left pb-1">Cena</th><th className="pb-1">Total</th><th className="pb-1">€/pers.</th>
+                  <th className="pb-1">🍽️</th><th className="pb-1">🥤</th><th className="pb-1">🍷</th><th className="pb-1">Uds.</th>
+                </tr>
+              </thead>
+              <tbody>
+                {lista.slice(0, 20).map(t => {
+                  const desg = typeof t.totalComida === 'number';
+                  return (
+                    <tr key={t.ticketId || t.fechaClave} className="border-t border-stone-100 font-semibold text-stone-700">
+                      <td className="text-left py-1">{dia(t.fechaClave)}</td>
+                      <td>{eur(t.totalTicket)}</td>
+                      <td>{eur(t.importePorPersona)}</td>
+                      <td>{desg ? eur(t.totalComida) : '—'}</td>
+                      <td>{desg ? eur(t.totalBebida) : '—'}</td>
+                      <td>{desg ? eur(t.totalAlcohol) : '—'}</td>
+                      <td>{typeof t.unidadesAlcohol === 'number' ? fmtUds(t.unidadesAlcohol) : '—'}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <div className="grid grid-cols-3 gap-2 text-center pt-1 border-t border-stone-100">
+            <div className="bg-stone-50 border border-stone-200 rounded-xl p-2">
+              <span className="text-sm font-black text-stone-800 block">{eur(totalGastado / lista.length)}€</span>
+              <span className="text-[8.5px] font-bold text-stone-500 uppercase">Media por cena</span>
+            </div>
+            <div className="bg-stone-50 border border-stone-200 rounded-xl p-2">
+              <span className="text-sm font-black text-stone-800 block">{personasTotales > 0 ? eur(totalGastado / personasTotales) : '—'}€</span>
+              <span className="text-[8.5px] font-bold text-stone-500 uppercase">Media por persona</span>
+            </div>
+            <div className="bg-[#f6ede6] border border-[#ead3bf] rounded-xl p-2">
+              <span className="text-sm font-black text-[#6b3f29] block" data-testid="media-uds">{personasConUds > 0 ? fmtUds(udsTotales / personasConUds) : '—'}</span>
+              <span className="text-[8.5px] font-bold text-[#6b3f29] uppercase">Uds. alcohol / persona</span>
+            </div>
+          </div>
+          {conDesglose.length < lista.length && (
+            <p className="text-[10px] text-stone-400 text-center">Las cenas con «—» se guardaron antes del desglose comida/bebida/alcohol: edita sus líneas para completarlas.</p>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+// Categorías de una línea del ticket. "alcohol" mantiene también el antiguo check esAlcohol.
+const CATEGORIAS_TICKET = [
+  { id: 'comida', icono: '🍽️', nombre: 'Comida' },
+  { id: 'bebida', icono: '🥤', nombre: 'Bebida' },
+  { id: 'alcohol', icono: '🍷', nombre: 'Alcohol' }
+];
+const LINEA_TICKET_VACIA = () => ({ desc: '', precio: '', cantidad: 1, categoria: 'comida' });
+// Línea tal como llega del servidor (o de un ticket antiguo, sin cantidad ni categoría) -> línea editable.
+const normalizarLineaTicket = (it) => ({
+  ...it,
+  cantidad: (it && Number(it.cantidad) > 0) ? it.cantidad : 1,
+  categoria: (it && ['comida', 'bebida', 'alcohol'].includes(it.categoria)) ? it.categoria : (it && it.esAlcohol ? 'alcohol' : 'comida')
+});
+const fmtUds = (n) => (Math.round((Number(n) || 0) * 100) / 100).toLocaleString('es-ES', { maximumFractionDigits: 2 });
+
 function TicketCenaCard({ grupo, fechaClave, fechaLabel, numPersonasActuales, currentUser, apiUrl, ticketExistente, onSaved }) {
   const [modo, setModo] = useState('resumen'); // 'resumen' | 'revisando'
   const [cargandoOcr, setCargandoOcr] = useState(false);
@@ -1880,14 +1970,24 @@ function TicketCenaCard({ grupo, fechaClave, fechaLabel, numPersonasActuales, cu
   const [avisoSinOcr, setAvisoSinOcr] = useState(false);
   // Por qué no se ha leído el ticket (error del servidor) y el texto bruto que sí reconoció Google, si lo hubo.
   const [detalleOcr, setDetalleOcr] = useState({ motivo: '', texto: '' });
+  // TOTAL que pone el propio ticket (si el servidor lo ha localizado) para comprobar que las líneas cuadran.
+  const [totalTicketLeido, setTotalTicketLeido] = useState(undefined); // undefined = no viene de una lectura automática; null = leído pero sin total localizado
   const fileInputRef = useRef(null);
 
   const totales = (() => {
-    const total = itemsRevision.reduce((acc, it) => acc + (Number(it.precio) || 0), 0);
-    const alcohol = itemsRevision.filter(it => it.esAlcohol).reduce((acc, it) => acc + (Number(it.precio) || 0), 0);
-    const sinAlcohol = total - alcohol;
+    // Acepta coma decimal ("0,86"), igual que al guardar.
+    const importe = (it) => parseFloat(String(it.precio).replace(',', '.')) || 0;
+    const cantidad = (it) => { const c = parseFloat(String(it.cantidad).replace(',', '.')); return c > 0 ? c : 1; };
+    const de = (cat) => itemsRevision.filter(it => it.categoria === cat);
+    const suma = (arr) => arr.reduce((acc, it) => acc + importe(it), 0);
+    const total = suma(itemsRevision);
+    const comida = suma(de('comida'));
+    const bebida = suma(de('bebida'));
+    const alcohol = suma(de('alcohol'));
+    // Unidades de alcohol = suma del campo cantidad de las líneas de alcohol.
+    const unidadesAlcohol = de('alcohol').reduce((acc, it) => acc + cantidad(it), 0);
     const personas = Math.max(1, Number(numPersonasActuales) || 1);
-    return { total, alcohol, sinAlcohol, porPersona: total / personas };
+    return { total, comida, bebida, alcohol, sinAlcohol: comida + bebida, unidadesAlcohol, porPersona: total / personas };
   })();
 
   const handleFileSelected = async (e) => {
@@ -1906,7 +2006,8 @@ function TicketCenaCard({ grupo, fechaClave, fechaLabel, numPersonasActuales, cu
       const data = await res.json();
       if (!data.ok) throw new Error(data.error || 'No se ha podido leer el ticket.');
       setFotoUrlPendiente(data.fotoUrl || '');
-      setItemsRevision((data.items && data.items.length > 0) ? data.items : [{ desc: '', precio: '', esAlcohol: false }]);
+      setItemsRevision((data.items && data.items.length > 0) ? data.items.map(normalizarLineaTicket) : [LINEA_TICKET_VACIA()]);
+      setTotalTicketLeido(typeof data.totalTicket === 'number' ? data.totalTicket : null);
       setAvisoSinOcr(!data.items || data.items.length === 0);
       setDetalleOcr({ motivo: data.errorOcr || '', texto: data.textoDetectado || '' });
       setModo('revisando');
@@ -1914,7 +2015,8 @@ function TicketCenaCard({ grupo, fechaClave, fechaLabel, numPersonasActuales, cu
       console.error(err);
       setDetalleOcr({ motivo: err && err.message ? String(err.message) : '', texto: '' });
       setErrorMsg('No se ha podido leer el ticket. Puedes añadir las líneas a mano, o inténtalo de nuevo.');
-      setItemsRevision([{ desc: '', precio: '', esAlcohol: false }]);
+      setItemsRevision([LINEA_TICKET_VACIA()]);
+      setTotalTicketLeido(undefined);
       setFotoUrlPendiente('');
       setAvisoSinOcr(true);
       setModo('revisando');
@@ -1925,9 +2027,10 @@ function TicketCenaCard({ grupo, fechaClave, fechaLabel, numPersonasActuales, cu
 
   const handleEditarExistente = () => {
     setItemsRevision((ticketExistente?.items && ticketExistente.items.length > 0)
-      ? ticketExistente.items.map(it => ({ ...it }))
-      : [{ desc: '', precio: '', esAlcohol: false }]);
+      ? ticketExistente.items.map(normalizarLineaTicket)
+      : [LINEA_TICKET_VACIA()]);
     setFotoUrlPendiente(ticketExistente?.fotoUrl || '');
+    setTotalTicketLeido(undefined);
     setAvisoSinOcr(false);
     setDetalleOcr({ motivo: '', texto: '' });
     setErrorMsg('');
@@ -1935,7 +2038,8 @@ function TicketCenaCard({ grupo, fechaClave, fechaLabel, numPersonasActuales, cu
   };
 
   const actualizarLinea = (idx, campo, valor) => {
-    setItemsRevision(prev => prev.map((it, i) => i === idx ? { ...it, [campo]: valor } : it));
+    // Al tocar una línea, deja de estar "pendiente de revisar".
+    setItemsRevision(prev => prev.map((it, i) => i === idx ? { ...it, [campo]: valor, revisar: false } : it));
   };
 
   const eliminarLinea = (idx) => {
@@ -1944,7 +2048,17 @@ function TicketCenaCard({ grupo, fechaClave, fechaLabel, numPersonasActuales, cu
 
   const handleGuardar = async () => {
     const itemsValidos = itemsRevision
-      .map(it => ({ desc: String(it.desc || '').trim(), precio: parseFloat(String(it.precio).replace(',', '.')) || 0, esAlcohol: Boolean(it.esAlcohol) }))
+      .map(it => {
+        const cant = parseFloat(String(it.cantidad).replace(',', '.'));
+        const categoria = ['comida', 'bebida', 'alcohol'].includes(it.categoria) ? it.categoria : 'comida';
+        return {
+          desc: String(it.desc || '').trim(),
+          precio: parseFloat(String(it.precio).replace(',', '.')) || 0,
+          cantidad: cant > 0 ? cant : 1,
+          categoria,
+          esAlcohol: categoria === 'alcohol'
+        };
+      })
       .filter(it => it.desc && it.precio > 0);
 
     if (itemsValidos.length === 0) {
@@ -2006,57 +2120,112 @@ function TicketCenaCard({ grupo, fechaClave, fechaLabel, numPersonasActuales, cu
         )}
         {errorMsg && <p className="text-[10px] text-[#6b3f29] bg-[#f6ede6] border border-[#ead3bf] rounded-xl p-2">{errorMsg}</p>}
 
+        {typeof totalTicketLeido === 'number' && !avisoSinOcr && (
+          Math.abs(totales.total - totalTicketLeido) <= 0.02 ? (
+            <p data-testid="chip-total-ok" className="text-[10px] font-bold text-[#2f5d50] bg-[#e8f1ee] border border-[#bfd8cf] rounded-xl p-2">
+              ✓ Las líneas suman {totales.total.toFixed(2)}€, igual que el total del ticket.
+            </p>
+          ) : (
+            <p data-testid="chip-total-mal" className="text-[10px] font-bold text-[#6b4d1c] bg-[#faf3e7] border border-[#efd9a9] rounded-xl p-2">
+              ⚠️ Las líneas suman {totales.total.toFixed(2)}€ pero el ticket dice {totalTicketLeido.toFixed(2)}€. Compara con la foto y corrige lo que falte o sobre.
+            </p>
+          )
+        )}
+        {totalTicketLeido === null && !avisoSinOcr && itemsRevision.length > 0 && (
+          <p className="text-[10px] text-stone-500 bg-stone-50 border border-stone-200 rounded-xl p-2">
+            No he localizado el total del ticket para comprobar la suma: revisa las líneas con la foto.
+          </p>
+        )}
+
         <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1">
           {itemsRevision.map((it, idx) => (
-            <div key={idx} className="flex items-center gap-1.5 bg-stone-50 border border-stone-200 rounded-xl p-1.5">
-              <input
-                type="text"
-                value={it.desc}
-                onChange={e => actualizarLinea(idx, 'desc', e.target.value)}
-                placeholder="Bebida"
-                className="flex-1 min-w-0 bg-white border border-stone-300 rounded-lg px-2 py-1 text-[11px] font-semibold"
-              />
-              <input
-                type="text"
-                inputMode="decimal"
-                value={it.precio}
-                onChange={e => actualizarLinea(idx, 'precio', e.target.value)}
-                placeholder="€"
-                className="w-14 bg-white border border-stone-300 rounded-lg px-2 py-1 text-[11px] font-semibold text-right"
-              />
-              <label className="flex items-center gap-1 text-[9px] font-bold text-stone-600 shrink-0">
+            <div key={idx} className={`rounded-xl p-1.5 border space-y-1 ${it.revisar ? 'bg-[#faf3e7] border-[#e0b95e]' : 'bg-stone-50 border-stone-200'}`}>
+              <div className="flex items-center gap-1.5">
                 <input
-                  type="checkbox"
-                  checked={Boolean(it.esAlcohol)}
-                  onChange={e => actualizarLinea(idx, 'esAlcohol', e.target.checked)}
-                  className="w-3.5 h-3.5 accent-[#6b3f29]"
+                  type="text"
+                  value={it.desc}
+                  onChange={e => actualizarLinea(idx, 'desc', e.target.value)}
+                  placeholder="Artículo"
+                  className="flex-1 min-w-0 bg-white border border-stone-300 rounded-lg px-2 py-1 text-[11px] font-semibold"
                 />
-                🍷
-              </label>
-              <button onClick={() => eliminarLinea(idx)} className="text-stone-300 hover:text-[#6b3f29] font-black text-sm shrink-0 px-1">✕</button>
+                <button onClick={() => eliminarLinea(idx)} className="text-stone-300 hover:text-[#6b3f29] font-black text-sm shrink-0 px-1">✕</button>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <label className="flex items-center gap-1 text-[9px] font-bold text-stone-500 shrink-0">
+                  Cant.
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    data-testid="ticket-cantidad"
+                    value={it.cantidad}
+                    onChange={e => actualizarLinea(idx, 'cantidad', e.target.value)}
+                    className="w-12 bg-white border border-stone-300 rounded-lg px-1.5 py-1 text-[11px] font-semibold text-right"
+                  />
+                </label>
+                <label className="flex items-center gap-1 text-[9px] font-bold text-stone-500 shrink-0">
+                  €
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={it.precio}
+                    onChange={e => actualizarLinea(idx, 'precio', e.target.value)}
+                    placeholder="0,00"
+                    className="w-14 bg-white border border-stone-300 rounded-lg px-1.5 py-1 text-[11px] font-semibold text-right"
+                  />
+                </label>
+                <div className="flex flex-1 justify-end gap-1">
+                  {CATEGORIAS_TICKET.map(c => (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => actualizarLinea(idx, 'categoria', c.id)}
+                      title={c.nombre}
+                      aria-label={c.nombre}
+                      aria-pressed={it.categoria === c.id}
+                      className={`px-1.5 py-1 rounded-lg text-[12px] border transition ${it.categoria === c.id
+                        ? (c.id === 'alcohol' ? 'bg-[#f6ede6] border-[#6b3f29]' : c.id === 'bebida' ? 'bg-[#eef2f6] border-[#2c4a66]' : 'bg-[#e8f1ee] border-[#2f5d50]')
+                        : 'bg-white border-stone-200 opacity-40'}`}
+                    >
+                      {c.icono}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
           ))}
         </div>
 
         <button
-          onClick={() => setItemsRevision(prev => [...prev, { desc: '', precio: '', esAlcohol: false }])}
+          onClick={() => setItemsRevision(prev => [...prev, LINEA_TICKET_VACIA()])}
           className="w-full py-1.5 border border-dashed border-stone-300 rounded-xl text-[11px] font-bold text-stone-500 hover:bg-stone-50"
         >
           + Añadir línea
         </button>
 
         <div className="grid grid-cols-3 gap-2 text-center pt-1 border-t border-stone-100">
+          <div className="bg-[#e8f1ee] border border-[#bfd8cf] rounded-xl p-2">
+            <span className="text-sm font-black text-[#2f5d50] block">{totales.comida.toFixed(2)}€</span>
+            <span className="text-[8.5px] font-bold text-[#2f5d50] uppercase">🍽️ Comida</span>
+          </div>
+          <div className="bg-[#eef2f6] border border-[#c3d3e0] rounded-xl p-2">
+            <span className="text-sm font-black text-[#2c4a66] block">{totales.bebida.toFixed(2)}€</span>
+            <span className="text-[8.5px] font-bold text-[#2c4a66] uppercase">🥤 Bebida</span>
+          </div>
+          <div className="bg-[#f6ede6] border border-[#ead3bf] rounded-xl p-2">
+            <span className="text-sm font-black text-[#6b3f29] block">{totales.alcohol.toFixed(2)}€</span>
+            <span className="text-[8.5px] font-bold text-[#6b3f29] uppercase">🍷 Alcohol</span>
+          </div>
           <div className="bg-stone-50 border border-stone-200 rounded-xl p-2">
             <span className="text-sm font-black text-stone-800 block">{totales.total.toFixed(2)}€</span>
             <span className="text-[8.5px] font-bold text-stone-500 uppercase">Total</span>
           </div>
-          <div className="bg-[#f6ede6] border border-[#ead3bf] rounded-xl p-2">
-            <span className="text-sm font-black text-[#6b3f29] block">{totales.alcohol.toFixed(2)}€</span>
-            <span className="text-[8.5px] font-bold text-[#6b3f29] uppercase">Alcohol</span>
+          <div className="bg-stone-50 border border-stone-200 rounded-xl p-2">
+            <span className="text-sm font-black text-stone-800 block">{totales.porPersona.toFixed(2)}€</span>
+            <span className="text-[8.5px] font-bold text-stone-500 uppercase">Por persona</span>
           </div>
-          <div className="bg-[#eef2f6] border border-[#c3d3e0] rounded-xl p-2">
-            <span className="text-sm font-black text-[#2c4a66] block">{totales.porPersona.toFixed(2)}€</span>
-            <span className="text-[8.5px] font-bold text-[#2c4a66] uppercase">Por persona</span>
+          <div className="bg-[#f6ede6] border border-[#ead3bf] rounded-xl p-2">
+            <span className="text-sm font-black text-[#6b3f29] block" data-testid="uds-alcohol">{fmtUds(totales.unidadesAlcohol)}</span>
+            <span className="text-[8.5px] font-bold text-[#6b3f29] uppercase">Uds. alcohol</span>
           </div>
         </div>
 
@@ -2094,20 +2263,52 @@ function TicketCenaCard({ grupo, fechaClave, fechaLabel, numPersonasActuales, cu
         </div>
       ) : (
         <>
-          <div className="grid grid-cols-3 gap-2 text-center">
-            <div className="bg-stone-50 border border-stone-200 rounded-xl p-2">
-              <span className="text-sm font-black text-stone-800 block">{ticketExistente.totalTicket.toFixed(2)}€</span>
-              <span className="text-[8.5px] font-bold text-stone-500 uppercase">Total</span>
+          {typeof ticketExistente.totalComida === 'number' ? (
+            <div className="grid grid-cols-3 gap-2 text-center">
+              <div className="bg-[#e8f1ee] border border-[#bfd8cf] rounded-xl p-2">
+                <span className="text-sm font-black text-[#2f5d50] block">{ticketExistente.totalComida.toFixed(2)}€</span>
+                <span className="text-[8.5px] font-bold text-[#2f5d50] uppercase">🍽️ Comida</span>
+              </div>
+              <div className="bg-[#eef2f6] border border-[#c3d3e0] rounded-xl p-2">
+                <span className="text-sm font-black text-[#2c4a66] block">{(ticketExistente.totalBebida || 0).toFixed(2)}€</span>
+                <span className="text-[8.5px] font-bold text-[#2c4a66] uppercase">🥤 Bebida</span>
+              </div>
+              <div className="bg-[#f6ede6] border border-[#ead3bf] rounded-xl p-2">
+                <span className="text-sm font-black text-[#6b3f29] block">{ticketExistente.totalAlcohol.toFixed(2)}€</span>
+                <span className="text-[8.5px] font-bold text-[#6b3f29] uppercase">🍷 Alcohol</span>
+              </div>
+              <div className="bg-stone-50 border border-stone-200 rounded-xl p-2">
+                <span className="text-sm font-black text-stone-800 block">{ticketExistente.totalTicket.toFixed(2)}€</span>
+                <span className="text-[8.5px] font-bold text-stone-500 uppercase">Total</span>
+              </div>
+              <div className="bg-stone-50 border border-stone-200 rounded-xl p-2">
+                <span className="text-sm font-black text-stone-800 block">{ticketExistente.importePorPersona.toFixed(2)}€</span>
+                <span className="text-[8.5px] font-bold text-stone-500 uppercase">Por persona ({ticketExistente.numPersonas})</span>
+              </div>
+              <div className="bg-[#f6ede6] border border-[#ead3bf] rounded-xl p-2">
+                <span className="text-sm font-black text-[#6b3f29] block">{fmtUds(ticketExistente.unidadesAlcohol)}</span>
+                <span className="text-[8.5px] font-bold text-[#6b3f29] uppercase">Uds. alcohol</span>
+              </div>
             </div>
-            <div className="bg-[#f6ede6] border border-[#ead3bf] rounded-xl p-2">
-              <span className="text-sm font-black text-[#6b3f29] block">{ticketExistente.totalAlcohol.toFixed(2)}€</span>
-              <span className="text-[8.5px] font-bold text-[#6b3f29] uppercase">Alcohol</span>
-            </div>
-            <div className="bg-[#eef2f6] border border-[#c3d3e0] rounded-xl p-2">
-              <span className="text-sm font-black text-[#2c4a66] block">{ticketExistente.importePorPersona.toFixed(2)}€</span>
-              <span className="text-[8.5px] font-bold text-[#2c4a66] uppercase">Por persona ({ticketExistente.numPersonas})</span>
-            </div>
-          </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-3 gap-2 text-center">
+                <div className="bg-stone-50 border border-stone-200 rounded-xl p-2">
+                  <span className="text-sm font-black text-stone-800 block">{ticketExistente.totalTicket.toFixed(2)}€</span>
+                  <span className="text-[8.5px] font-bold text-stone-500 uppercase">Total</span>
+                </div>
+                <div className="bg-[#f6ede6] border border-[#ead3bf] rounded-xl p-2">
+                  <span className="text-sm font-black text-[#6b3f29] block">{ticketExistente.totalAlcohol.toFixed(2)}€</span>
+                  <span className="text-[8.5px] font-bold text-[#6b3f29] uppercase">Alcohol</span>
+                </div>
+                <div className="bg-[#eef2f6] border border-[#c3d3e0] rounded-xl p-2">
+                  <span className="text-sm font-black text-[#2c4a66] block">{ticketExistente.importePorPersona.toFixed(2)}€</span>
+                  <span className="text-[8.5px] font-bold text-[#2c4a66] uppercase">Por persona ({ticketExistente.numPersonas})</span>
+                </div>
+              </div>
+              <p className="text-[10px] text-stone-500 text-center">Ticket guardado antes del desglose comida/bebida: pulsa «Editar líneas» para clasificarlo.</p>
+            </>
+          )}
 
           <p className="text-[10px] text-stone-400 text-center">
             Subido por {ticketExistente.subidoPorNombre || 'alguien'}
@@ -9355,6 +9556,9 @@ function AppPrincipal() {
                     fetchData(true);
                   }}
                 />
+
+                {/* NUEVO: acumulado de gasto por cena del grupo (comida / bebida / alcohol). */}
+                <GastoCenasCard tickets={dinnerTickets} grupo={myGroup} />
               </div>
             )}
 
